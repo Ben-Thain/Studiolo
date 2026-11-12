@@ -14,6 +14,10 @@
   --ink-4: #a3a3a3;
   --line: #e5e5e5;
   --error: #b42318;
+  --ink-hover: #262626;
+  --error-hover: #912018;
+  --r-control-inner: calc(var(--r-control) - 2px);
+  --mobile-bottom-offset: 0px;
   --focus: 0 0 0 2px #fff, 0 0 0 4px rgba(10, 10, 10, 0.4);
   --shadow-pop: 0 8px 24px rgba(10, 10, 10, 0.08);
   --shadow-float: 0 8px 24px rgba(10, 10, 10, 0.16);
@@ -38,7 +42,10 @@
   --color-ink-4: var(--ink-4);
   --color-line: var(--line);
   --color-error: var(--error);
+  --color-ink-hover: var(--ink-hover);
+  --color-error-hover: var(--error-hover);
   --radius-control: var(--r-control);
+  --radius-control-inner: var(--r-control-inner);
   --radius-pop: var(--r-pop);
   --radius-dialog: var(--r-dialog);
   --radius-sheet: var(--r-sheet);
@@ -98,6 +105,30 @@
 
 @utility shadow-dialog {
   box-shadow: var(--shadow-dialog);
+}
+
+.on-ink:focus-visible,
+.on-ink :focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline-offset: 2px;
+}
+
+.toast-viewport {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  bottom: 24px;
+}
+
+@media (max-width: 639px) {
+  .toast-viewport {
+    right: 16px;
+    left: 16px;
+    width: auto;
+    bottom: calc(8px + var(--mobile-bottom-offset, 0px));
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

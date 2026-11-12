@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import { Button } from "@/components/ui/button";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Button, type ForceState } from "@/components/ui/button";
 import { StudioloCredit } from "@/components/ui/credit";
 import { CopyField } from "@/components/ui/copy-field";
 import { Dialog } from "@/components/ui/dialog";
@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/mobile";
 import { PageHead } from "@/components/ui/page-head";
 import { Pill } from "@/components/ui/pill";
-import { Popover } from "@/components/ui/popover";
+import { Popover, PopoverRow, PopoverSection } from "@/components/ui/popover";
 import { Segmented } from "@/components/ui/segmented";
 import { Sheet } from "@/components/ui/sheet";
 import {
@@ -51,10 +51,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Toast } from "@/components/ui/toast";
+import { ToastRegion, ToastProvider, useToast } from "@/components/ui/toast";
 import { Toggle } from "@/components/ui/toggle";
 import { SiteStatus, StatusDot, TopBar } from "@/components/ui/top-bar";
 import { cn } from "@/lib/utils";
+
+const announced = new Set<string>();
 
 const siteMenu = (onDelete: () => void): MenuEntry[] => [
   {
@@ -77,18 +79,55 @@ const siteMenu = (onDelete: () => void): MenuEntry[] => [
   },
 ];
 
+const edgeItems: MenuEntry[] = [
+  { id: "duplicate", label: "Duplicate", icon: <Icon name="duplicate" size={16} /> },
+  { id: "view", label: "View live", icon: <Icon name="external" size={16} /> },
+  { type: "separator", id: "sep" },
+  {
+    id: "delete",
+    label: "Delete",
+    icon: <Icon name="trash" size={16} />,
+    destructive: true,
+  },
+];
+
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="border-t border-line px-6 py-8">
+    <section className="border-t border-line px-4 py-8 sm:px-6">
       <h2 className="mb-4 text-sm leading-5 font-medium text-ink">{title}</h2>
       {children}
     </section>
   );
 }
 
+function Shell({
+  children,
+  minWidth,
+  height,
+}: {
+  children: ReactNode;
+  minWidth: string;
+  height: string;
+}) {
+  return (
+    <div data-frame="desktop" className="w-full max-w-full overflow-x-auto">
+      <div
+        className={cn(
+          "flex overflow-hidden rounded-dialog border border-line",
+          minWidth,
+          height,
+        )}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function HomeSidebar() {
   return (
     <SidebarShell
+      navLabel="Main"
       header={<SidebarWordmark>Studiolo</SidebarWordmark>}
       footer={
         <>
@@ -97,11 +136,15 @@ function HomeSidebar() {
         </>
       }
     >
-      <SidebarRow icon={<Icon name="sites" size={16} />} selected>
+      <SidebarRow href="#sites" icon={<Icon name="sites" size={16} />} selected>
         Sites
       </SidebarRow>
-      <SidebarRow icon={<Icon name="person" size={16} />}>Account</SidebarRow>
-      <SidebarRow icon={<Icon name="plan" size={16} />}>Plan</SidebarRow>
+      <SidebarRow href="#account" icon={<Icon name="person" size={16} />}>
+        Account
+      </SidebarRow>
+      <SidebarRow href="#plan" icon={<Icon name="plan" size={16} />}>
+        Plan
+      </SidebarRow>
     </SidebarShell>
   );
 }
@@ -109,12 +152,8 @@ function HomeSidebar() {
 function SiteSidebar() {
   return (
     <SidebarShell
-      header={
-        <SidebarBack>
-          <Icon name="chevron-left" size={16} />
-          Sites
-        </SidebarBack>
-      }
+      navLabel="Site"
+      header={<SidebarBack href="#sites">Sites</SidebarBack>}
       footer={
         <>
           <TrialLine>Trial · 5 days left</TrialLine>
@@ -122,15 +161,21 @@ function SiteSidebar() {
         </>
       }
     >
-      <SidebarRow icon={<Icon name="pencil" size={16} />} selected>
+      <SidebarRow href="#editor" icon={<Icon name="pencil" size={16} />} selected>
         Editor
       </SidebarRow>
-      <SidebarRow icon={<Icon name="document" size={16} />}>Pages</SidebarRow>
-      <SidebarRow icon={<Icon name="inbox" size={16} />}>
+      <SidebarRow href="#pages" icon={<Icon name="document" size={16} />}>
+        Pages
+      </SidebarRow>
+      <SidebarRow href="#submissions" icon={<Icon name="inbox" size={16} />}>
         Submissions
       </SidebarRow>
-      <SidebarRow icon={<Icon name="chart" size={16} />}>Stats</SidebarRow>
-      <SidebarRow icon={<Icon name="sliders" size={16} />}>Settings</SidebarRow>
+      <SidebarRow href="#stats" icon={<Icon name="chart" size={16} />}>
+        Stats
+      </SidebarRow>
+      <SidebarRow href="#settings" icon={<Icon name="sliders" size={16} />}>
+        Settings
+      </SidebarRow>
       <div className="mt-4 flex h-8 items-center justify-between px-2 text-xs leading-4 text-ink-2">
         <span>Layers</span>
         <span className="inline-flex items-center gap-1 text-ink">
@@ -158,12 +203,8 @@ function SiteSidebar() {
         <Icon name="chevron-down" size={14} className="text-ink-3" />
         Intro
       </button>
-      <p className="flex h-8 items-center gap-2 pl-7 text-sm text-ink-2">
-        Heading
-      </p>
-      <p className="flex h-8 items-center gap-2 pl-7 text-sm text-ink-2">
-        Intro
-      </p>
+      <p className="flex h-8 items-center gap-2 pl-7 text-sm text-ink-2">Heading</p>
+      <p className="flex h-8 items-center gap-2 pl-7 text-sm text-ink-2">Intro</p>
       <button
         type="button"
         className="flex h-8 w-full items-center gap-2 rounded-control bg-fill-selected px-2 pl-7 text-left text-sm font-medium"
@@ -179,10 +220,7 @@ function SiteSidebar() {
         Projects
       </button>
       {["Clifton, York", "Bootham Terrace", "Heworth Hall"].map((name) => (
-        <p
-          key={name}
-          className="flex h-8 items-center gap-2 pl-7 text-sm text-ink"
-        >
+        <p key={name} className="flex h-8 items-center gap-2 pl-7 text-sm text-ink">
           <Icon name="image" size={16} className="text-ink-2" />
           {name}
         </p>
@@ -199,7 +237,7 @@ function StatusLabel({
   locked?: boolean;
 }) {
   return (
-    <span className="inline-flex items-center gap-2 text-sm text-ink">
+    <span className="inline-flex items-center gap-2 text-sm text-ink-2">
       <StatusDot status={status} />
       {status === "live" ? "Live" : "Draft"}
       {locked ? <Icon name="lock" size={12} className="text-ink-2" /> : null}
@@ -217,7 +255,7 @@ function SiteActions({
   return (
     <Menu
       trigger={
-        <IconButton label={`Actions for ${name}`}>
+        <IconButton label={`Actions for ${name}`} size="desktop">
           <Icon name="ellipsis" size={16} />
         </IconButton>
       }
@@ -226,86 +264,159 @@ function SiteActions({
   );
 }
 
-function PublishPanel({
-  mobile = false,
+function SitesTable({
+  rows,
+  onDelete,
+}: {
+  rows: Array<{
+    name: string;
+    status: "live" | "draft";
+    locked?: boolean;
+    domain: string;
+    edited: string;
+    highlight?: boolean;
+  }>;
+  onDelete?: () => void;
+}) {
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow header>
+          <TableHead>Site</TableHead>
+          <TableHead>Status</TableHead>
+          <TableHead>Domain</TableHead>
+          <TableHead>Last edited</TableHead>
+          <TableHead>
+            <span className="sr-only">Actions</span>
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((row) => (
+          <TableRow key={row.name} highlight={row.highlight}>
+            <TableCell className="text-sm leading-5 font-medium text-ink">
+              {row.name}
+            </TableCell>
+            <TableCell>
+              <StatusLabel status={row.status} locked={row.locked} />
+            </TableCell>
+            <TableCell className="tabular text-sm text-ink-2">{row.domain}</TableCell>
+            <TableCell className="tabular text-sm text-ink-3">{row.edited}</TableCell>
+            <TableCell className="w-12 text-right">
+              {onDelete ? <SiteActions name={row.name} onDelete={onDelete} /> : null}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+
+function PublishBody({
   passwordOn,
   onPassword,
 }: {
-  mobile?: boolean;
   passwordOn: boolean;
   onPassword: (checked: boolean) => void;
 }) {
   return (
-    <div>
-      {mobile ? (
-        <p className="border-b border-line px-4 py-3 text-xs leading-4 text-ink-3">
-          Last published <span className="tabular">10 Nov, 17:20</span>
+    <>
+      <PopoverSection>
+        <p className="text-sm leading-5 font-medium text-ink">Publish Riverton House</p>
+        <p className="mt-1 text-xs leading-4 text-ink-3">
+          Last published <span className="tabular">10 Nov, 17:20</span>. Changes
+          since then go live.
         </p>
-      ) : (
-        <div className="border-b border-line px-4 py-4">
-          <p className="text-sm leading-5 font-medium text-ink">
-            Publish Riverton House
-          </p>
-          <p className="mt-1 text-xs leading-4 text-ink-3">
-            Last published <span className="tabular">10 Nov, 17:20</span>.
-            Changes since then go live.
-          </p>
-        </div>
-      )}
-      <div
-        className={cn("border-b border-line py-4", mobile ? "px-4" : "px-4")}
-      >
+      </PopoverSection>
+      <PopoverSection>
         <Field label="Live at">
-          <CopyField value="rivertonhouse.co.uk" touch={mobile} />
+          <CopyField value="rivertonhouse.co.uk" size="desktop" />
         </Field>
-      </div>
-      <div
-        className={cn(
-          "flex items-center justify-between border-b border-line text-sm",
-          mobile ? "min-h-14 px-4" : "min-h-10 px-4",
-        )}
-      >
-        <span>Domain</span>
-        <span className="inline-flex items-center gap-1 text-ink">
-          <Icon name="check" size={16} className="text-ink-2" />
-          Connected
-        </span>
-      </div>
-      {mobile ? null : (
-        <div className="flex min-h-10 items-center justify-between gap-4 border-b border-line px-4 text-sm">
-          <span className="shrink-0 text-ink-2">Studiolo address</span>
-          <span className="tabular whitespace-nowrap text-ink">
+        <PopoverRow label="Domain">
+          <span className="inline-flex items-center gap-1 text-ink">
+            <Icon name="check" size={16} className="text-ink-2" />
+            Connected
+          </span>
+        </PopoverRow>
+        <PopoverRow label="Studiolo address">
+          <span className="tabular whitespace-nowrap">
             riverton-house.studiolo.page
           </span>
-        </div>
-      )}
-      <div
-        className={cn(
-          "border-b border-line",
-          mobile ? "flex min-h-14 items-center px-4" : "px-4 py-3",
-        )}
-      >
-        <div className="flex w-full items-center justify-between text-sm">
-          <span>Password</span>
-          <span className="inline-flex items-center gap-2">
+        </PopoverRow>
+      </PopoverSection>
+      <PopoverSection>
+        <div className="flex items-center justify-between">
+          <span className="text-xs leading-4 font-medium text-ink-2">Password</span>
+          <span className="inline-flex items-center gap-2 text-sm text-ink">
             {passwordOn ? "On" : "Off"}
             <Toggle
               checked={passwordOn}
               onChange={onPassword}
               label="Password"
-              touch={mobile}
+              size="desktop"
             />
           </span>
         </div>
-        {mobile ? null : (
-          <p className="mt-1 text-xs leading-4 text-ink-3">
-            Visitors need the password before any page loads.
-          </p>
-        )}
-      </div>
-      <div className={mobile ? "px-4 pt-4" : "p-4"}>
-        <Button size={mobile ? "touch" : "lg"} className="w-full">
+        <p className="mt-1 text-xs leading-4 text-ink-3">
+          Visitors need the password before any page loads.
+        </p>
+      </PopoverSection>
+      <div className="p-4">
+        <Button size="lg" className="w-full">
           Publish
+        </Button>
+      </div>
+    </>
+  );
+}
+
+function MobilePublish({
+  passwordOn,
+  onPassword,
+  onCancel,
+}: {
+  passwordOn: boolean;
+  onPassword: (checked: boolean) => void;
+  onCancel?: () => void;
+}) {
+  return (
+    <div>
+      <div className="border-b border-line pb-4">
+        <Field label="Live at">
+          <CopyField value="rivertonhouse.co.uk" size="touch" />
+        </Field>
+      </div>
+      <div
+        data-sheet-row=""
+        className="flex h-14 items-center justify-between border-b border-line text-base leading-6"
+      >
+        <span>Domain</span>
+        <span className="inline-flex items-center gap-1">
+          <Icon name="check" size={16} />
+          Connected
+        </span>
+      </div>
+      <div
+        data-sheet-row=""
+        className="flex h-14 items-center justify-between border-b border-line text-base leading-6"
+      >
+        <span>Password</span>
+        <span className="inline-flex items-center gap-2">
+          {passwordOn ? "On" : "Off"}
+          <Toggle
+            checked={passwordOn}
+            onChange={onPassword}
+            label="Password"
+            size="touch"
+          />
+        </span>
+      </div>
+      <div className="mt-4 flex flex-col gap-2">
+        <Button size="touch" className="w-full">
+          Publish
+        </Button>
+        <Button variant="secondary" size="touch" className="w-full" onClick={onCancel}>
+          Cancel
         </Button>
       </div>
     </div>
@@ -315,30 +426,143 @@ function PublishPanel({
 const deleteLead =
   "Riverton House will go offline straight away. You can restore it from Recently deleted for 30 days.";
 
+function DeleteSiteDialog({
+  open = false,
+  onClose,
+  inline = false,
+}: {
+  open?: boolean;
+  onClose?: () => void;
+  inline?: boolean;
+}) {
+  const [name, setName] = useState("");
+  const site = "Riverton House";
+  return (
+    <Dialog
+      inline={inline}
+      open={open}
+      onClose={onClose}
+      title={`Delete ${site}?`}
+      lead={deleteLead}
+      actions={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={name !== site}
+            onClick={onClose}
+          >
+            Delete site
+          </Button>
+        </>
+      }
+    >
+      <div className="mt-4">
+        <Field label={`Type ${site} to confirm`}>
+          <Input value={name} onChange={(event) => setName(event.target.value)} />
+        </Field>
+      </div>
+    </Dialog>
+  );
+}
+
+function GalleryToasts() {
+  const { toast } = useToast();
+  const started = useRef(false);
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    if (!announced.has("duplicated")) {
+      announced.add("duplicated");
+      toast({
+        region: "duplicated",
+        message: "Duplicated North Light. The copy is a draft.",
+        action: { label: "Open editor", onClick: () => undefined },
+      });
+    }
+    if (!announced.has("deleted")) {
+      announced.add("deleted");
+      toast({
+        region: "deleted",
+        message: "North Light deleted",
+        duration: 10000,
+        action: { label: "Undo", onClick: () => undefined },
+      });
+    }
+    if (!announced.has("mobile")) {
+      announced.add("mobile");
+      toast({
+        region: "mobile",
+        message: "North Light deleted",
+        duration: 10000,
+        action: { label: "Undo", onClick: () => undefined },
+      });
+    }
+  }, [toast]);
+  return null;
+}
+
+const buttonStates: Array<{ label: string; forceState?: ForceState; disabled?: boolean; loading?: boolean }> = [
+  { label: "Default" },
+  { label: "Hover", forceState: "hover" },
+  { label: "Focus", forceState: "focus" },
+  { label: "Active", forceState: "active" },
+  { label: "Disabled", disabled: true },
+  { label: "Loading", loading: true },
+];
+
 export function Gallery() {
+  return (
+    <ToastProvider>
+      <GalleryBody />
+    </ToastProvider>
+  );
+}
+
+function GalleryBody() {
+  const { toast } = useToast();
   const [layout, setLayout] = useState("desktop");
   const [passwordOn, setPasswordOn] = useState(true);
   const [hideDesktop, setHideDesktop] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [confirmName, setConfirmName] = useState("");
   const [alt, setAlt] = useState(
     "Sitting room with oak panelling and a grey linen sofa",
   );
   const [link, setLink] = useState("");
   const [tab, setTab] = useState("sites");
-  const [toastOpen, setToastOpen] = useState(false);
   const [switchOn, setSwitchOn] = useState(true);
   const [segment, setSegment] = useState("desktop");
 
-  function closeDialog() {
-    setDialogOpen(false);
-  }
+  const homeRows = [
+    {
+      name: "Riverton House",
+      status: "live" as const,
+      locked: true,
+      domain: "rivertonhouse.co.uk",
+      edited: "Today, 09:42",
+    },
+    {
+      name: "North Light",
+      status: "live" as const,
+      domain: "north-light.studiolo.page",
+      edited: "6 Nov",
+    },
+    {
+      name: "Mara Lind",
+      status: "draft" as const,
+      domain: "mara-lind.studiolo.page",
+      edited: "2 Nov",
+    },
+  ];
 
   return (
     <div className="min-h-dvh bg-bg text-ink">
-      <div className="px-6 py-8">
+      <GalleryToasts />
+      <div className="px-4 py-8 sm:px-6">
         <PageHead
           title="UI kit"
           lead="Dev gallery for the Mono tokens and app shell. Sample names stand in for later product data."
@@ -346,200 +570,67 @@ export function Gallery() {
       </div>
 
       <Section title="Home shell">
-        <div className="flex h-[640px] min-w-[960px] overflow-hidden rounded-dialog border border-line">
+        <Shell minWidth="min-w-[960px]" height="h-[640px]">
           <HomeSidebar />
-          <div className="relative min-w-0 flex-1 bg-bg">
+          <ToastRegion id="home" className="relative min-w-0 flex-1 bg-bg">
             <div className="px-8 pt-8">
               <PageHead
                 title="Sites"
                 lead="Open a site to edit it."
                 action={
-                  <Button icon={<Icon name="plus" size={16} />}>
+                  <Button size="desktop" icon={<Icon name="plus" size={16} />}>
                     New site
                   </Button>
                 }
               />
-              <Table>
-                <TableHeader>
-                  <TableRow header>
-                    <TableHead>Site</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Domain</TableHead>
-                    <TableHead>Last edited</TableHead>
-                    <TableHead>
-                      <span className="sr-only">Actions</span>
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <TableRow>
-                    <TableCell className="text-sm font-medium">
-                      Riverton House
-                    </TableCell>
-                    <TableCell>
-                      <StatusLabel status="live" locked />
-                    </TableCell>
-                    <TableCell className="tabular text-sm">
-                      rivertonhouse.co.uk
-                    </TableCell>
-                    <TableCell className="tabular text-sm text-ink-3">
-                      Today, 09:42
-                    </TableCell>
-                    <TableCell className="w-12 text-right">
-                      <SiteActions
-                        name="Riverton House"
-                        onDelete={() => setDialogOpen(true)}
-                      />
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell className="text-sm font-medium">
-                      North Light
-                    </TableCell>
-                    <TableCell>
-                      <StatusLabel status="live" />
-                    </TableCell>
-                    <TableCell className="tabular text-sm">
-                      north-light.studiolo.page
-                    </TableCell>
-                    <TableCell className="tabular text-sm text-ink-3">
-                      6 Nov
-                    </TableCell>
-                    <TableCell className="w-12 text-right">
-                      <SiteActions
-                        name="North Light"
-                        onDelete={() => setDialogOpen(true)}
-                      />
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell className="text-sm font-medium">
-                      Mara Lind
-                    </TableCell>
-                    <TableCell>
-                      <StatusLabel status="draft" />
-                    </TableCell>
-                    <TableCell className="tabular text-sm">
-                      mara-lind.studiolo.page
-                    </TableCell>
-                    <TableCell className="tabular text-sm text-ink-3">
-                      2 Nov
-                    </TableCell>
-                    <TableCell className="w-12 text-right">
-                      <SiteActions
-                        name="Mara Lind"
-                        onDelete={() => setDialogOpen(true)}
-                      />
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
+              <SitesTable rows={homeRows} onDelete={() => setDialogOpen(true)} />
             </div>
-          </div>
-        </div>
+          </ToastRegion>
+        </Shell>
       </Section>
 
       <Section title="Duplicated site">
-        <div className="relative flex h-[420px] min-w-[960px] overflow-hidden rounded-dialog border border-line">
+        <Shell minWidth="min-w-[960px]" height="h-[420px]">
           <HomeSidebar />
-          <div className="relative min-w-0 flex-1">
+          <ToastRegion id="duplicated" className="relative min-w-0 flex-1">
             <div className="px-8 pt-8">
               <PageHead
                 title="Sites"
                 lead="Open a site to edit it."
                 action={
-                  <Button icon={<Icon name="plus" size={16} />}>
+                  <Button size="desktop" icon={<Icon name="plus" size={16} />}>
                     New site
                   </Button>
                 }
               />
-              <Table>
-                <TableHeader>
-                  <TableRow header>
-                    <TableHead>Site</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Domain</TableHead>
-                    <TableHead>Last edited</TableHead>
-                    <TableHead>
-                      <span className="sr-only">Actions</span>
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <TableRow highlight>
-                    <TableCell className="text-sm font-medium">
-                      Copy of North Light
-                    </TableCell>
-                    <TableCell>
-                      <StatusLabel status="draft" />
-                    </TableCell>
-                    <TableCell className="tabular text-sm">
-                      copy-of-north-light.studiolo.page
-                    </TableCell>
-                    <TableCell className="tabular text-sm text-ink-3">
-                      Just now
-                    </TableCell>
-                    <TableCell />
-                  </TableRow>
-                </TableBody>
-              </Table>
+              <SitesTable
+                rows={[
+                  {
+                    name: "Copy of North Light",
+                    status: "draft",
+                    domain: "copy-of-north-light.studiolo.page",
+                    edited: "Just now",
+                    highlight: true,
+                  },
+                ]}
+              />
             </div>
-            <div className="absolute inset-x-0 bottom-6 flex justify-center px-4">
-              <Toast
-                open
-                duration={0}
-                onClose={() => undefined}
-                action={
-                  <button type="button" className="font-medium text-bg">
-                    Open editor
-                  </button>
-                }
-              >
-                Duplicated North Light. The copy is a draft.
-              </Toast>
-            </div>
-          </div>
-        </div>
+          </ToastRegion>
+        </Shell>
       </Section>
 
       <Section title="Deleted site">
-        <div className="relative flex h-[420px] min-w-[960px] overflow-hidden rounded-dialog border border-line">
+        <Shell minWidth="min-w-[960px]" height="h-[420px]">
           <HomeSidebar />
-          <div className="relative min-w-0 flex-1">
+          <ToastRegion id="deleted" className="relative min-w-0 flex-1">
             <div className="px-8 pt-8">
               <PageHead title="Sites" lead="Open a site to edit it." />
-              <Table>
-                <TableBody>
-                  <TableRow>
-                    <TableCell className="text-sm font-medium">
-                      Riverton House
-                    </TableCell>
-                    <TableCell>
-                      <StatusLabel status="live" locked />
-                    </TableCell>
-                    <TableCell className="tabular text-sm">
-                      rivertonhouse.co.uk
-                    </TableCell>
-                    <TableCell className="tabular text-sm text-ink-3">
-                      Today, 09:42
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell className="text-sm font-medium">
-                      Mara Lind
-                    </TableCell>
-                    <TableCell>
-                      <StatusLabel status="draft" />
-                    </TableCell>
-                    <TableCell className="tabular text-sm">
-                      mara-lind.studiolo.page
-                    </TableCell>
-                    <TableCell className="tabular text-sm text-ink-3">
-                      2 Nov
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
+              <SitesTable
+                rows={[
+                  homeRows[0],
+                  homeRows[2],
+                ]}
+              />
               <button
                 type="button"
                 className="mt-3 inline-flex items-center gap-2 text-sm text-ink-3"
@@ -549,34 +640,21 @@ export function Gallery() {
                 <Icon name="chevron-right" size={14} />
               </button>
             </div>
-            <div className="absolute inset-x-0 bottom-6 flex justify-center">
-              <Toast
-                open
-                duration={0}
-                onClose={() => undefined}
-                action={
-                  <button type="button" className="font-medium text-bg">
-                    Undo
-                  </button>
-                }
-              >
-                North Light deleted
-              </Toast>
-            </div>
-          </div>
-        </div>
+          </ToastRegion>
+        </Shell>
       </Section>
 
       <Section title="Editor shell">
-        <div className="flex h-[720px] min-w-[1100px] overflow-hidden rounded-dialog border border-line bg-canvas">
+        <Shell minWidth="min-w-[1100px]" height="h-[720px]">
           <SiteSidebar />
-          <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex min-w-0 flex-1 flex-col bg-canvas">
             <TopBar
               left={
                 <>
                   <SiteStatus name="Riverton House" status="live" locked />
                   <span className="mx-1 h-4 w-px bg-line" aria-hidden="true" />
                   <Button
+                    size="desktop"
                     variant="secondary"
                     icon={<Icon name="plus" size={16} />}
                   >
@@ -587,14 +665,16 @@ export function Gallery() {
               right={
                 <>
                   <span className="px-1 text-sm text-ink-3">Saved</span>
-                  <Button variant="secondary">Preview</Button>
+                  <Button size="desktop" variant="secondary">
+                    Preview
+                  </Button>
                   <Popover
                     open={publishOpen}
                     onClose={() => setPublishOpen(false)}
                     label="Publish Riverton House"
-                    panelClassName="w-[380px]"
                     trigger={
                       <Button
+                        size="desktop"
                         chevron
                         onClick={() => setPublishOpen((open) => !open)}
                       >
@@ -602,23 +682,20 @@ export function Gallery() {
                       </Button>
                     }
                   >
-                    <PublishPanel
-                      passwordOn={passwordOn}
-                      onPassword={setPasswordOn}
-                    />
+                    <PublishBody passwordOn={passwordOn} onPassword={setPasswordOn} />
                   </Popover>
                 </>
               }
             />
             <div className="flex min-h-0 flex-1">
               <div className="flex min-w-0 flex-1 flex-col items-center gap-4 overflow-auto p-6">
-                <div className="inline-flex h-8 items-center rounded-control border border-line bg-bg p-0.5">
+                <div className="inline-flex h-8 items-center gap-1 rounded-control border border-line bg-bg p-0.5">
                   <Menu
                     align="start"
                     trigger={
                       <button
                         type="button"
-                        className="inline-flex h-7 items-center gap-1 rounded-[4px] px-3 text-sm font-medium"
+                        className="inline-flex h-8 items-center gap-1 rounded-control-inner px-3 text-sm font-medium"
                       >
                         Home
                         <Icon name="chevron-down" size={14} />
@@ -657,8 +734,8 @@ export function Gallery() {
                         Interiors for old houses, done slowly.
                       </h3>
                       <p className="mt-3 text-sm leading-5 text-ink-2">
-                        A small studio in York restoring Georgian and Victorian
-                        homes since 2014.
+                        A small studio in York restoring Georgian and Victorian homes
+                        since 2014.
                       </p>
                     </div>
                     <SelectionFrame className="min-h-[180px] bg-canvas">
@@ -684,23 +761,23 @@ export function Gallery() {
               <aside className="w-[280px] shrink-0 overflow-auto border-l border-line bg-bg">
                 <div className="border-b border-line px-4 py-4">
                   <h2 className="text-sm leading-5 font-medium">Hero image</h2>
-                  <p className="mt-1 text-xs leading-4 text-ink-3">
-                    Image · Intro section
-                  </p>
+                  <p className="mt-1 text-xs leading-4 text-ink-3">Image · Intro section</p>
                 </div>
                 <div className="flex flex-col gap-4 px-4 py-4">
                   <div className="h-24 rounded-control bg-canvas" />
-                  <Button variant="secondary" className="w-full">
+                  <Button size="desktop" variant="secondary" className="w-full">
                     Replace image
                   </Button>
                   <Field label="Alt text">
                     <Textarea
+                      size="desktop"
                       value={alt}
                       onChange={(event) => setAlt(event.target.value)}
                     />
                   </Field>
                   <Field label="Link">
                     <Input
+                      size="desktop"
                       value={link}
                       placeholder="Add a link"
                       onChange={(event) => setLink(event.target.value)}
@@ -714,6 +791,7 @@ export function Gallery() {
                       </p>
                     </div>
                     <Toggle
+                      size="desktop"
                       checked={hideDesktop}
                       onChange={setHideDesktop}
                       label="Hide on desktop"
@@ -730,31 +808,17 @@ export function Gallery() {
               </aside>
             </div>
           </div>
-        </div>
+        </Shell>
       </Section>
 
       <Section title="Publish popover">
-        <div className="w-[380px] rounded-pop border border-line bg-bg shadow-pop">
-          <PublishPanel passwordOn={passwordOn} onPassword={setPasswordOn} />
-        </div>
+        <Popover inline label="Publish Riverton House">
+          <PublishBody passwordOn={passwordOn} onPassword={setPasswordOn} />
+        </Popover>
       </Section>
 
       <Section title="Delete dialog">
-        <div className="w-[440px] max-w-full rounded-dialog bg-bg p-6 shadow-dialog">
-          <h3 className="text-lg leading-6 font-medium text-ink">
-            Delete site
-          </h3>
-          <p className="mt-2 text-sm leading-5 text-ink-2">{deleteLead}</p>
-          <div className="mt-4">
-            <Field label="Type Riverton House to confirm">
-              <Input defaultValue="" />
-            </Field>
-          </div>
-          <div className="mt-6 flex items-center justify-end gap-2">
-            <Button variant="secondary">Cancel</Button>
-            <Button variant="destructive">Delete site</Button>
-          </div>
-        </div>
+        <DeleteSiteDialog inline />
         <div className="mt-4">
           <Button variant="secondary" onClick={() => setDialogOpen(true)}>
             Open delete dialog
@@ -763,105 +827,149 @@ export function Gallery() {
       </Section>
 
       <Section title="Mobile">
-        <div className="w-[393px] max-w-full rounded-dialog border border-line">
-          <MobileNavBar
-            title="Riverton House"
-            subtitle="Home"
-            backLabel="Sites"
-            onTitle={() => undefined}
-            action={<Button>Publish</Button>}
+        <div className="mb-4 flex items-center justify-between">
+          <Menu
+            defaultOpen
+            align="end"
+            trigger={
+              <Button size="touch" variant="secondary">
+                Left edge
+              </Button>
+            }
+            items={edgeItems}
           />
-          <div className="bg-canvas px-4 py-6">
-            <p className="text-sm font-medium">Riverton House</p>
-            <p className="mt-4 text-[32px] leading-10 font-medium tracking-[-0.02em]">
-              Interiors for old houses, done slowly.
-            </p>
-          </div>
-          <div className="rounded-t-sheet bg-bg shadow-dialog">
-            <div className="flex justify-center pt-2">
-              <span className="h-[5px] w-9 rounded-full bg-line" />
-            </div>
-            <h3 className="px-4 pt-3 text-lg leading-6 font-medium">
-              Publish Riverton House
-            </h3>
-            <PublishPanel
-              mobile
-              passwordOn={passwordOn}
-              onPassword={setPasswordOn}
+          <Menu
+            defaultOpen
+            align="end"
+            trigger={
+              <Button size="touch" variant="secondary">
+                Right edge
+              </Button>
+            }
+            items={edgeItems}
+          />
+        </div>
+        <div
+          data-frame="mobile"
+          className="relative mx-auto flex h-[852px] w-full max-w-[393px] flex-col overflow-hidden rounded-dialog border border-line"
+        >
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <MobileNavBar
+              title="Riverton House"
+              subtitle="Home"
+              backLabel="Sites"
+              onBack={() => undefined}
+              onTitle={() => undefined}
+              action={
+                <Button size="nav">Publish</Button>
+              }
             />
-            <div className="px-4 pb-4">
-              <Button
-                variant="secondary"
-                size="touch"
-                className="mt-3 w-full"
-                onClick={() => setSheetOpen(true)}
-              >
+            <MobileNavBar
+              variant="detail"
+              title="Account"
+              backLabel="Back"
+              onBack={() => undefined}
+            />
+            <div className="bg-canvas px-6 py-6">
+              <p className="text-sm font-medium">Riverton House</p>
+              <p className="mt-4 text-[32px] leading-10 font-medium tracking-[-0.02em]">
+                Interiors for old houses, done slowly.
+              </p>
+            </div>
+            <Sheet
+              inline
+              title="Publish Riverton House"
+              meta="Last published 10 Nov, 17:20"
+            >
+              <MobilePublish passwordOn={passwordOn} onPassword={setPasswordOn} />
+            </Sheet>
+            <div className="border-t border-line px-6">
+              <MobileListRow
+                name="Riverton House"
+                meta="rivertonhouse.co.uk"
+                trailing={<StatusLabel status="live" locked />}
+              />
+              <MobileListRow
+                name="Mara Lind"
+                meta="mara-lind.studiolo.page"
+                trailing={<StatusLabel status="draft" />}
+              />
+            </div>
+            <StudioloCredit />
+            <div className="p-6">
+              <Button variant="secondary" size="touch" onClick={() => setSheetOpen(true)}>
                 Open publish sheet
               </Button>
             </div>
           </div>
-          <div className="border-t border-line px-4">
-            <MobileListRow
-              name="Riverton House"
-              meta="rivertonhouse.co.uk"
-              trailing={<StatusLabel status="live" locked />}
+          <ToastRegion id="mobile" contained offset={56} className="shrink-0">
+            <MobileTabBar
+              value={tab}
+              onChange={setTab}
+              tabs={[
+                { id: "sites", label: "Sites", icon: "sites", href: "#sites" },
+                { id: "account", label: "Account", icon: "person", href: "#account" },
+                { id: "plan", label: "Plan", icon: "plan", href: "#plan" },
+              ]}
             />
-            <MobileListRow
-              name="Mara Lind"
-              meta="mara-lind.studiolo.page"
-              trailing={<StatusLabel status="draft" />}
-            />
-          </div>
-          <MobileNavBar title="Account" backLabel="Back" />
-          <MobileTabBar
-            value={tab}
-            onChange={setTab}
-            tabs={[
-              { id: "sites", label: "Sites", icon: "sites" },
-              { id: "account", label: "Account", icon: "person" },
-              { id: "plan", label: "Plan", icon: "plan" },
-            ]}
-          />
-          <StudioloCredit />
-        </div>
-        <div className="mt-6 w-[393px] max-w-full">
-          <PageHead
-            size="mobile"
-            title="Sites"
-            lead="Open a site to edit it."
-          />
-          <Toast
-            open
-            mobile
-            duration={0}
-            onClose={() => undefined}
-            action={
-              <button type="button" className="font-medium text-bg">
-                Undo
-              </button>
-            }
-          >
-            North Light deleted
-          </Toast>
+          </ToastRegion>
         </div>
       </Section>
 
       <Section title="Buttons">
         <div className="flex flex-wrap items-center gap-3">
-          <Button>Primary</Button>
+          {buttonStates.map((state) => (
+            <Button
+              key={state.label}
+              forceState={state.forceState}
+              disabled={state.disabled}
+              loading={state.loading}
+            >
+              {state.label}
+            </Button>
+          ))}
           <Button variant="secondary">Secondary</Button>
+          <Button variant="secondary" forceState="hover">
+            Secondary hover
+          </Button>
+          <Button variant="secondary" forceState="active">
+            Secondary active
+          </Button>
+          <Button variant="secondary" disabled>
+            Secondary disabled
+          </Button>
           <Button variant="ghost">Ghost</Button>
+          <Button variant="ghost" disabled>
+            Ghost disabled
+          </Button>
           <Button variant="danger">Danger</Button>
+          <Button variant="danger" disabled>
+            Danger disabled
+          </Button>
           <Button variant="destructive">Delete site</Button>
-          <Button disabled>Disabled</Button>
-          <Button loading>Saving</Button>
+          <Button variant="destructive" forceState="hover">
+            Delete hover
+          </Button>
+          <Button variant="destructive" disabled>
+            Delete disabled
+          </Button>
           <Button icon={<Icon name="plus" size={16} />}>Add</Button>
           <Button chevron>Publish</Button>
           <Button size="lg" variant="secondary">
             Large
           </Button>
           <Button size="touch">Touch</Button>
+          <Button size="nav">Nav</Button>
           <IconButton label="More">
+            <Icon name="ellipsis" size={16} />
+          </IconButton>
+          <IconButton label="More hover" forceState="hover">
+            <Icon name="ellipsis" size={16} />
+          </IconButton>
+          <IconButton label="More active" forceState="active">
+            <Icon name="ellipsis" size={16} />
+          </IconButton>
+          <IconButton label="More disabled" disabled>
             <Icon name="ellipsis" size={16} />
           </IconButton>
           <IconButton label="More options" size="touch">
@@ -869,25 +977,20 @@ export function Gallery() {
           </IconButton>
         </div>
         <div className="mt-4">
-          <Button variant="secondary" onClick={() => setToastOpen(true)}>
+          <Button
+            variant="secondary"
+            onClick={() =>
+              toast({
+                region: "buttons",
+                message: "Saved Riverton House",
+                action: { label: "Open editor", onClick: () => undefined },
+              })
+            }
+          >
             Show toast
           </Button>
         </div>
-        {toastOpen ? (
-          <div className="mt-4 flex justify-center">
-            <Toast
-              open={toastOpen}
-              onClose={() => setToastOpen(false)}
-              action={
-                <button type="button" className="font-medium text-bg">
-                  Open editor
-                </button>
-              }
-            >
-              Duplicated North Light. The copy is a draft.
-            </Toast>
-          </div>
-        ) : null}
+        <ToastRegion id="buttons" />
       </Section>
 
       <Section title="Fields">
@@ -896,17 +999,19 @@ export function Gallery() {
             <Input defaultValue="Riverton House" />
           </Field>
           <Field label="Site name" error="Enter a site name.">
-            <Input defaultValue="" aria-invalid />
+            <Input defaultValue="" />
           </Field>
           <Field label="Notes">
             <Textarea defaultValue="" placeholder="Add a note" />
           </Field>
-          <LockedInput label="Slug" value="riverton-house" />
+          <Field label="Slug">
+            <LockedInput label="Slug" value="riverton-house" />
+          </Field>
+          <Field label="Live at">
+            <CopyField value="rivertonhouse.co.uk" label="Live at" />
+          </Field>
           <Field label="Address">
-            <InputWithSuffix
-              defaultValue="riverton-house"
-              suffix=".studiolo.page"
-            />
+            <InputWithSuffix defaultValue="riverton-house" suffix=".studiolo.page" />
           </Field>
           <Field label="Domain">
             <InputWithSuffix
@@ -919,23 +1024,20 @@ export function Gallery() {
               }
             />
           </Field>
-          <CopyField value="rivertonhouse.co.uk" />
-          <Input touch placeholder="Mobile input" aria-label="Mobile input" />
+          <Input disabled defaultValue="Disabled field" aria-label="Disabled field" />
+          <Input
+            readOnly
+            value="Focused field"
+            aria-label="Focused field"
+            className="border-ink outline outline-2 outline-offset-2 outline-[rgba(10,10,10,0.4)]"
+          />
         </div>
       </Section>
 
       <Section title="Controls">
         <div className="flex flex-wrap items-center gap-6">
-          <Toggle
-            checked={switchOn}
-            onChange={setSwitchOn}
-            label="Password on"
-          />
-          <Toggle
-            checked={false}
-            onChange={() => undefined}
-            label="Password off"
-          />
+          <Toggle checked={switchOn} onChange={setSwitchOn} label="Password on" />
+          <Toggle checked={false} onChange={() => undefined} label="Password off" />
           <Toggle
             checked={false}
             disabled
@@ -943,8 +1045,14 @@ export function Gallery() {
             label="Password disabled"
           />
           <Toggle
+            checked
+            disabled
+            onChange={() => undefined}
+            label="Password disabled on"
+          />
+          <Toggle
             checked={switchOn}
-            touch
+            size="touch"
             onChange={setSwitchOn}
             label="Password touch"
           />
@@ -959,7 +1067,7 @@ export function Gallery() {
           />
           <Pill>Pending</Pill>
         </div>
-        <div className="mt-6">
+        <div className="mt-6 overflow-x-auto">
           <Stepper
             steps={[
               { label: "Domain", state: "done" },
@@ -978,17 +1086,14 @@ export function Gallery() {
                 icon: <Icon name="duplicate" size={16} />,
                 kbd: "⌘D",
               },
-              {
-                id: "rename",
-                label: "Rename",
-                disabled: true,
-              },
+              { id: "rename", label: "Rename", disabled: true },
               { type: "separator", id: "sep" },
               {
                 id: "delete",
                 label: "Delete",
                 icon: <Icon name="trash" size={16} />,
                 destructive: true,
+                disabled: true,
               },
             ]}
           />
@@ -1003,57 +1108,23 @@ export function Gallery() {
         />
         <Skeleton rows={2} />
         <div className="mt-4">
-          <InlineError onRetry={() => undefined}>
-            Couldn’t load sites.
-          </InlineError>
+          <InlineError onRetry={() => undefined}>Couldn’t load sites.</InlineError>
         </div>
         <p className="mt-6 text-[32px] leading-10 font-medium tabular">128</p>
       </Section>
 
-      <Dialog
-        open={dialogOpen}
-        onClose={closeDialog}
-        title="Delete site"
-        lead={deleteLead}
-        actions={
-          <>
-            <Button variant="secondary" onClick={closeDialog}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={closeDialog}>
-              Delete site
-            </Button>
-          </>
-        }
-      >
-        <Field label="Type Riverton House to confirm">
-          <Input
-            value={confirmName}
-            onChange={(event) => setConfirmName(event.target.value)}
-          />
-        </Field>
-      </Dialog>
-
+      <DeleteSiteDialog open={dialogOpen} onClose={() => setDialogOpen(false)} />
       <Sheet
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
         title="Publish Riverton House"
+        meta="Last published 10 Nov, 17:20"
       >
-        <PublishPanel
-          mobile
+        <MobilePublish
           passwordOn={passwordOn}
           onPassword={setPasswordOn}
+          onCancel={() => setSheetOpen(false)}
         />
-        <div className="px-4 pb-2">
-          <Button
-            variant="secondary"
-            size="touch"
-            className="w-full"
-            onClick={() => setSheetOpen(false)}
-          >
-            Cancel
-          </Button>
-        </div>
       </Sheet>
     </div>
   );

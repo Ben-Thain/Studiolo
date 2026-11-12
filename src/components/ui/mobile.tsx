@@ -9,6 +9,7 @@ export function MobileNavBar({
   onTitle,
   backLabel = "Back",
   action,
+  variant = "default",
 }: {
   title: string;
   subtitle?: string;
@@ -16,16 +17,13 @@ export function MobileNavBar({
   onTitle?: () => void;
   backLabel?: string;
   action?: ReactNode;
+  variant?: "default" | "detail";
 }) {
   const titled = (
     <span className="block truncate text-base leading-5 font-medium text-ink">
       {title}
       {onTitle ? (
-        <Icon
-          name="chevron-down"
-          size={14}
-          className="ml-1 inline align-[-2px]"
-        />
+        <Icon name="chevron-down" size={14} className="ml-1 inline align-[-2px]" />
       ) : null}
     </span>
   );
@@ -34,17 +32,32 @@ export function MobileNavBar({
     <header
       className={cn(
         "relative flex items-center border-b border-line bg-bg px-1",
-        subtitle ? "min-h-14" : "h-11",
+        subtitle || variant === "detail" ? "min-h-14" : "h-11",
       )}
     >
-      <button
-        type="button"
-        onClick={onBack}
-        className="inline-flex size-11 items-center justify-center text-ink"
-      >
-        <Icon name="chevron-left" size={20} />
-        <span className="sr-only">{backLabel}</span>
-      </button>
+      {onBack ? (
+        variant === "detail" ? (
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex h-11 items-center gap-1 px-2 text-base leading-6 font-normal text-ink"
+          >
+            <Icon name="chevron-left" size={20} />
+            {backLabel}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex size-11 items-center justify-center text-ink"
+          >
+            <Icon name="chevron-left" size={20} />
+            <span className="sr-only">{backLabel}</span>
+          </button>
+        )
+      ) : (
+        <span className="size-11" />
+      )}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-12 text-center">
         {onTitle ? (
           <button
@@ -72,6 +85,7 @@ export type MobileTab = {
   id: string;
   label: string;
   icon: IconName;
+  href: string;
 };
 
 export function MobileTabBar({
@@ -86,24 +100,27 @@ export function MobileTabBar({
   return (
     <nav
       aria-label="Sections"
-      className="flex h-14 items-stretch border-t border-line bg-bg pb-[env(safe-area-inset-bottom)]"
+      className="flex min-h-[calc(56px+env(safe-area-inset-bottom))] items-stretch border-t border-line bg-bg pb-[env(safe-area-inset-bottom)]"
     >
       {tabs.map((tab) => {
         const selected = tab.id === value;
         return (
-          <button
+          <a
             key={tab.id}
-            type="button"
+            href={tab.href}
             aria-current={selected ? "page" : undefined}
-            onClick={() => onChange(tab.id)}
+            onClick={(event) => {
+              event.preventDefault();
+              onChange(tab.id);
+            }}
             className={cn(
-              "flex flex-1 flex-col items-center justify-center gap-0.5 text-xs leading-4",
+              "flex h-14 flex-1 flex-col items-center justify-center gap-0.5 text-xs leading-4",
               selected ? "font-medium text-ink" : "font-normal text-ink-2",
             )}
           >
             <Icon name={tab.icon} size={20} />
             {tab.label}
-          </button>
+          </a>
         );
       })}
     </nav>

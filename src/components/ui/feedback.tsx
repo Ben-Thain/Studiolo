@@ -81,7 +81,7 @@ export function SelectionFrame({
 
 export function ReadoutChip({ children }: { children: ReactNode }) {
   return (
-    <span className="inline-flex h-6 items-center rounded-control bg-ink px-2 text-xs leading-4 text-bg shadow-pop">
+    <span className="on-ink inline-flex h-6 items-center rounded-control bg-ink px-2 text-xs leading-4 text-bg shadow-pop">
       {children}
     </span>
   );
@@ -95,7 +95,7 @@ export function UndoChip({
   action: ReactNode;
 }) {
   return (
-    <span className="inline-flex h-8 items-center gap-2 rounded-control bg-ink px-3 text-[13px] text-bg shadow-float">
+    <span className="on-ink inline-flex h-8 items-center gap-2 rounded-control bg-ink px-3 text-[13px] text-bg shadow-float">
       {children}
       {action}
     </span>

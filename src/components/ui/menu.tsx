@@ -2,7 +2,6 @@
 
 import {
   cloneElement,
-  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -16,7 +15,9 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
-import { trapTab } from "./focus";
+import { focusableElements } from "./focus";
+import { placeFloating, type FloatingBox } from "./position";
+import { useClient } from "./use-client";
 
 export type MenuItem = {
   type?: "item";
@@ -39,37 +40,40 @@ type MenuProps = {
   trigger: ReactElement<TriggerProps>;
   items: MenuEntry[];
   align?: "start" | "end";
+  defaultOpen?: boolean;
 };
 
 function isItem(entry: MenuEntry): entry is MenuItem {
   return entry.type !== "separator";
 }
 
-export function Menu({ trigger, items, align = "end" }: MenuProps) {
-  const [open, setOpen] = useState(false);
+function sameBox(current: FloatingBox | null, next: FloatingBox) {
+  return (
+    current?.top === next.top &&
+    current.left === next.left &&
+    current.maxHeight === next.maxHeight
+  );
+}
+
+export function Menu({
+  trigger,
+  items,
+  align = "end",
+  defaultOpen = false,
+}: MenuProps) {
+  const [open, setOpen] = useState(defaultOpen);
+  const mounted = useClient();
+  const skipFocus = useRef(defaultOpen);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [box, setBox] = useState<{ top: number; left: number } | null>(null);
+  const [box, setBox] = useState<FloatingBox | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const buffer = useRef("");
   const bufferTimer = useRef<number | null>(null);
   const menuId = useId();
+  const generatedTriggerId = useId();
+  const triggerId = trigger.props.id ?? generatedTriggerId;
   const enabled = items.filter(isItem).filter((item) => !item.disabled);
-
-  const place = useCallback(
-    (rect: DOMRect) => {
-      const next = {
-        top: rect.bottom + 4,
-        left: align === "end" ? rect.right : rect.left,
-      };
-      setBox((current) =>
-        current && current.top === next.top && current.left === next.left
-          ? current
-          : next,
-      );
-    },
-    [align],
-  );
 
   function closeMenu(restore = true) {
     if (restore) {
@@ -93,6 +97,18 @@ export function Menu({ trigger, items, align = "end" }: MenuProps) {
     if (item.disabled) return;
     item.onSelect?.();
     closeMenu();
+  }
+
+  function focusFromTrigger(backward: boolean) {
+    const triggerButton = rootRef.current?.querySelector<HTMLElement>("button");
+    if (!triggerButton) return;
+    const itemsInPage = focusableElements(document.body).filter(
+      (element) => !menuRef.current?.contains(element),
+    );
+    const index = itemsInPage.indexOf(triggerButton);
+    const next = itemsInPage[index + (backward ? -1 : 1)];
+    setOpen(false);
+    next?.focus();
   }
 
   function onMenuKey(event: ReactKeyboardEvent<HTMLDivElement>) {
@@ -124,7 +140,8 @@ export function Menu({ trigger, items, align = "end" }: MenuProps) {
       event.preventDefault();
       closeMenu();
     } else if (event.key === "Tab") {
-      trapTab(event.nativeEvent, menuRef.current ?? event.currentTarget);
+      event.preventDefault();
+      focusFromTrigger(event.shiftKey);
     } else if (event.key.length === 1 && /\S/.test(event.key)) {
       event.preventDefault();
       buffer.current = (buffer.current + event.key).toLowerCase();
@@ -144,24 +161,36 @@ export function Menu({ trigger, items, align = "end" }: MenuProps) {
 
   useLayoutEffect(() => {
     if (!open) return;
-    const trigger = rootRef.current?.querySelector("button");
-    if (trigger) place(trigger.getBoundingClientRect());
-    function onMove() {
-      const current = rootRef.current?.querySelector("button");
-      if (current) place(current.getBoundingClientRect());
+    function update() {
+      const anchor = rootRef.current?.querySelector("button");
+      const panel = menuRef.current;
+      if (!anchor || !panel) return;
+      const next = placeFloating({
+        trigger: anchor.getBoundingClientRect(),
+        panel: { width: panel.offsetWidth, height: panel.offsetHeight },
+        gap: 4,
+        align,
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+      });
+      setBox((current) => (sameBox(current, next) ? current : next));
     }
-    window.addEventListener("resize", onMove);
-    window.addEventListener("scroll", onMove, true);
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
     return () => {
-      window.removeEventListener("resize", onMove);
-      window.removeEventListener("scroll", onMove, true);
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
     };
-  }, [open, place]);
+  }, [open, align, mounted]);
 
   useEffect(() => {
     if (!open) return;
-    const first = enabled[0];
-    document.getElementById(first ? `${menuId}-${first.id}` : "")?.focus();
+    if (skipFocus.current) {
+      skipFocus.current = false;
+    } else {
+      const first = enabled[0];
+      document.getElementById(first ? `${menuId}-${first.id}` : "")?.focus();
+    }
     function onPointer(event: globalThis.MouseEvent) {
       const target = event.target as Node;
       if (
@@ -174,11 +203,12 @@ export function Menu({ trigger, items, align = "end" }: MenuProps) {
     }
     document.addEventListener("mousedown", onPointer);
     return () => document.removeEventListener("mousedown", onPointer);
-    // enabled is derived from items; menu opens once per toggle.
+    // enabled is derived from items; the menu opens once per toggle.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, menuId]);
 
   const triggerNode = cloneElement(trigger, {
+    id: triggerId,
     "aria-haspopup": "menu" as const,
     "aria-expanded": open,
     "aria-controls": open ? menuId : undefined,
@@ -188,7 +218,6 @@ export function Menu({ trigger, items, align = "end" }: MenuProps) {
         setOpen(false);
         return;
       }
-      place(event.currentTarget.getBoundingClientRect());
       setActiveId(enabled[0]?.id ?? null);
       setOpen(true);
     },
@@ -197,22 +226,22 @@ export function Menu({ trigger, items, align = "end" }: MenuProps) {
   return (
     <div ref={rootRef} className="relative">
       {triggerNode}
-      {open && box
+      {open && mounted
         ? createPortal(
             <div
               ref={menuRef}
               id={menuId}
               role="menu"
               aria-orientation="vertical"
+              aria-labelledby={triggerId}
               onKeyDown={onMenuKey}
               style={{
                 position: "fixed",
-                top: box.top,
-                left: align === "start" ? box.left : undefined,
-                right:
-                  align === "end"
-                    ? Math.max(0, window.innerWidth - box.left)
-                    : undefined,
+                top: box?.top ?? 0,
+                left: box?.left ?? 0,
+                maxHeight: box?.maxHeight ?? "calc(100dvh - 16px)",
+                visibility: box ? "visible" : "hidden",
+                overflowY: "auto",
               }}
               className="z-40 min-w-[180px] rounded-pop border border-line bg-bg p-1 shadow-pop"
             >
@@ -236,20 +265,25 @@ export function Menu({ trigger, items, align = "end" }: MenuProps) {
                       if (!entry.disabled) setActiveId(entry.id);
                     }}
                     className={cn(
-                      "flex h-9 w-full items-center gap-2 rounded-[4px] px-2 text-left text-[13px] leading-5",
-                      entry.destructive ? "text-error" : "text-ink",
-                      entry.id === activeId && "bg-fill-selected",
-                      entry.disabled && "text-ink-disabled",
+                      "flex w-full items-center gap-2 rounded-control-inner px-2 text-left",
+                      "h-11 text-base leading-6 sm:h-9 sm:text-[13px] sm:leading-5",
+                      "active:bg-fill-selected",
+                      entry.disabled
+                        ? "text-ink-4"
+                        : entry.destructive
+                          ? "text-error"
+                          : "text-ink",
+                      entry.id === activeId && !entry.disabled && "bg-fill-selected",
                     )}
                   >
                     {entry.icon ? (
-                      <span className="text-current">{entry.icon}</span>
+                      <span className="inline-flex [&>svg]:size-5 sm:[&>svg]:size-4">
+                        {entry.icon}
+                      </span>
                     ) : (
-                      <span className="size-4" />
+                      <span className="size-5 sm:size-4" />
                     )}
-                    <span className="min-w-0 flex-1 truncate">
-                      {entry.label}
-                    </span>
+                    <span className="min-w-0 flex-1 truncate">{entry.label}</span>
                     {entry.kbd ? (
                       <span className="text-xs text-ink-3">{entry.kbd}</span>
                     ) : null}

@@ -1,76 +1,121 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-test("gallery matches the shell anatomy", async ({ page }) => {
+const allowedColours = new Set([
+  "rgb(255, 255, 255)",
+  "rgb(250, 250, 250)",
+  "rgb(245, 245, 245)",
+  "rgb(10, 10, 10)",
+  "rgb(82, 82, 82)",
+  "rgb(115, 115, 115)",
+  "rgb(163, 163, 163)",
+  "rgb(229, 229, 229)",
+  "rgb(180, 35, 24)",
+  "rgb(38, 38, 38)",
+  "rgb(145, 32, 24)",
+  "rgba(0, 0, 0, 0)",
+  "rgba(10, 10, 10, 0.24)",
+  "rgba(10, 10, 10, 0.4)",
+  "rgba(255, 255, 255, 0.6)",
+]);
+
+function normalise(color: string) {
+  return color.replace(/\s+/g, " ").replace(/0.40/g, "0.4").trim();
+}
+
+async function ringOf(page: Page) {
+  return page.evaluate(() => {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement) || active === document.body) return null;
+    if (!active.closest("#app-root, [role='menu'], [role='dialog'], [data-toast]")) {
+      return { text: "", solid: true, colour: "", onInk: false, skip: true };
+    }
+    const own = getComputedStyle(active);
+    const parent = active.parentElement ? getComputedStyle(active.parentElement) : null;
+    const style = own.outlineStyle === "solid" ? own : parent?.outlineStyle === "solid" ? parent : null;
+    return {
+      text: (active.textContent ?? "").trim().slice(0, 40),
+      solid: style?.outlineStyle === "solid",
+      colour: style?.outlineColor ?? "",
+      onInk: Boolean(active.closest(".on-ink")),
+      skip: false,
+    };
+  });
+}
+
+test("gallery matches the real panels at 1440", async ({ page }) => {
+  test.setTimeout(120000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/dev/ui");
 
   const sidebar = page.locator("div.w-\\[240px\\]").first();
   await expect(sidebar).toHaveCSS("width", "240px");
 
-  const sites = page
-    .getByRole("button", { name: "Sites", exact: true })
-    .first();
+  const sites = page.getByRole("link", { name: "Sites", exact: true }).first();
   await expect(sites).toHaveCSS("height", "40px");
 
-  const topBar = page
-    .locator("header")
-    .filter({ hasText: "Riverton House" })
-    .first();
+  const topBar = page.locator("header").filter({ hasText: "Riverton House" }).first();
   await expect(topBar).toHaveCSS("height", "56px");
+  const live = topBar.getByText("Live", { exact: true });
+  await expect(live).toHaveCSS("font-size", "12px");
+  await expect(live).toHaveCSS("color", "rgb(115, 115, 115)");
 
   const primary = page.getByRole("button", { name: "New site" }).first();
   await expect(primary).toHaveCSS("height", "32px");
   await expect(primary).toHaveCSS("box-shadow", "none");
-  await expect(sites).toHaveCSS("box-shadow", "none");
 
-  const dialogFrame = page
-    .getByRole("heading", { name: "Delete site" })
-    .locator("xpath=ancestor::div[contains(@class,'w-[440px]')]")
-    .first();
-  await expect(dialogFrame).toHaveCSS("width", "440px");
-  await expect(dialogFrame).toHaveCSS("border-radius", "12px");
+  const popover = page.locator("[data-inline='popover']");
+  await expect(popover).toHaveCSS("width", "360px");
+  await expect(popover).toHaveCSS("border-radius", "8px");
+  const popoverShadow = await popover.evaluate((element) => getComputedStyle(element).boxShadow);
+  expect(popoverShadow).toContain("rgba(10, 10, 10, 0.08)");
 
-  const popoverFrame = page.getByText("Publish Riverton House").first();
-  const popoverBox = popoverFrame.locator(
-    "xpath=ancestor::div[contains(@class,'w-[380px]')]",
-  );
-  await expect(popoverBox).toHaveCSS("width", "380px");
-  await expect(popoverBox).toHaveCSS("border-radius", "8px");
+  const dialog = page.locator("[data-inline='dialog']");
+  await expect(dialog).toHaveCSS("width", "440px");
+  await expect(dialog).toHaveCSS("border-radius", "12px");
+  await expect(dialog).toHaveCSS("padding", "24px");
+  const dialogShadow = await dialog.evaluate((element) => getComputedStyle(element).boxShadow);
+  expect(dialogShadow).toContain("rgba(10, 10, 10, 0.16)");
+  await expect(dialog.getByRole("heading", { name: "Delete Riverton House?" })).toBeVisible();
+
+  const toast = page.getByText("Duplicated North Light. The copy is a draft.");
+  await expect(toast).toBeVisible();
+  const toastBox = await toast.boundingBox();
+  const column = page.locator("[data-toast-region='duplicated']");
+  const columnBox = await column.boundingBox();
+  expect(toastBox && columnBox).toBeTruthy();
+  if (toastBox && columnBox) {
+    expect(toastBox.x).toBeGreaterThanOrEqual(columnBox.x - 1);
+    expect(toastBox.x + toastBox.width).toBeLessThanOrEqual(columnBox.x + columnBox.width + 1);
+  }
+  const toastCard = page.locator("[data-toast]").filter({ hasText: "Duplicated North Light" });
+  const toastHeight = await toastCard.evaluate((element) => parseFloat(getComputedStyle(element).height));
+  expect(toastHeight).toBeGreaterThanOrEqual(48);
+  await expect(toastCard).toHaveCSS("font-size", "13px");
 
   await page.getByRole("button", { name: "Open delete dialog" }).click();
-  const dialog = page.getByRole("dialog", { name: "Delete site" });
-  await expect(dialog).toBeVisible();
-  await expect(dialog).toHaveCSS("width", "440px");
+  const liveDialog = page
+    .locator("[aria-modal='true']")
+    .filter({ hasText: "Delete Riverton House?" });
+  await expect(liveDialog).toBeVisible();
+  await expect(liveDialog).toHaveCSS("width", "440px");
   await page.keyboard.press("Escape");
-  await expect(dialog).toBeHidden();
-  await expect(
-    page.getByRole("button", { name: "Open delete dialog" }),
-  ).toBeFocused();
+  await expect(liveDialog).toBeHidden();
+  await expect(page.getByRole("button", { name: "Open delete dialog" })).toBeFocused();
 
   const menuButton = page.getByRole("button", { name: "Open menu" });
   await menuButton.click();
-  await expect(page.getByRole("menu")).toBeVisible();
+  await expect(page.getByRole("menu").last()).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("menu")).toBeHidden();
   await expect(menuButton).toBeFocused();
 
-  const publish = page
-    .getByRole("button", { name: "Publish", exact: true })
-    .first();
+  const publish = page.getByRole("button", { name: "Publish", exact: true }).first();
   await publish.click();
-  const publishDialog = page.getByRole("dialog", {
-    name: "Publish Riverton House",
-  });
+  const publishDialog = page.locator("[role='dialog'][aria-label='Publish Riverton House']:not([data-inline])");
   await expect(publishDialog).toBeVisible();
+  await expect(publishDialog).toHaveCSS("width", "360px");
   await page.keyboard.press("Escape");
   await expect(publishDialog).toBeHidden();
   await expect(publish).toBeFocused();
-
-  await page.getByRole("button", { name: "Open publish sheet" }).click();
-  const sheet = page.getByRole("dialog", { name: "Publish Riverton House" });
-  await expect(sheet).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(sheet).toBeHidden();
 
   const touch = page.getByRole("button", { name: "Touch" });
   await expect(touch).toHaveCSS("height", "48px");
@@ -79,50 +124,151 @@ test("gallery matches the shell anatomy", async ({ page }) => {
   expect(iconBox?.width).toBeGreaterThanOrEqual(44);
   expect(iconBox?.height).toBeGreaterThanOrEqual(44);
 
-  const toast = page
-    .getByRole("status")
-    .filter({ hasText: "Duplicated North Light" });
-  await expect(toast).toHaveCSS("height", "48px");
-
   const families = await page.evaluate(async () => {
     await document.fonts.ready;
-    return [...document.fonts].map(
-      (font) => `${font.family} ${font.weight} ${font.status}`,
-    );
+    return [...document.fonts].map((font) => `${font.family} ${font.weight} ${font.status}`);
   });
   const inter = families.filter((font) => font.startsWith("Inter "));
-  expect(
-    inter.some((font) => font.includes("400") && font.includes("loaded")),
-  ).toBe(true);
-  expect(
-    inter.some((font) => font.includes("500") && font.includes("loaded")),
-  ).toBe(true);
+  expect(inter.some((font) => font.includes("400") && font.includes("loaded"))).toBe(true);
+  expect(inter.some((font) => font.includes("500") && font.includes("loaded"))).toBe(true);
   expect(inter.some((font) => /\b600\b/.test(font))).toBe(false);
 
-  await page.evaluate(() => {
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
+  const colours = await page.evaluate(() => {
+    const nodes = [...document.querySelectorAll("body *")].filter(
+      (element) =>
+        !element.closest("nextjs-portal") &&
+        element.tagName !== "NEXTJS-PORTAL" &&
+        element.tagName !== "SCRIPT",
+    );
+    return nodes.flatMap((element) => {
+      const style = getComputedStyle(element);
+      const colours = [style.color, style.backgroundColor];
+      if (parseFloat(style.borderTopWidth) > 0) colours.push(style.borderTopColor);
+      const shadow = style.boxShadow;
+      const floating = Boolean(
+        element.closest("[role='menu'], [role='dialog'], [data-toast], .shadow-pop, .shadow-float, .shadow-dialog"),
+      );
+      return [{ colours, shadow, floating, tag: element.tagName }];
+    });
   });
-  await page.keyboard.press("Tab");
-  const focused = page.locator(":focus");
-  await expect(focused).toHaveCSS("outline-style", "solid");
-  await expect(focused).toHaveCSS("outline-width", "2px");
-  await expect(focused).toHaveCSS("outline-offset", "2px");
+  const offenders: string[] = [];
+  for (const entry of colours) {
+    for (const colour of entry.colours) {
+      const value = normalise(colour);
+      if (!allowedColours.has(value) && value !== "rgba(0, 0, 0, 0)") {
+        offenders.push(`${entry.tag} ${value}`);
+      }
+    }
+    if (entry.shadow !== "none" && !entry.floating) {
+      offenders.push(`shadow ${entry.tag} ${entry.shadow}`);
+    }
+  }
+  expect(offenders).toEqual([]);
+
+  const weights = await page.evaluate(() => {
+    return [...document.querySelectorAll("#app-root *")]
+      .map((element) => getComputedStyle(element).fontWeight)
+      .filter((weight) => weight !== "400" && weight !== "500" && weight !== "normal");
+  });
+  expect(weights).toEqual([]);
+
+  await page.evaluate(() => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  });
+  let sawInkRing = false;
+  for (let step = 0; step < 400; step += 1) {
+    await page.keyboard.press("Tab");
+    const ring = await ringOf(page);
+    if (!ring) break;
+    if (ring.skip) continue;
+    expect(ring.solid, ring.text).toBe(true);
+    if (ring.onInk) {
+      expect(normalise(ring.colour)).toBe("rgba(255, 255, 255, 0.6)");
+      sawInkRing = true;
+    }
+    if (ring.text === "Undo" && ring.onInk) break;
+  }
+  expect(sawInkRing).toBe(true);
 });
 
-test("mobile gallery targets are at least 44px", async ({ page }) => {
+test("mobile gallery stays on the page and uses real mobile panels", async ({ page }) => {
   await page.setViewportSize({ width: 393, height: 852 });
   await page.goto("/dev/ui");
+
+  const metrics = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    clientWidth: document.documentElement.clientWidth,
+    innerWidth: window.innerWidth,
+  }));
+  expect(metrics.scrollWidth).toBe(metrics.clientWidth);
+  expect(metrics.innerWidth).toBe(393);
+  expect(metrics.scrollWidth).toBe(393);
+
+  const targets = page.locator(
+    "[data-frame='mobile'] button, [data-frame='mobile'] a, [data-frame='mobile'] [role='switch']",
+  );
+  const count = await targets.count();
+  expect(count).toBeGreaterThan(0);
+  for (let index = 0; index < count; index += 1) {
+    const box = await targets.nth(index).boundingBox();
+    if (!box) continue;
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+  }
+
+  await page.getByRole("button", { name: "Left edge" }).scrollIntoViewIfNeeded();
+  const menus = page.getByRole("menu");
+  await expect(menus).toHaveCount(2);
+  await expect.poll(async () => {
+    const box = await menus.first().boundingBox();
+    if (!box) return false;
+    return box.y >= 8 && box.y + box.height <= 844;
+  }).toBe(true);
+  for (const menu of await menus.all()) {
+    const box = await menu.boundingBox();
+    expect(box).toBeTruthy();
+    if (!box) continue;
+    expect(box.x).toBeGreaterThanOrEqual(8);
+    expect(box.x + box.width).toBeLessThanOrEqual(385);
+    expect(box.y).toBeGreaterThanOrEqual(8);
+    expect(box.y + box.height).toBeLessThanOrEqual(852 - 8);
+  }
+
+  const sheet = page.locator("[data-inline='sheet']");
+  const sheetLeft = await sheet.evaluate((element) => element.getBoundingClientRect().left);
+  const parts = [
+    sheet.getByRole("heading", { name: "Publish Riverton House" }),
+    sheet.getByText("Last published 10 Nov, 17:20"),
+    sheet.getByText("Live at", { exact: true }),
+    sheet.locator("[data-copy-field]"),
+    sheet.locator("[data-sheet-row]").first(),
+    sheet.getByRole("button", { name: "Publish", exact: true }),
+  ];
+  for (const part of parts) {
+    const left = await part.evaluate((element) => element.getBoundingClientRect().left);
+    expect(Math.round(left - sheetLeft)).toBe(24);
+  }
+  await expect(sheet.getByRole("button", { name: "Publish", exact: true })).toHaveCSS("height", "48px");
+  await expect(sheet.locator("[data-sheet-row]").first()).toHaveCSS("height", "56px");
+  await expect(sheet.getByText("Last published 10 Nov, 17:20")).toHaveCSS("font-size", "14px");
+
+  const input = sheet.locator("input");
+  await sheet.getByText("Live at", { exact: true }).click();
+  await expect(input).toBeFocused();
+
   const back = page
-    .locator("header")
+    .locator("[data-frame='mobile'] header")
     .filter({ hasText: "Home" })
     .getByRole("button", { name: "Sites" });
-  const box = await back.boundingBox();
-  expect(box?.width).toBeGreaterThanOrEqual(44);
-  expect(box?.height).toBeGreaterThanOrEqual(44);
+  const backBox = await back.boundingBox();
+  expect(backBox?.height).toBeGreaterThanOrEqual(44);
 
-  const tab = page.getByRole("button", { name: "Account", exact: true }).last();
+  const detail = page.getByRole("button", { name: "Back", exact: true });
+  await expect(detail).toBeVisible();
+  const detailBox = await detail.boundingBox();
+  expect(detailBox?.height).toBeGreaterThanOrEqual(44);
+
+  const tab = page.locator("[data-frame='mobile']").getByRole("link", { name: "Account", exact: true });
   const tabBox = await tab.boundingBox();
   expect(tabBox?.height).toBeGreaterThanOrEqual(44);
 });

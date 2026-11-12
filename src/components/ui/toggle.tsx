@@ -6,6 +6,7 @@ type ToggleProps = {
   label: string;
   disabled?: boolean;
   touch?: boolean;
+  size?: "desktop" | "touch";
 };
 
 export function Toggle({
@@ -14,7 +15,9 @@ export function Toggle({
   label,
   disabled = false,
   touch = false,
+  size,
 }: ToggleProps) {
+  const resolved = size ?? (touch ? "touch" : undefined);
   return (
     <button
       type="button"
@@ -25,14 +28,19 @@ export function Toggle({
       onClick={() => onChange(!checked)}
       className={cn(
         "inline-flex shrink-0 items-center justify-center rounded-full",
-        touch ? "size-11" : "h-5 w-8",
-        disabled && "cursor-not-allowed opacity-50",
+        resolved === "touch" && "size-11",
+        resolved === "desktop" && "h-5 w-8",
+        !resolved && "size-11 sm:h-5 sm:w-8",
+        disabled && "cursor-not-allowed",
       )}
     >
       <span
         className={cn(
-          "relative h-5 w-8 rounded-full transition-colors",
-          checked ? "bg-ink" : "bg-line",
+          "relative h-5 w-8 rounded-full",
+          disabled && checked && "bg-ink-4",
+          disabled && !checked && "bg-surface-2",
+          !disabled && checked && "bg-ink",
+          !disabled && !checked && "bg-line",
         )}
       >
         <span

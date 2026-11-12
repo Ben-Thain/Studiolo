@@ -1,15 +1,30 @@
-import type { ReactNode } from "react";
+import type { ElementType, ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { Icon } from "./icons";
+
+export function SidebarHeader({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex h-14 shrink-0 items-center border-b border-line px-4">
+      {children}
+    </div>
+  );
+}
+
+export function SidebarFooter({ children }: { children: ReactNode }) {
+  return <div className="shrink-0 border-t border-line">{children}</div>;
+}
 
 export function SidebarShell({
   header,
   children,
   footer,
+  navLabel,
   className,
 }: {
   header: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
+  navLabel: string;
   className?: string;
 }) {
   return (
@@ -19,13 +34,14 @@ export function SidebarShell({
         className,
       )}
     >
-      <div className="flex h-14 shrink-0 items-center border-b border-line px-4">
-        {header}
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">{children}</div>
-      {footer ? (
-        <div className="shrink-0 border-t border-line">{footer}</div>
-      ) : null}
+      <SidebarHeader>{header}</SidebarHeader>
+      <nav
+        aria-label={navLabel}
+        className="min-h-0 flex-1 overflow-y-auto px-2 py-2"
+      >
+        {children}
+      </nav>
+      {footer ? <SidebarFooter>{footer}</SidebarFooter> : null}
     </div>
   );
 }
@@ -40,19 +56,19 @@ export function SidebarWordmark({ children }: { children: ReactNode }) {
 
 export function SidebarBack({
   children,
-  onClick,
+  href = "#sites",
 }: {
   children: ReactNode;
-  onClick?: () => void;
+  href?: string;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex h-8 items-center gap-2 text-sm font-normal text-ink-2"
+    <a
+      href={href}
+      className="inline-flex h-10 items-center gap-2 text-sm leading-5 font-normal text-ink-2"
     >
+      <Icon name="chevron-left" size={16} />
       {children}
-    </button>
+    </a>
   );
 }
 
@@ -60,28 +76,29 @@ export function SidebarRow({
   icon,
   children,
   selected = false,
-  onClick,
+  href = "#",
+  as: Component = "a",
 }: {
   icon?: ReactNode;
   children: ReactNode;
   selected?: boolean;
-  onClick?: () => void;
+  href?: string;
+  as?: ElementType;
 }) {
   return (
-    <button
-      type="button"
+    <Component
+      href={href}
       aria-current={selected ? "page" : undefined}
-      onClick={onClick}
       className={cn(
         "flex h-10 w-full items-center gap-3 rounded-control px-2 text-left text-sm text-ink",
         selected
           ? "bg-fill-selected font-medium"
-          : "font-normal hover:bg-fill-hover",
+          : "font-normal hover:bg-fill-hover active:bg-fill-selected",
       )}
     >
       {icon ? <span className="text-ink-2">{icon}</span> : null}
       <span className="min-w-0 truncate">{children}</span>
-    </button>
+    </Component>
   );
 }
 
@@ -98,7 +115,7 @@ export function AccountRow({
 }) {
   return (
     <div className="flex h-12 items-center gap-2 px-4">
-      <span className="inline-flex size-6 items-center justify-center rounded-full bg-ink text-[11px] font-medium text-bg">
+      <span className="inline-flex size-6 items-center justify-center rounded-full bg-ink text-xs leading-4 font-medium text-bg">
         {initials}
       </span>
       <span className="truncate text-sm text-ink">{name}</span>

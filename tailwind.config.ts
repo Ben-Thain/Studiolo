@@ -17,9 +17,12 @@ const config = {
         "ink-4": "var(--ink-4)",
         line: "var(--line)",
         error: "var(--error)",
+        "ink-hover": "var(--ink-hover)",
+        "error-hover": "var(--error-hover)",
       },
       borderRadius: {
         control: "var(--r-control)",
+        "control-inner": "var(--r-control-inner)",
         pop: "var(--r-pop)",
         dialog: "var(--r-dialog)",
         sheet: "var(--r-sheet)",
