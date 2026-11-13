@@ -194,7 +194,10 @@ create table public.pages (
     slug = ''
     or slug ~ '^[a-z0-9]([a-z0-9-]{0,48}[a-z0-9])?$'
   ),
-  constraint pages_site_slug_key unique (site_id, slug)
+  -- Deferred so save_draft can swap two page slugs in one save.
+  constraint pages_site_slug_key unique (site_id, slug) deferrable initially deferred,
+  -- Target for the composite (page_id, site_id) foreign keys on sections and elements.
+  constraint pages_id_site_id_key unique (id, site_id)
 );
 
 create unique index one_home_per_site
@@ -207,27 +210,41 @@ create index pages_site_sort_idx
 create table public.sections (
   id uuid primary key default gen_random_uuid(),
   site_id uuid not null references public.sites (id) on delete cascade,
-  page_id uuid references public.pages (id) on delete cascade,
+  page_id uuid,
   name text not null,
   sort_order integer not null,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- Target for the composite (section_id, site_id) foreign key on elements.
+  constraint sections_id_site_id_key unique (id, site_id),
+  -- A section can only sit on a page of its own site. page_id stays nullable
+  -- for site-wide sections; MATCH SIMPLE skips the check when it is null.
+  constraint sections_page_site_fkey foreign key (page_id, site_id)
+    references public.pages (id, site_id) on delete cascade
 );
 
 create index sections_page_sort_idx
   on public.sections (page_id, sort_order);
 
+create index sections_site_id_idx
+  on public.sections (site_id);
+
 create table public.elements (
   id uuid primary key default gen_random_uuid(),
   site_id uuid not null references public.sites (id) on delete cascade,
-  page_id uuid references public.pages (id) on delete cascade,
-  section_id uuid not null references public.sections (id) on delete cascade,
+  page_id uuid,
+  section_id uuid not null,
   type text not null,
   name text not null,
   content jsonb not null,
   sort_order integer not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint elements_type_allowed check (type in ('text', 'image', 'nav', 'form'))
+  constraint elements_type_allowed check (type in ('text', 'image', 'nav', 'form')),
+  -- An element can only sit in a section and on a page of its own site.
+  constraint elements_section_site_fkey foreign key (section_id, site_id)
+    references public.sections (id, site_id) on delete cascade,
+  constraint elements_page_site_fkey foreign key (page_id, site_id)
+    references public.pages (id, site_id) on delete cascade
 );
 
 create index elements_page_sort_idx
@@ -235,6 +252,9 @@ create index elements_page_sort_idx
 
 create index elements_site_id_idx
   on public.elements (site_id);
+
+create index elements_section_sort_idx
+  on public.elements (section_id, sort_order);
 
 create table public.element_layouts (
   id uuid primary key default gen_random_uuid(),
@@ -256,6 +276,8 @@ create table public.element_layouts (
   constraint element_layouts_element_breakpoint_key unique (element_id, breakpoint)
 );
 
+-- Listed in the 02b spec, so it stays, even though
+-- element_layouts_element_breakpoint_key (element_id, breakpoint) also covers element_id.
 create index element_layouts_element_id_idx
   on public.element_layouts (element_id);
 
@@ -279,6 +301,10 @@ create index submissions_site_created_idx
 create index submissions_site_unread_idx
   on public.submissions (site_id)
   where read_at is null;
+
+create index submissions_page_id_idx
+  on public.submissions (page_id)
+  where page_id is not null;
 
 create table public.page_views_daily (
   site_id uuid not null references public.sites (id) on delete cascade,

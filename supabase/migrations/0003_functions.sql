@@ -283,6 +283,14 @@ as $$
       or d.hostname = host.value
       or d.alias_hostname = host.value
     )
+  -- Deterministic: an exact hostname wins, then an alias, then a slug.
+  order by
+    case
+      when d.hostname = host.value then 0
+      when d.alias_hostname = host.value then 1
+      else 2
+    end,
+    s.id
   limit 1;
 $$;
 
@@ -378,6 +386,10 @@ begin
     updated_at = now()
   where id = p_site;
 
+  -- Clear the bypass before handing control back, so it cannot leak into the
+  -- rest of the caller's transaction.
+  perform set_config('studiolo.restoring', '', true);
+
   return query select chosen, changed;
 end;
 $$;
@@ -436,6 +448,58 @@ begin
     raise exception 'cross_site_change' using errcode = 'ST007';
   end if;
 
+  -- The parents a payload points at must be inside this site: an existing row
+  -- of this site, or a row this same payload upserts. The composite foreign keys
+  -- are the backstop; callers get ST007, not a raw 23503.
+  if exists (
+    select 1
+    from jsonb_array_elements(coalesce(payload #> '{sections,upsert}', '[]'::jsonb)) item
+    where nullif(item->>'page_id', '') is not null
+      and not exists (
+        select 1
+        from public.pages p
+        where p.id = (item->>'page_id')::uuid
+          and p.site_id = site
+      )
+      and not exists (
+        select 1
+        from jsonb_array_elements(coalesce(payload #> '{pages,upsert}', '[]'::jsonb)) parent
+        where parent->>'id' = item->>'page_id'
+      )
+  ) or exists (
+    select 1
+    from jsonb_array_elements(coalesce(payload #> '{elements,upsert}', '[]'::jsonb)) item
+    where nullif(item->>'section_id', '') is not null
+      and not exists (
+        select 1
+        from public.sections s
+        where s.id = (item->>'section_id')::uuid
+          and s.site_id = site
+      )
+      and not exists (
+        select 1
+        from jsonb_array_elements(coalesce(payload #> '{sections,upsert}', '[]'::jsonb)) parent
+        where parent->>'id' = item->>'section_id'
+      )
+  ) or exists (
+    select 1
+    from jsonb_array_elements(coalesce(payload #> '{elements,upsert}', '[]'::jsonb)) item
+    where nullif(item->>'page_id', '') is not null
+      and not exists (
+        select 1
+        from public.pages p
+        where p.id = (item->>'page_id')::uuid
+          and p.site_id = site
+      )
+      and not exists (
+        select 1
+        from jsonb_array_elements(coalesce(payload #> '{pages,upsert}', '[]'::jsonb)) parent
+        where parent->>'id' = item->>'page_id'
+      )
+  ) then
+    raise exception 'cross_site_change' using errcode = 'ST007';
+  end if;
+
   delete from public.element_layouts el
   using jsonb_array_elements_text(coalesce(payload #> '{element_layouts,delete}', '[]'::jsonb)) item
   where el.id = item.value::uuid
@@ -461,6 +525,16 @@ begin
   where p.id = item.value::uuid
     and p.site_id = site;
 
+  -- one_home_per_site is a partial unique index and cannot be deferred, so clear
+  -- the outgoing home first. Payload order no longer matters.
+  update public.pages p
+  set is_home = false
+  from jsonb_array_elements(coalesce(payload #> '{pages,upsert}', '[]'::jsonb)) item
+  where p.site_id = site
+    and p.is_home
+    and p.id = (item->>'id')::uuid
+    and not coalesce((item->>'is_home')::boolean, false);
+
   insert into public.pages as p (id, site_id, title, slug, sort_order, in_nav, is_home)
   select
     (item->>'id')::uuid,
@@ -479,6 +553,19 @@ begin
     in_nav = excluded.in_nav,
     is_home = excluded.is_home
   where p.site_id = site;
+
+  -- A save that touches pages must leave exactly one home page, unless the
+  -- site has no pages at all.
+  if (
+    jsonb_array_length(coalesce(payload #> '{pages,upsert}', '[]'::jsonb)) > 0
+    or jsonb_array_length(coalesce(payload #> '{pages,delete}', '[]'::jsonb)) > 0
+  ) and exists (
+    select 1 from public.pages where site_id = site
+  ) and (
+    select count(*) from public.pages where site_id = site and is_home
+  ) <> 1 then
+    raise exception 'home_page_required' using errcode = 'ST010';
+  end if;
 
   insert into public.sections as s (id, site_id, page_id, name, sort_order)
   select
@@ -573,6 +660,92 @@ begin
   return new_revision;
 end;
 $$;
+
+-- An element's page must be its section's page (null for site-wide sections).
+create function public.elements_page_matches_section()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.page_id is distinct from (
+    select s.page_id
+    from public.sections s
+    where s.id = new.section_id
+  ) then
+    raise exception 'element page mismatch' using errcode = 'ST008';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger elements_page_matches_section
+  before insert or update of section_id, page_id on public.elements
+  for each row
+  execute function public.elements_page_matches_section();
+
+-- Moving a section to another page carries its elements with it.
+create function public.sections_move_elements()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.elements
+  set page_id = new.page_id
+  where section_id = new.id
+    and page_id is distinct from new.page_id;
+  return null;
+end;
+$$;
+
+create trigger sections_move_elements
+  after update of page_id on public.sections
+  for each row
+  when (old.page_id is distinct from new.page_id)
+  execute function public.sections_move_elements();
+
+-- hostname and alias_hostname share one namespace across all rows: a value may
+-- appear once, in either column (ST009). The column unique constraints stay as
+-- a backstop. The advisory lock serialises concurrent writers so two inserts
+-- cannot both pass the check.
+create function public.domains_hostnames_unique()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  perform pg_advisory_xact_lock(hashtext('studiolo.domains_hostnames'));
+
+  if new.alias_hostname is not null and new.alias_hostname = new.hostname then
+    raise exception 'hostname already in use' using errcode = 'ST009';
+  end if;
+
+  if exists (
+    select 1
+    from public.domains d
+    where d.id <> new.id
+      and (
+        d.hostname = new.hostname
+        or d.alias_hostname = new.hostname
+        or d.hostname = new.alias_hostname
+        or d.alias_hostname = new.alias_hostname
+      )
+  ) then
+    raise exception 'hostname already in use' using errcode = 'ST009';
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger domains_hostnames_unique
+  before insert or update of hostname, alias_hostname on public.domains
+  for each row
+  execute function public.domains_hostnames_unique();
 
 create function public.assets_same_site()
 returns trigger
@@ -671,6 +844,9 @@ alter function public.rate_limit_hit(text, integer, integer) owner to postgres;
 alter function public.restore_site(uuid, uuid) owner to postgres;
 alter function public.save_draft(uuid, integer, jsonb) owner to postgres;
 alter function public.assets_same_site() owner to postgres;
+alter function public.elements_page_matches_section() owner to postgres;
+alter function public.sections_move_elements() owner to postgres;
+alter function public.domains_hostnames_unique() owner to postgres;
 
 revoke all on function public.is_site_owner(uuid) from public;
 revoke all on function public.is_site_public(uuid) from public;
@@ -680,6 +856,9 @@ revoke all on function public.rate_limit_hit(text, integer, integer) from public
 revoke all on function public.restore_site(uuid, uuid) from public, anon, authenticated;
 revoke all on function public.save_draft(uuid, integer, jsonb) from public, anon;
 revoke all on function public.assets_same_site() from public, anon, authenticated;
+revoke all on function public.elements_page_matches_section() from public, anon, authenticated;
+revoke all on function public.sections_move_elements() from public, anon, authenticated;
+revoke all on function public.domains_hostnames_unique() from public, anon, authenticated;
 
 grant execute on function public.is_site_owner(uuid) to authenticated, service_role;
 grant execute on function public.is_site_public(uuid) to anon, authenticated, service_role;

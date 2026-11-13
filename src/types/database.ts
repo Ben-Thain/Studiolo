@@ -327,11 +327,11 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "sections_page_id_fkey";
-            columns: ["page_id"];
+            foreignKeyName: "sections_page_site_fkey";
+            columns: ["page_id", "site_id"];
             isOneToOne: false;
             referencedRelation: "pages";
-            referencedColumns: ["id"];
+            referencedColumns: ["id", "site_id"];
           },
         ];
       };
@@ -381,18 +381,18 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "elements_page_id_fkey";
-            columns: ["page_id"];
+            foreignKeyName: "elements_page_site_fkey";
+            columns: ["page_id", "site_id"];
             isOneToOne: false;
             referencedRelation: "pages";
-            referencedColumns: ["id"];
+            referencedColumns: ["id", "site_id"];
           },
           {
-            foreignKeyName: "elements_section_id_fkey";
-            columns: ["section_id"];
+            foreignKeyName: "elements_section_site_fkey";
+            columns: ["section_id", "site_id"];
             isOneToOne: false;
             referencedRelation: "sections";
-            referencedColumns: ["id"];
+            referencedColumns: ["id", "site_id"];
           },
         ];
       };

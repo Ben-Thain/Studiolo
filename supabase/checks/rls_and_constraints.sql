@@ -1153,6 +1153,8 @@ begin
       null;
   end;
 
+  -- pages_site_slug_key is deferred; check it at statement end here.
+  set constraints public.pages_site_slug_key immediate;
   begin
     insert into public.pages (site_id, title, slug, sort_order)
     values (content_site, 'Again', 'about', 3);
@@ -1161,6 +1163,7 @@ begin
     when unique_violation then
       null;
   end;
+  set constraints public.pages_site_slug_key deferred;
 
   insert into public.sections (id, site_id, page_id, name, sort_order)
   values
@@ -1847,6 +1850,569 @@ end
 $$;
 
 \echo ok: save draft
+
+-- 02b-fix: cross-site integrity, hostname namespace, page swaps, restore flag,
+-- cascade indexes. Two fresh owners; removed again at the end.
+insert into auth.users (id, email)
+values
+  ('20000000-0000-4000-8000-000000000001', 'fix-owner@example.com'),
+  ('20000000-0000-4000-8000-000000000002', 'fix-rival@example.com');
+
+insert into public.sites (id, owner_id, name, slug)
+values
+  ('20000000-0000-4000-8000-000000000011', '20000000-0000-4000-8000-000000000001', 'Fix A', 'fix-site-a'),
+  ('20000000-0000-4000-8000-000000000012', '20000000-0000-4000-8000-000000000002', 'Fix B', 'fix-site-b'),
+  ('20000000-0000-4000-8000-000000000013', '20000000-0000-4000-8000-000000000001', 'Fix C', 'fix-site-c');
+
+insert into public.pages (id, site_id, title, slug, sort_order, is_home)
+values
+  ('20000000-0000-4000-8000-000000000021', '20000000-0000-4000-8000-000000000011', 'Home', '', 0, true),
+  ('20000000-0000-4000-8000-000000000022', '20000000-0000-4000-8000-000000000011', 'About', 'about', 1, false),
+  ('20000000-0000-4000-8000-000000000023', '20000000-0000-4000-8000-000000000012', 'Home', '', 0, true);
+
+insert into public.sections (id, site_id, page_id, name, sort_order)
+values
+  ('20000000-0000-4000-8000-000000000031', '20000000-0000-4000-8000-000000000011', '20000000-0000-4000-8000-000000000021', 'Body', 0),
+  ('20000000-0000-4000-8000-000000000032', '20000000-0000-4000-8000-000000000011', null, 'Header', 1),
+  ('20000000-0000-4000-8000-000000000033', '20000000-0000-4000-8000-000000000012', '20000000-0000-4000-8000-000000000023', 'Body', 0);
+
+do $$
+declare
+  site_a uuid := '20000000-0000-4000-8000-000000000011';
+  site_b uuid := '20000000-0000-4000-8000-000000000012';
+  page_b uuid := '20000000-0000-4000-8000-000000000023';
+  before_count bigint;
+  rev integer;
+begin
+  if (
+    select count(*)
+    from pg_constraint
+    where conrelid = 'public.sections'::regclass
+      and pg_get_constraintdef(oid) =
+        'FOREIGN KEY (page_id, site_id) REFERENCES pages(id, site_id) ON DELETE CASCADE'
+  ) <> 1 or (
+    select count(*)
+    from pg_constraint
+    where conrelid in ('public.pages'::regclass, 'public.sections'::regclass)
+      and pg_get_constraintdef(oid) = 'UNIQUE (id, site_id)'
+  ) <> 2 then
+    raise exception 'sections composite page fk or unique (id, site_id) missing';
+  end if;
+
+  select count(*) into before_count from public.sections;
+
+  begin
+    insert into public.sections (site_id, page_id, name, sort_order)
+    values (site_a, page_b, 'Stray', 9);
+    raise exception 'section on another site''s page was accepted';
+  exception
+    when foreign_key_violation then
+      null;
+  end;
+
+  select draft_revision into rev from public.sites where id = site_a;
+
+  begin
+    perform public.save_draft(site_a, rev, jsonb_build_object(
+      'sections', jsonb_build_object('upsert', jsonb_build_array(jsonb_build_object(
+        'id', '20000000-0000-4000-8000-000000000039',
+        'page_id', page_b,
+        'name', 'Stray',
+        'sort_order', 9
+      )))
+    ));
+    raise exception 'save_draft put a section on another site''s page';
+  exception
+    when sqlstate 'ST007' then
+      null;
+  end;
+
+  if (select count(*) from public.sections) <> before_count
+    or (select draft_revision from public.sites where id = site_a) <> rev
+  then
+    raise exception 'cross-site section changed rows';
+  end if;
+end
+$$;
+
+\echo 'ok: section cannot use another site''s page'
+
+do $$
+declare
+  site_a uuid := '20000000-0000-4000-8000-000000000011';
+  page_a uuid := '20000000-0000-4000-8000-000000000021';
+  page_b uuid := '20000000-0000-4000-8000-000000000023';
+  section_a uuid := '20000000-0000-4000-8000-000000000031';
+  section_b uuid := '20000000-0000-4000-8000-000000000033';
+  before_count bigint;
+  rev integer;
+begin
+  if (
+    select count(*)
+    from pg_constraint
+    where conrelid = 'public.elements'::regclass
+      and pg_get_constraintdef(oid) in (
+        'FOREIGN KEY (section_id, site_id) REFERENCES sections(id, site_id) ON DELETE CASCADE',
+        'FOREIGN KEY (page_id, site_id) REFERENCES pages(id, site_id) ON DELETE CASCADE'
+      )
+  ) <> 2 then
+    raise exception 'elements composite fks missing';
+  end if;
+
+  select count(*) into before_count from public.elements;
+
+  -- section_id: another site's section.
+  begin
+    insert into public.elements (site_id, page_id, section_id, type, name, content, sort_order)
+    values (site_a, page_b, section_b, 'text', 'Stray', '{}'::jsonb, 0);
+    raise exception 'element in another site''s section was accepted';
+  exception
+    when foreign_key_violation then
+      null;
+  end;
+
+  -- page_id: another site's page. The page-match trigger rejects it first;
+  -- with the trigger off, the composite fk is the backstop.
+  begin
+    insert into public.elements (site_id, page_id, section_id, type, name, content, sort_order)
+    values (site_a, page_b, section_a, 'text', 'Stray', '{}'::jsonb, 0);
+    raise exception 'element on another site''s page was accepted';
+  exception
+    when sqlstate 'ST008' then
+      null;
+  end;
+
+  begin
+    alter table public.elements disable trigger elements_page_matches_section;
+    insert into public.elements (site_id, page_id, section_id, type, name, content, sort_order)
+    values (site_a, page_b, section_a, 'text', 'Stray', '{}'::jsonb, 0);
+    raise exception 'element page fk did not reject another site''s page';
+  exception
+    when foreign_key_violation then
+      null;
+  end;
+
+  if exists (
+    select 1
+    from pg_trigger
+    where tgname = 'elements_page_matches_section'
+      and tgenabled = 'D'
+  ) then
+    raise exception 'page-match trigger left disabled';
+  end if;
+
+  select draft_revision into rev from public.sites where id = site_a;
+
+  begin
+    perform public.save_draft(site_a, rev, jsonb_build_object(
+      'elements', jsonb_build_object('upsert', jsonb_build_array(jsonb_build_object(
+        'id', '20000000-0000-4000-8000-000000000049',
+        'section_id', section_b,
+        'page_id', page_b,
+        'type', 'text',
+        'name', 'Stray',
+        'content', '{}'::jsonb,
+        'sort_order', 0
+      )))
+    ));
+    raise exception 'save_draft put an element in another site''s section';
+  exception
+    when sqlstate 'ST007' then
+      null;
+  end;
+
+  begin
+    perform public.save_draft(site_a, rev, jsonb_build_object(
+      'elements', jsonb_build_object('upsert', jsonb_build_array(jsonb_build_object(
+        'id', '20000000-0000-4000-8000-000000000049',
+        'section_id', section_a,
+        'page_id', page_b,
+        'type', 'text',
+        'name', 'Stray',
+        'content', '{}'::jsonb,
+        'sort_order', 0
+      )))
+    ));
+    raise exception 'save_draft put an element on another site''s page';
+  exception
+    when sqlstate 'ST007' then
+      null;
+  end;
+
+  if (select count(*) from public.elements) <> before_count
+    or (select draft_revision from public.sites where id = site_a) <> rev
+  then
+    raise exception 'cross-site element changed rows';
+  end if;
+end
+$$;
+
+\echo 'ok: element cannot use another site''s section'
+
+do $$
+declare
+  site_a uuid := '20000000-0000-4000-8000-000000000011';
+  page_home uuid := '20000000-0000-4000-8000-000000000021';
+  page_about uuid := '20000000-0000-4000-8000-000000000022';
+  section_body uuid := '20000000-0000-4000-8000-000000000031';
+  section_header uuid := '20000000-0000-4000-8000-000000000032';
+  element_id uuid := '20000000-0000-4000-8000-000000000041';
+  rev integer;
+begin
+  begin
+    insert into public.elements (site_id, page_id, section_id, type, name, content, sort_order)
+    values (site_a, page_about, section_body, 'text', 'Wrong page', '{}'::jsonb, 0);
+    raise exception 'element on a different page from its section was accepted';
+  exception
+    when sqlstate 'ST008' then
+      null;
+  end;
+
+  begin
+    insert into public.elements (site_id, page_id, section_id, type, name, content, sort_order)
+    values (site_a, page_home, section_header, 'text', 'Wrong page', '{}'::jsonb, 0);
+    raise exception 'element with a page in a site-wide section was accepted';
+  exception
+    when sqlstate 'ST008' then
+      null;
+  end;
+
+  insert into public.elements (id, site_id, page_id, section_id, type, name, content, sort_order)
+  values (element_id, site_a, page_home, section_body, 'text', 'Body', '{}'::jsonb, 0);
+
+  begin
+    update public.elements set page_id = page_about where id = element_id;
+    raise exception 'element page update away from its section was accepted';
+  exception
+    when sqlstate 'ST008' then
+      null;
+  end;
+
+  select draft_revision into rev from public.sites where id = site_a;
+
+  perform public.save_draft(site_a, rev, jsonb_build_object(
+    'sections', jsonb_build_object('upsert', jsonb_build_array(jsonb_build_object(
+      'id', section_body,
+      'page_id', page_about,
+      'name', 'Body',
+      'sort_order', 0
+    )))
+  ));
+
+  if (select page_id from public.elements where id = element_id) is distinct from page_about then
+    raise exception 'moving a section did not move its elements';
+  end if;
+end
+$$;
+
+\echo ok: element page matches its section
+
+do $$
+declare
+  site_a uuid := '20000000-0000-4000-8000-000000000011';
+  new_page uuid := '20000000-0000-4000-8000-000000000051';
+  new_section uuid := '20000000-0000-4000-8000-000000000052';
+  new_element uuid := '20000000-0000-4000-8000-000000000053';
+  new_layout uuid := '20000000-0000-4000-8000-000000000054';
+  rev integer;
+begin
+  select draft_revision into rev from public.sites where id = site_a;
+
+  perform public.save_draft(site_a, rev, jsonb_build_object(
+    'pages', jsonb_build_object('upsert', jsonb_build_array(jsonb_build_object(
+      'id', new_page, 'title', 'Fresh', 'slug', 'fresh', 'sort_order', 5, 'is_home', false
+    ))),
+    'sections', jsonb_build_object('upsert', jsonb_build_array(jsonb_build_object(
+      'id', new_section, 'page_id', new_page, 'name', 'Fresh', 'sort_order', 0
+    ))),
+    'elements', jsonb_build_object('upsert', jsonb_build_array(jsonb_build_object(
+      'id', new_element, 'page_id', new_page, 'section_id', new_section,
+      'type', 'text', 'name', 'Fresh', 'content', '{}'::jsonb, 'sort_order', 0
+    ))),
+    'element_layouts', jsonb_build_object('upsert', jsonb_build_array(jsonb_build_object(
+      'id', new_layout, 'element_id', new_element, 'breakpoint', 'desktop',
+      'col_start', 1, 'col_span', 12, 'row_start', 1, 'row_span', 1
+    )))
+  ));
+
+  if not exists (
+    select 1
+    from public.element_layouts el
+    join public.elements e on e.id = el.element_id
+    join public.sections s on s.id = e.section_id
+    join public.pages p on p.id = s.page_id
+    where el.id = new_layout
+      and p.id = new_page
+      and e.page_id = new_page
+      and p.site_id = site_a
+      and s.site_id = site_a
+      and e.site_id = site_a
+  ) then
+    raise exception 'save_draft did not create new parents and children together';
+  end if;
+end
+$$;
+
+\echo ok: save_draft accepts new parents in the same payload
+
+do $$
+declare
+  site_a uuid := '20000000-0000-4000-8000-000000000011';
+  site_b uuid := '20000000-0000-4000-8000-000000000012';
+  site_c uuid := '20000000-0000-4000-8000-000000000013';
+  owner uuid := '20000000-0000-4000-8000-000000000001';
+  rival uuid := '20000000-0000-4000-8000-000000000002';
+  publish_a uuid := '20000000-0000-4000-8000-000000000061';
+  publish_b uuid := '20000000-0000-4000-8000-000000000062';
+  found_id uuid;
+begin
+  insert into public.domains (site_id, hostname, alias_hostname, status)
+  values (site_a, 'fix-a.example.com', 'www.fix-a.example.com', 'connected');
+
+  begin
+    insert into public.domains (site_id, hostname, alias_hostname, status)
+    values (site_b, 'fix-b.example.com', 'fix-a.example.com', 'connected');
+    raise exception 'alias equal to another hostname was accepted';
+  exception
+    when sqlstate 'ST009' then
+      null;
+  end;
+
+  begin
+    insert into public.domains (site_id, hostname, status)
+    values (site_b, 'www.fix-a.example.com', 'connected');
+    raise exception 'hostname equal to another alias was accepted';
+  exception
+    when sqlstate 'ST009' then
+      null;
+  end;
+
+  begin
+    insert into public.domains (site_id, hostname, alias_hostname)
+    values (site_c, 'fix-c.example.com', 'fix-c.example.com');
+    raise exception 'alias equal to its own hostname was accepted';
+  exception
+    when sqlstate 'ST009' then
+      null;
+  end;
+
+  insert into public.domains (site_id, hostname, alias_hostname, status)
+  values (site_b, 'fix-b.example.com', 'www.fix-b.example.com', 'connected');
+
+  begin
+    update public.domains
+    set alias_hostname = 'fix-a.example.com'
+    where site_id = site_b;
+    raise exception 'alias update onto another hostname was accepted';
+  exception
+    when sqlstate 'ST009' then
+      null;
+  end;
+
+  insert into public.site_publishes (id, site_id, snapshot, published_by)
+  values
+    (publish_a, site_a, '{"version":1}'::jsonb, owner),
+    (publish_b, site_b, '{"version":1}'::jsonb, rival);
+
+  update public.sites set live_publish_id = publish_a where id = site_a;
+  update public.sites set live_publish_id = publish_b where id = site_b;
+
+  select r.site_id into found_id from public.resolve_host('fix-a.example.com') r;
+  if found_id is distinct from site_a then
+    raise exception 'resolve_host did not return the hostname owner';
+  end if;
+
+  select r.site_id into found_id from public.resolve_host('www.fix-a.example.com') r;
+  if found_id is distinct from site_a then
+    raise exception 'resolve_host did not return the alias owner';
+  end if;
+
+  if position('order by' in lower(pg_get_functiondef('public.resolve_host(text)'::regprocedure))) = 0 then
+    raise exception 'resolve_host has no order by';
+  end if;
+end
+$$;
+
+\echo ok: hostname namespace is shared
+
+do $$
+declare
+  site_a uuid := '20000000-0000-4000-8000-000000000011';
+  page_home uuid := '20000000-0000-4000-8000-000000000021';
+  page_about uuid := '20000000-0000-4000-8000-000000000022';
+  page_fresh uuid := '20000000-0000-4000-8000-000000000051';
+  rev integer;
+begin
+  -- New home listed first.
+  select draft_revision into rev from public.sites where id = site_a;
+  perform public.save_draft(site_a, rev, jsonb_build_object(
+    'pages', jsonb_build_object('upsert', jsonb_build_array(
+      jsonb_build_object('id', page_about, 'title', 'About', 'slug', 'about', 'sort_order', 1, 'is_home', true),
+      jsonb_build_object('id', page_home, 'title', 'Home', 'slug', '', 'sort_order', 0, 'is_home', false)
+    ))
+  ));
+  if (select count(*) from public.pages where site_id = site_a and is_home) <> 1
+    or not (select is_home from public.pages where id = page_about)
+  then
+    raise exception 'home swap with the new home first failed';
+  end if;
+
+  -- New home listed last.
+  select draft_revision into rev from public.sites where id = site_a;
+  perform public.save_draft(site_a, rev, jsonb_build_object(
+    'pages', jsonb_build_object('upsert', jsonb_build_array(
+      jsonb_build_object('id', page_about, 'title', 'About', 'slug', 'about', 'sort_order', 1, 'is_home', false),
+      jsonb_build_object('id', page_home, 'title', 'Home', 'slug', '', 'sort_order', 0, 'is_home', true)
+    ))
+  ));
+  if (select count(*) from public.pages where site_id = site_a and is_home) <> 1
+    or not (select is_home from public.pages where id = page_home)
+  then
+    raise exception 'home swap with the new home last failed';
+  end if;
+
+  -- Slug swap, one order.
+  select draft_revision into rev from public.sites where id = site_a;
+  perform public.save_draft(site_a, rev, jsonb_build_object(
+    'pages', jsonb_build_object('upsert', jsonb_build_array(
+      jsonb_build_object('id', page_about, 'title', 'About', 'slug', 'fresh', 'sort_order', 1, 'is_home', false),
+      jsonb_build_object('id', page_fresh, 'title', 'Fresh', 'slug', 'about', 'sort_order', 5, 'is_home', false)
+    ))
+  ));
+  set constraints public.pages_site_slug_key immediate;
+  set constraints public.pages_site_slug_key deferred;
+
+  -- Slug swap back, the other order.
+  select draft_revision into rev from public.sites where id = site_a;
+  perform public.save_draft(site_a, rev, jsonb_build_object(
+    'pages', jsonb_build_object('upsert', jsonb_build_array(
+      jsonb_build_object('id', page_about, 'title', 'About', 'slug', 'about', 'sort_order', 1, 'is_home', false),
+      jsonb_build_object('id', page_fresh, 'title', 'Fresh', 'slug', 'fresh', 'sort_order', 5, 'is_home', false)
+    ))
+  ));
+  set constraints public.pages_site_slug_key immediate;
+  set constraints public.pages_site_slug_key deferred;
+
+  if (select slug from public.pages where id = page_about) <> 'about'
+    or (select slug from public.pages where id = page_fresh) <> 'fresh'
+    or (select count(*) from public.pages where site_id = site_a and is_home) <> 1
+  then
+    raise exception 'slug swap left the wrong slugs';
+  end if;
+
+  -- A save that leaves no home page is rejected.
+  select draft_revision into rev from public.sites where id = site_a;
+  begin
+    perform public.save_draft(site_a, rev, jsonb_build_object(
+      'pages', jsonb_build_object('upsert', jsonb_build_array(
+        jsonb_build_object('id', page_home, 'title', 'Home', 'slug', '', 'sort_order', 0, 'is_home', false)
+      ))
+    ));
+    raise exception 'save_draft left a site with no home page';
+  exception
+    when sqlstate 'ST010' then
+      null;
+  end;
+
+  -- A duplicate slug that is not a swap still fails once checked.
+  begin
+    perform public.save_draft(site_a, rev, jsonb_build_object(
+      'pages', jsonb_build_object('upsert', jsonb_build_array(
+        jsonb_build_object('id', page_fresh, 'title', 'Fresh', 'slug', 'about', 'sort_order', 5, 'is_home', false)
+      ))
+    ));
+    set constraints public.pages_site_slug_key immediate;
+    raise exception 'duplicate page slug survived a save';
+  exception
+    when unique_violation then
+      null;
+  end;
+  set constraints public.pages_site_slug_key deferred;
+end
+$$;
+
+\echo ok: save_draft swaps home and slugs
+
+do $$
+declare
+  owner uuid := '20000000-0000-4000-8000-000000000001';
+  site_c uuid := '20000000-0000-4000-8000-000000000013';
+  gone_site uuid := '20000000-0000-4000-8000-000000000014';
+begin
+  insert into public.sites (id, owner_id, name, slug, deleted_at, purge_after)
+  values (gone_site, owner, 'Gone', 'fix-gone', now(), now() + interval '10 days');
+
+  update public.sites set slug_locked_at = now() where id = site_c;
+
+  perform public.restore_site(gone_site, owner);
+
+  if current_setting('studiolo.restoring', true) is distinct from '' then
+    raise exception 'restore flag still set after restore_site returned';
+  end if;
+
+  begin
+    update public.sites set slug = 'fix-site-c-moved' where id = site_c;
+    raise exception 'locked slug changed after restore_site in the same transaction';
+  exception
+    when sqlstate 'ST002' then
+      null;
+  end;
+end
+$$;
+
+\echo ok: restore flag cleared on return
+
+do $$
+declare
+  missing text;
+begin
+  select string_agg(name, ', ' order by name)
+  into missing
+  from (
+    select unnest(array[
+      'sections_site_id_idx',
+      'elements_section_sort_idx',
+      'submissions_page_id_idx',
+      'element_layouts_element_id_idx'
+    ]) as name
+    except
+    select indexname
+    from pg_indexes
+    where schemaname = 'public'
+  ) as gone;
+
+  if missing is not null then
+    raise exception 'missing cascade fk indexes: %', missing;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_indexes
+    where indexname = 'sections_site_id_idx'
+      and indexdef like '%(site_id)'
+  ) or not exists (
+    select 1
+    from pg_indexes
+    where indexname = 'elements_section_sort_idx'
+      and indexdef like '%(section_id, sort_order)'
+  ) or not exists (
+    select 1
+    from pg_indexes
+    where indexname = 'submissions_page_id_idx'
+      and indexdef like '%(page_id) WHERE (page_id IS NOT NULL)'
+  ) then
+    raise exception 'cascade fk index has the wrong shape';
+  end if;
+end
+$$;
+
+\echo ok: cascade fk indexes
+
+delete from auth.users
+where id in (
+  '20000000-0000-4000-8000-000000000001',
+  '20000000-0000-4000-8000-000000000002'
+);
 
 delete from auth.users
 where id in (
