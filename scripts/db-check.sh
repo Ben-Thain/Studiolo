@@ -91,6 +91,13 @@ begin
     + (select count(*) from public.sites)
     + (select count(*) from public.site_publishes)
     + (select count(*) from public.assets)
+    + (select count(*) from public.pages)
+    + (select count(*) from public.sections)
+    + (select count(*) from public.elements)
+    + (select count(*) from public.element_layouts)
+    + (select count(*) from public.submissions)
+    + (select count(*) from public.page_views_daily)
+    + (select count(*) from public.domains)
   into leftover;
   if leftover <> 0 then
     raise exception 'seeded account deletion left % row(s)', leftover;

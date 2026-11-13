@@ -249,6 +249,351 @@ export type Database = {
           },
         ];
       };
+      pages: {
+        Row: {
+          id: string;
+          site_id: string;
+          title: string;
+          slug: string;
+          sort_order: number;
+          in_nav: boolean;
+          is_home: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          site_id: string;
+          title: string;
+          slug: string;
+          sort_order: number;
+          in_nav?: boolean;
+          is_home?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          site_id?: string;
+          title?: string;
+          slug?: string;
+          sort_order?: number;
+          in_nav?: boolean;
+          is_home?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "pages_site_id_fkey";
+            columns: ["site_id"];
+            isOneToOne: false;
+            referencedRelation: "sites";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      sections: {
+        Row: {
+          id: string;
+          site_id: string;
+          page_id: string | null;
+          name: string;
+          sort_order: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          site_id: string;
+          page_id?: string | null;
+          name: string;
+          sort_order: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          site_id?: string;
+          page_id?: string | null;
+          name?: string;
+          sort_order?: number;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "sections_site_id_fkey";
+            columns: ["site_id"];
+            isOneToOne: false;
+            referencedRelation: "sites";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "sections_page_id_fkey";
+            columns: ["page_id"];
+            isOneToOne: false;
+            referencedRelation: "pages";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      elements: {
+        Row: {
+          id: string;
+          site_id: string;
+          page_id: string | null;
+          section_id: string;
+          type: string;
+          name: string;
+          content: Json;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          site_id: string;
+          page_id?: string | null;
+          section_id: string;
+          type: string;
+          name: string;
+          content: Json;
+          sort_order: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          site_id?: string;
+          page_id?: string | null;
+          section_id?: string;
+          type?: string;
+          name?: string;
+          content?: Json;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "elements_site_id_fkey";
+            columns: ["site_id"];
+            isOneToOne: false;
+            referencedRelation: "sites";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "elements_page_id_fkey";
+            columns: ["page_id"];
+            isOneToOne: false;
+            referencedRelation: "pages";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "elements_section_id_fkey";
+            columns: ["section_id"];
+            isOneToOne: false;
+            referencedRelation: "sections";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      element_layouts: {
+        Row: {
+          id: string;
+          element_id: string;
+          breakpoint: string;
+          col_start: number;
+          col_span: number;
+          row_start: number;
+          row_span: number;
+          hidden: boolean;
+          placement_source: string;
+        };
+        Insert: {
+          id?: string;
+          element_id: string;
+          breakpoint: string;
+          col_start: number;
+          col_span: number;
+          row_start: number;
+          row_span: number;
+          hidden?: boolean;
+          placement_source?: string;
+        };
+        Update: {
+          id?: string;
+          element_id?: string;
+          breakpoint?: string;
+          col_start?: number;
+          col_span?: number;
+          row_start?: number;
+          row_span?: number;
+          hidden?: boolean;
+          placement_source?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "element_layouts_element_id_fkey";
+            columns: ["element_id"];
+            isOneToOne: false;
+            referencedRelation: "elements";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      submissions: {
+        Row: {
+          id: string;
+          site_id: string;
+          page_id: string | null;
+          name: string;
+          email: string;
+          message: string;
+          created_at: string;
+          read_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          site_id: string;
+          page_id?: string | null;
+          name: string;
+          email: string;
+          message: string;
+          created_at?: string;
+          read_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          site_id?: string;
+          page_id?: string | null;
+          name?: string;
+          email?: string;
+          message?: string;
+          created_at?: string;
+          read_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "submissions_site_id_fkey";
+            columns: ["site_id"];
+            isOneToOne: false;
+            referencedRelation: "sites";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "submissions_page_id_fkey";
+            columns: ["page_id"];
+            isOneToOne: false;
+            referencedRelation: "pages";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      page_views_daily: {
+        Row: {
+          site_id: string;
+          day: string;
+          views: number;
+        };
+        Insert: {
+          site_id: string;
+          day: string;
+          views?: number;
+        };
+        Update: {
+          site_id?: string;
+          day?: string;
+          views?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "page_views_daily_site_id_fkey";
+            columns: ["site_id"];
+            isOneToOne: false;
+            referencedRelation: "sites";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      rate_limits: {
+        Row: {
+          bucket: string;
+          window_start: string;
+          count: number;
+        };
+        Insert: {
+          bucket: string;
+          window_start: string;
+          count?: number;
+        };
+        Update: {
+          bucket?: string;
+          window_start?: string;
+          count?: number;
+        };
+        Relationships: [];
+      };
+      domains: {
+        Row: {
+          id: string;
+          site_id: string;
+          hostname: string;
+          alias_hostname: string | null;
+          status: string;
+          verification: Json | null;
+          dns_records: Json | null;
+          misconfigured: boolean | null;
+          error_code: string | null;
+          error_message: string | null;
+          last_checked_at: string | null;
+          verified_at: string | null;
+          connected_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          site_id: string;
+          hostname: string;
+          alias_hostname?: string | null;
+          status?: string;
+          verification?: Json | null;
+          dns_records?: Json | null;
+          misconfigured?: boolean | null;
+          error_code?: string | null;
+          error_message?: string | null;
+          last_checked_at?: string | null;
+          verified_at?: string | null;
+          connected_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          site_id?: string;
+          hostname?: string;
+          alias_hostname?: string | null;
+          status?: string;
+          verification?: Json | null;
+          dns_records?: Json | null;
+          misconfigured?: boolean | null;
+          error_code?: string | null;
+          error_message?: string | null;
+          last_checked_at?: string | null;
+          verified_at?: string | null;
+          connected_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "domains_site_id_fkey";
+            columns: ["site_id"];
+            isOneToOne: true;
+            referencedRelation: "sites";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -260,6 +605,63 @@ export type Database = {
           for_owner: string;
         };
         Returns: boolean;
+      };
+      is_site_owner: {
+        Args: {
+          site: string;
+        };
+        Returns: boolean;
+      };
+      is_site_public: {
+        Args: {
+          site: string;
+        };
+        Returns: boolean;
+      };
+      increment_page_views: {
+        Args: {
+          site: string;
+          d: string;
+        };
+        Returns: undefined;
+      };
+      resolve_host: {
+        Args: {
+          h: string;
+        };
+        Returns: {
+          site_id: string;
+          slug: string;
+          password_enabled: boolean;
+          gate_version: number;
+          canonical_host: string | null;
+        }[];
+      };
+      rate_limit_hit: {
+        Args: {
+          b: string;
+          window_seconds: number;
+          max: number;
+        };
+        Returns: boolean;
+      };
+      restore_site: {
+        Args: {
+          p_site: string;
+          p_owner: string;
+        };
+        Returns: {
+          slug: string;
+          slug_changed: boolean;
+        }[];
+      };
+      save_draft: {
+        Args: {
+          site: string;
+          expected_revision: number;
+          changes: Json;
+        };
+        Returns: number;
       };
     };
     Enums: {
