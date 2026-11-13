@@ -13,9 +13,6 @@ export type ButtonSize = "sm" | "lg" | "touch" | "nav" | "desktop";
 
 export type ForceState = "hover" | "active" | "focus" | "disabled" | "loading";
 
-const focusForce =
-  "outline outline-2 outline-offset-2 outline-[rgba(10,10,10,0.4)]";
-
 const variants: Record<ButtonVariant, string> = {
   primary:
     "bg-ink text-bg enabled:hover:bg-ink-hover enabled:active:bg-ink-hover",
@@ -35,14 +32,6 @@ const disabledVariants: Record<ButtonVariant, string> = {
   ghost: "bg-transparent text-ink-4",
   danger: "bg-transparent text-ink-4",
   destructive: "bg-surface-2 text-ink-4",
-};
-
-const forced: Record<ButtonVariant, Record<"hover" | "active", string>> = {
-  primary: { hover: "bg-ink-hover", active: "bg-ink-hover" },
-  secondary: { hover: "bg-fill-hover", active: "bg-fill-selected" },
-  ghost: { hover: "bg-fill-hover", active: "bg-fill-selected" },
-  danger: { hover: "bg-fill-hover", active: "bg-fill-selected" },
-  destructive: { hover: "bg-error-hover", active: "bg-error-hover" },
 };
 
 const sizes: Record<Exclude<ButtonSize, "nav">, string> = {
@@ -78,12 +67,7 @@ export function Button({
 }: ButtonProps) {
   const isDisabled = disabled || loading || forceState === "disabled";
   const isLoading = loading || forceState === "loading";
-  const visual = cn(
-    variants[variant],
-    isDisabled && disabledVariants[variant],
-    !isDisabled && forceState === "hover" && forced[variant].hover,
-    !isDisabled && forceState === "active" && forced[variant].active,
-  );
+  const visual = cn(variants[variant], isDisabled && disabledVariants[variant]);
   const content = (
     <>
       {isLoading ? <Spinner /> : icon}
@@ -97,9 +81,9 @@ export function Button({
       <button
         type={type}
         data-force-state={forceState}
+        data-variant={variant}
         className={cn(
           "inline-flex h-11 items-center justify-center bg-transparent",
-          forceState === "focus" && focusForce,
           className,
         )}
         disabled={isDisabled}
@@ -111,6 +95,8 @@ export function Button({
             "inline-flex h-9 items-center justify-center gap-2 rounded-control px-3 text-sm font-medium whitespace-nowrap",
             visual,
           )}
+          data-force-state={forceState}
+          data-variant={variant}
         >
           {content}
         </span>
@@ -122,12 +108,12 @@ export function Button({
     <button
       type={type}
       data-force-state={forceState}
+      data-variant={variant}
       className={cn(
         "inline-flex shrink-0 items-center justify-center rounded-control font-medium whitespace-nowrap",
         "disabled:cursor-not-allowed",
         visual,
         size ? sizes[size] : responsiveSize,
-        forceState === "focus" && focusForce,
         className,
       )}
       disabled={isDisabled}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Button, type ForceState } from "@/components/ui/button";
 import { StudioloCredit } from "@/components/ui/credit";
 import { CopyField } from "@/components/ui/copy-field";
@@ -55,8 +55,6 @@ import { ToastRegion, ToastProvider, useToast } from "@/components/ui/toast";
 import { Toggle } from "@/components/ui/toggle";
 import { SiteStatus, StatusDot, TopBar } from "@/components/ui/top-bar";
 import { cn } from "@/lib/utils";
-
-const announced = new Set<string>();
 
 const siteMenu = (onDelete: () => void): MenuEntry[] => [
   {
@@ -153,6 +151,7 @@ function SiteSidebar() {
   return (
     <SidebarShell
       navLabel="Site"
+      extra={<LayerTree />}
       header={<SidebarBack href="#sites">Sites</SidebarBack>}
       footer={
         <>
@@ -176,6 +175,13 @@ function SiteSidebar() {
       <SidebarRow href="#settings" icon={<Icon name="sliders" size={16} />}>
         Settings
       </SidebarRow>
+    </SidebarShell>
+  );
+}
+
+function LayerTree() {
+  return (
+    <div role="tree" aria-label="Layers">
       <div className="mt-4 flex h-8 items-center justify-between px-2 text-xs leading-4 text-ink-2">
         <span>Layers</span>
         <span className="inline-flex items-center gap-1 text-ink">
@@ -225,7 +231,7 @@ function SiteSidebar() {
           {name}
         </p>
       ))}
-    </SidebarShell>
+    </div>
   );
 }
 
@@ -323,14 +329,13 @@ function PublishBody({
     <>
       <PopoverSection>
         <p className="text-sm leading-5 font-medium text-ink">Publish Riverton House</p>
-        <p className="mt-1 text-xs leading-4 text-ink-3">
-          Last published <span className="tabular">10 Nov, 17:20</span>. Changes
-          since then go live.
+        <p className="mt-1 truncate text-xs leading-4 text-ink-3">
+          Last published 2 hours ago
         </p>
       </PopoverSection>
       <PopoverSection>
         <Field label="Live at">
-          <CopyField value="rivertonhouse.co.uk" size="desktop" />
+          <CopyField value="rivertonhouse.co.uk" size="desktop" label="Live at" />
         </Field>
         <PopoverRow label="Domain">
           <span className="inline-flex items-center gap-1 text-ink">
@@ -383,7 +388,7 @@ function MobilePublish({
     <div>
       <div className="border-b border-line pb-4">
         <Field label="Live at">
-          <CopyField value="rivertonhouse.co.uk" size="touch" />
+          <CopyField value="rivertonhouse.co.uk" size="touch" label="Live at" />
         </Field>
       </div>
       <div
@@ -469,38 +474,32 @@ function DeleteSiteDialog({
 }
 
 function GalleryToasts() {
-  const { toast } = useToast();
-  const started = useRef(false);
+  const { toast, dismiss } = useToast();
   useEffect(() => {
-    if (started.current) return;
-    started.current = true;
-    if (!announced.has("duplicated")) {
-      announced.add("duplicated");
+    const ids = [
       toast({
         region: "duplicated",
         message: "Duplicated North Light. The copy is a draft.",
+        duration: 0,
         action: { label: "Open editor", onClick: () => undefined },
-      });
-    }
-    if (!announced.has("deleted")) {
-      announced.add("deleted");
+      }),
       toast({
         region: "deleted",
         message: "North Light deleted",
-        duration: 10000,
+        duration: 0,
         action: { label: "Undo", onClick: () => undefined },
-      });
-    }
-    if (!announced.has("mobile")) {
-      announced.add("mobile");
+      }),
       toast({
         region: "mobile",
         message: "North Light deleted",
-        duration: 10000,
+        duration: 0,
         action: { label: "Undo", onClick: () => undefined },
-      });
-    }
-  }, [toast]);
+      }),
+    ];
+    return () => {
+      ids.forEach((id) => dismiss(id));
+    };
+  }, [toast, dismiss]);
   return null;
 }
 
@@ -560,7 +559,7 @@ function GalleryBody() {
   ];
 
   return (
-    <div className="min-h-dvh bg-bg text-ink">
+    <div data-gallery="" className="min-h-dvh bg-bg text-ink">
       <GalleryToasts />
       <div className="px-4 py-8 sm:px-6">
         <PageHead
@@ -592,7 +591,7 @@ function GalleryBody() {
       <Section title="Duplicated site">
         <Shell minWidth="min-w-[960px]" height="h-[420px]">
           <HomeSidebar />
-          <ToastRegion id="duplicated" className="relative min-w-0 flex-1">
+          <ToastRegion id="duplicated" contained className="relative min-w-0 flex-1">
             <div className="px-8 pt-8">
               <PageHead
                 title="Sites"
@@ -622,7 +621,7 @@ function GalleryBody() {
       <Section title="Deleted site">
         <Shell minWidth="min-w-[960px]" height="h-[420px]">
           <HomeSidebar />
-          <ToastRegion id="deleted" className="relative min-w-0 flex-1">
+          <ToastRegion id="deleted" contained className="relative min-w-0 flex-1">
             <div className="px-8 pt-8">
               <PageHead title="Sites" lead="Open a site to edit it." />
               <SitesTable
@@ -689,13 +688,16 @@ function GalleryBody() {
             />
             <div className="flex min-h-0 flex-1">
               <div className="flex min-w-0 flex-1 flex-col items-center gap-4 overflow-auto p-6">
-                <div className="inline-flex h-8 items-center gap-1 rounded-control border border-line bg-bg p-0.5">
+                <div
+                  data-picker=""
+                  className="inline-flex h-8 items-center gap-1 rounded-control border border-line bg-bg p-0.5"
+                >
                   <Menu
                     align="start"
                     trigger={
                       <button
                         type="button"
-                        className="inline-flex h-8 items-center gap-1 rounded-control-inner px-3 text-sm font-medium"
+                        className="inline-flex h-[26px] items-center gap-1 rounded-[var(--r-control-inner)] px-3 text-sm font-medium"
                       >
                         Home
                         <Icon name="chevron-down" size={14} />
@@ -708,8 +710,10 @@ function GalleryBody() {
                       { id: "contact", label: "Contact" },
                     ]}
                   />
+                  <span className="h-4 w-px bg-line" />
                   <Segmented
                     bare
+                    compact
                     label="Layout"
                     value={layout}
                     onChange={setLayout}
@@ -829,7 +833,6 @@ function GalleryBody() {
       <Section title="Mobile">
         <div className="mb-4 flex items-center justify-between">
           <Menu
-            defaultOpen
             align="end"
             trigger={
               <Button size="touch" variant="secondary">
@@ -839,7 +842,6 @@ function GalleryBody() {
             items={edgeItems}
           />
           <Menu
-            defaultOpen
             align="end"
             trigger={
               <Button size="touch" variant="secondary">
@@ -902,7 +904,13 @@ function GalleryBody() {
               </Button>
             </div>
           </div>
-          <ToastRegion id="mobile" contained offset={56} className="shrink-0">
+          <ToastRegion
+            id="mobile"
+            contained
+            size="mobile"
+            offset={56}
+            className="relative shrink-0"
+          >
             <MobileTabBar
               value={tab}
               onChange={setTab}
@@ -1029,7 +1037,13 @@ function GalleryBody() {
             readOnly
             value="Focused field"
             aria-label="Focused field"
-            className="border-ink outline outline-2 outline-offset-2 outline-[rgba(10,10,10,0.4)]"
+            data-force-state="focus"
+          />
+          <Input
+            readOnly
+            value="Hover field"
+            aria-label="Hover field"
+            data-force-state="hover"
           />
         </div>
       </Section>
@@ -1086,6 +1100,7 @@ function GalleryBody() {
                 icon: <Icon name="duplicate" size={16} />,
                 kbd: "⌘D",
               },
+              { id: "view", label: "View live" },
               { id: "rename", label: "Rename", disabled: true },
               { type: "separator", id: "sep" },
               {
@@ -1097,6 +1112,140 @@ function GalleryBody() {
               },
             ]}
           />
+        </div>
+      </Section>
+
+      <Section title="States">
+        {(
+          ["primary", "secondary", "ghost", "danger", "destructive"] as const
+        ).map((variant) => (
+          <div key={variant} className="mt-3 flex flex-wrap items-center gap-2">
+            <Button variant={variant}>{variant}</Button>
+            <Button variant={variant} forceState="hover">
+              {variant} hover
+            </Button>
+            <Button variant={variant} forceState="focus">
+              {variant} focus
+            </Button>
+            <Button variant={variant} forceState="active">
+              {variant} active
+            </Button>
+            <Button variant={variant} forceState="disabled">
+              {variant} disabled
+            </Button>
+            <Button variant={variant} forceState="loading">
+              {variant} loading
+            </Button>
+          </div>
+        ))}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <IconButton label="Icon default">
+            <Icon name="ellipsis" size={16} />
+          </IconButton>
+          <IconButton label="Icon hover" forceState="hover">
+            <Icon name="ellipsis" size={16} />
+          </IconButton>
+          <IconButton label="Icon focus" forceState="focus">
+            <Icon name="ellipsis" size={16} />
+          </IconButton>
+          <IconButton label="Icon active" forceState="active">
+            <Icon name="ellipsis" size={16} />
+          </IconButton>
+          <IconButton label="Icon disabled" forceState="disabled">
+            <Icon name="ellipsis" size={16} />
+          </IconButton>
+        </div>
+        <div className="mt-4 grid max-w-[440px] gap-3">
+          <Input defaultValue="Name" aria-label="State field" />
+          <Input defaultValue="Name" aria-label="State hover field" data-force-state="hover" />
+          <Input defaultValue="Name" aria-label="State focus field" data-force-state="focus" />
+          <Input defaultValue="" aria-label="State error field" data-force-state="error" aria-invalid />
+          <Input defaultValue="Name" aria-label="State disabled field" data-force-state="disabled" disabled />
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-4">
+          <Toggle checked onChange={() => undefined} label="Toggle on" />
+          <Toggle checked={false} onChange={() => undefined} label="Toggle off" />
+          <Toggle checked onChange={() => undefined} label="Toggle on hover" forceState="hover" />
+          <Toggle checked={false} onChange={() => undefined} label="Toggle off hover" forceState="hover" />
+          <Toggle checked onChange={() => undefined} label="Toggle on focus" forceState="focus" />
+          <Toggle checked={false} onChange={() => undefined} label="Toggle off focus" forceState="focus" />
+          <Toggle checked onChange={() => undefined} label="Toggle on disabled" forceState="disabled" />
+          <Toggle checked={false} onChange={() => undefined} label="Toggle off disabled" forceState="disabled" />
+          <Segmented
+            label="State layout"
+            value="desktop"
+            onChange={() => undefined}
+            options={[
+              { value: "desktop", label: "Desktop" },
+              { value: "mobile", label: "Mobile" },
+            ]}
+          />
+          <Segmented
+            label="State layout hover"
+            forceState="hover"
+            value="desktop"
+            onChange={() => undefined}
+            options={[
+              { value: "desktop", label: "Desktop" },
+              { value: "mobile", label: "Mobile" },
+            ]}
+          />
+          <Segmented
+            label="State layout focus"
+            forceState="focus"
+            value="desktop"
+            onChange={() => undefined}
+            options={[
+              { value: "desktop", label: "Desktop" },
+              { value: "mobile", label: "Mobile" },
+            ]}
+          />
+          <Segmented
+            label="State layout active"
+            forceState="active"
+            value="desktop"
+            onChange={() => undefined}
+            options={[
+              { value: "desktop", label: "Desktop" },
+              { value: "mobile", label: "Mobile" },
+            ]}
+          />
+          <Segmented
+            label="State layout disabled"
+            forceState="disabled"
+            value="desktop"
+            onChange={() => undefined}
+            options={[
+              { value: "desktop", label: "Desktop" },
+              { value: "mobile", label: "Mobile" },
+            ]}
+          />
+        </div>
+        <div className="mt-4 max-w-[240px]">
+          <Menu
+            preview
+            trigger={<button type="button">Menu states</button>}
+            items={[
+              { id: "duplicate", label: "Duplicate", forceState: "active" },
+              { id: "rename", label: "Rename", disabled: true, forceState: "disabled" },
+            ]}
+          />
+        </div>
+        <div className="mt-4 max-w-[240px]">
+          <SidebarRow href="#sites">Sidebar</SidebarRow>
+          <SidebarRow href="#hover" forceState="hover">
+            Sidebar hover
+          </SidebarRow>
+          <SidebarRow href="#selected" selected>
+            Sidebar selected
+          </SidebarRow>
+          <SidebarRow href="#focus" forceState="focus">
+            Sidebar focus
+          </SidebarRow>
+        </div>
+        <div className="mt-4 grid max-w-[440px] gap-3">
+          <CopyField value="rivertonhouse.co.uk" label="Copy hover" forceState="hover" />
+          <CopyField value="rivertonhouse.co.uk" label="Copy focus" forceState="focus" />
         </div>
       </Section>
 

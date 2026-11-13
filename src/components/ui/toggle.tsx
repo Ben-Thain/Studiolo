@@ -7,6 +7,7 @@ type ToggleProps = {
   disabled?: boolean;
   touch?: boolean;
   size?: "desktop" | "touch";
+  forceState?: "hover" | "focus" | "active" | "disabled";
 };
 
 export function Toggle({
@@ -16,6 +17,7 @@ export function Toggle({
   disabled = false,
   touch = false,
   size,
+  forceState,
 }: ToggleProps) {
   const resolved = size ?? (touch ? "touch" : undefined);
   return (
@@ -24,7 +26,8 @@ export function Toggle({
       role="switch"
       aria-checked={checked}
       aria-label={label}
-      disabled={disabled}
+      disabled={disabled || forceState === "disabled"}
+      data-force-state={forceState}
       onClick={() => onChange(!checked)}
       className={cn(
         "inline-flex shrink-0 items-center justify-center rounded-full",

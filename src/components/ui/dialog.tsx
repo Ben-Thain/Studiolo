@@ -31,19 +31,25 @@ function DialogPanel({
   inline?: boolean;
   panelRef?: Ref<HTMLDivElement>;
 }) {
+  const descriptionId = useId();
   return (
     <div
       ref={panelRef}
       role="dialog"
       aria-modal={inline ? undefined : true}
       aria-labelledby={labelledBy}
+      aria-describedby={lead ? descriptionId : undefined}
       data-inline={inline ? "dialog" : undefined}
       className="w-[440px] max-w-full rounded-dialog bg-bg p-6 shadow-dialog max-[479px]:w-[calc(100vw-32px)]"
     >
       <h2 id={labelledBy} className="text-lg leading-6 font-medium text-ink">
         {title}
       </h2>
-      {lead ? <p className="mt-2 text-sm leading-5 text-ink-2">{lead}</p> : null}
+      {lead ? (
+        <p id={descriptionId} className="mt-2 text-sm leading-5 text-ink-2">
+          {lead}
+        </p>
+      ) : null}
       {children}
       {actions ? (
         <div className="mt-6 flex justify-end gap-2 max-[479px]:flex-col max-[479px]:items-stretch [&>button]:max-[479px]:w-full">

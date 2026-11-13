@@ -7,16 +7,22 @@ import type { ControlSize } from "./field";
 
 type Notice = "copied" | "error" | null;
 
-type CopyFieldProps = {
+type CopyFieldBase = {
   value: string;
-  label?: string;
   icon?: "globe" | "none";
   size?: ControlSize;
   touch?: boolean;
   id?: string;
   "aria-invalid"?: boolean;
   "aria-describedby"?: string;
+  forceState?: "hover" | "focus";
 };
+
+type CopyFieldProps = CopyFieldBase &
+  (
+    | { label: string; "aria-label"?: string }
+    | { label?: undefined; "aria-label": string }
+  );
 
 export function CopyField({
   value,
@@ -27,6 +33,8 @@ export function CopyField({
   id,
   "aria-invalid": ariaInvalid,
   "aria-describedby": ariaDescribedBy,
+  "aria-label": ariaLabel,
+  forceState,
 }: CopyFieldProps) {
   const resolved = size ?? (touch ? "touch" : undefined);
   const [notice, setNotice] = useState<Notice>(null);
@@ -56,13 +64,15 @@ export function CopyField({
     resolved === "touch"
       ? "size-11"
       : resolved === "desktop"
-        ? "size-8"
-        : "size-11 sm:size-8";
+        ? "size-7"
+        : "size-11 sm:size-7";
   const iconSize = resolved === "desktop" ? 16 : resolved === "touch" ? 20 : 16;
 
   return (
+    <>
     <div
       data-copy-field=""
+      data-force-state={forceState}
       className={cn(
         "flex items-center gap-2 rounded-control border border-line bg-bg px-3 focus-within:border-ink focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[rgba(10,10,10,0.4)]",
         fieldHeight,
@@ -77,8 +87,8 @@ export function CopyField({
         value={value}
         aria-invalid={ariaInvalid}
         aria-describedby={ariaDescribedBy}
-        aria-label={id ? undefined : label}
-        className="tabular h-full min-w-0 flex-1 bg-transparent text-ink outline-none"
+        aria-label={id ? undefined : (ariaLabel ?? label)}
+        className="tabular min-w-0 flex-1 bg-transparent text-ink outline-none"
       />
       {notice ? (
         <span
@@ -95,7 +105,7 @@ export function CopyField({
         aria-label="Copy"
         onClick={copy}
         className={cn(
-          "inline-flex shrink-0 items-center justify-center rounded-control text-ink-2 hover:bg-fill-hover active:bg-fill-selected",
+          "inline-flex shrink-0 items-center justify-center rounded-[var(--r-control-inner)] text-ink-2 hover:bg-fill-hover active:bg-fill-selected",
           buttonSize,
         )}
       >
@@ -105,9 +115,10 @@ export function CopyField({
           className={resolved ? undefined : "size-5 sm:size-4"}
         />
       </button>
-      <span aria-live="polite" className="sr-only">
-        {notice === "copied" ? "Copied" : notice === "error" ? "Couldn't copy" : ""}
-      </span>
     </div>
+    <span aria-live="polite" className="sr-only">
+      {notice === "copied" ? "Copied" : notice === "error" ? "Couldn't copy" : ""}
+    </span>
+    </>
   );
 }

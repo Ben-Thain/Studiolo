@@ -18,7 +18,7 @@ describe("CopyField", () => {
       value: { writeText },
     });
 
-    render(<CopyField value="rivertonhouse.co.uk" />);
+    render(<CopyField value="rivertonhouse.co.uk" label="Live at" />);
     const live = document.querySelector("[aria-live='polite']");
 
     expect(live?.textContent).toBe("");

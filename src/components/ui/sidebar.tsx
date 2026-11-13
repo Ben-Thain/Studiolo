@@ -17,12 +17,14 @@ export function SidebarFooter({ children }: { children: ReactNode }) {
 export function SidebarShell({
   header,
   children,
+  extra,
   footer,
   navLabel,
   className,
 }: {
   header: ReactNode;
   children: ReactNode;
+  extra?: ReactNode;
   footer?: ReactNode;
   navLabel: string;
   className?: string;
@@ -35,12 +37,10 @@ export function SidebarShell({
       )}
     >
       <SidebarHeader>{header}</SidebarHeader>
-      <nav
-        aria-label={navLabel}
-        className="min-h-0 flex-1 overflow-y-auto px-2 py-2"
-      >
-        {children}
-      </nav>
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+        <nav aria-label={navLabel}>{children}</nav>
+        {extra}
+      </div>
       {footer ? <SidebarFooter>{footer}</SidebarFooter> : null}
     </div>
   );
@@ -76,28 +76,52 @@ export function SidebarRow({
   icon,
   children,
   selected = false,
-  href = "#",
-  as: Component = "a",
+  href,
+  as,
+  forceState,
 }: {
   icon?: ReactNode;
   children: ReactNode;
   selected?: boolean;
   href?: string;
   as?: ElementType;
+  forceState?: "hover" | "focus" | "active";
 }) {
+  const className = cn(
+    "flex h-10 w-full items-center gap-3 rounded-control px-2 text-left text-sm text-ink",
+    selected
+      ? "bg-fill-selected font-medium"
+      : "font-normal hover:bg-fill-hover active:bg-fill-selected",
+  );
+  const content = (
+    <>
+      {icon ? <span className="text-ink-2">{icon}</span> : null}
+      <span className="min-w-0 truncate">{children}</span>
+    </>
+  );
+  if (!href) {
+    return (
+      <button
+        type="button"
+        data-sidebar-row=""
+        data-force-state={forceState}
+        aria-current={selected ? "page" : undefined}
+        className={className}
+      >
+        {content}
+      </button>
+    );
+  }
+  const Component = as ?? "a";
   return (
     <Component
       href={href}
+      data-sidebar-row=""
+      data-force-state={forceState}
       aria-current={selected ? "page" : undefined}
-      className={cn(
-        "flex h-10 w-full items-center gap-3 rounded-control px-2 text-left text-sm text-ink",
-        selected
-          ? "bg-fill-selected font-medium"
-          : "font-normal hover:bg-fill-hover active:bg-fill-selected",
-      )}
+      className={className}
     >
-      {icon ? <span className="text-ink-2">{icon}</span> : null}
-      <span className="min-w-0 truncate">{children}</span>
+      {content}
     </Component>
   );
 }

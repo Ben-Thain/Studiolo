@@ -82,6 +82,25 @@ describe("Dialog", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(document.activeElement).toBe(open);
   });
+
+  it("exposes the lead as the accessible description", () => {
+    const lead = "The site can be restored for 30 days.";
+    render(
+      <Dialog open title="Delete Riverton House?" lead={lead}>
+        <p>Body</p>
+      </Dialog>,
+    );
+    const dialog = screen.getByRole("dialog", { name: "Delete Riverton House?" });
+    const describedBy = dialog.getAttribute("aria-describedby");
+    expect(describedBy).toBeTruthy();
+    expect(document.getElementById(describedBy ?? "")?.textContent).toBe(lead);
+    expect(
+      screen.getByRole("dialog", {
+        name: "Delete Riverton House?",
+        description: lead,
+      }),
+    ).toBeTruthy();
+  });
 });
 
 describe("Sheet", () => {
@@ -90,6 +109,9 @@ describe("Sheet", () => {
     render(<SheetHarness />);
     const trigger = screen.getByRole("button", { name: "Trigger" });
     await user.click(trigger);
+    expect(
+      screen.getByRole("dialog", { name: "Publish Riverton House" }),
+    ).toBeTruthy();
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(document.activeElement).toBe(trigger);

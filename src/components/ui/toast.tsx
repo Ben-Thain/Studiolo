@@ -20,6 +20,8 @@ export type ToastAction = {
   onClick: () => void;
 };
 
+export type ToastSize = "mobile" | "desktop" | "auto";
+
 export type ToastOptions = {
   message: string;
   action?: ToastAction;
@@ -131,11 +133,18 @@ export function useToast() {
   return context;
 }
 
-function ToastCard({ toast: item }: { toast: ToastRecord }) {
+function ToastCard({
+  toast: item,
+  size,
+}: {
+  toast: ToastRecord;
+  size: ToastSize;
+}) {
   const { dismiss, pause, resume } = useToast();
   return (
     <div
       data-toast=""
+      data-toast-size={size}
       onMouseEnter={() => pause(item.id)}
       onMouseLeave={() => resume(item.id)}
       onFocus={(event) => {
@@ -146,7 +155,14 @@ function ToastCard({ toast: item }: { toast: ToastRecord }) {
         if (event.currentTarget.contains(event.relatedTarget as Node)) return;
         resume(item.id);
       }}
-      className="on-ink pointer-events-auto flex w-full min-h-[52px] max-w-[560px] items-center gap-3 rounded-pop bg-ink px-4 py-3.5 text-sm leading-5 text-bg shadow-float sm:min-h-12 sm:w-auto sm:text-[13px] sm:leading-5"
+      className={cn(
+        "on-ink pointer-events-auto flex items-center gap-3 rounded-pop bg-ink px-4 text-bg shadow-float",
+        size === "mobile" && "min-h-[52px] w-full py-2.5 text-sm leading-5",
+        size === "desktop" &&
+          "min-h-12 w-auto max-w-[560px] py-2 text-[13px] leading-5",
+        size === "auto" &&
+          "min-h-[52px] w-full max-w-[560px] py-2.5 text-sm leading-5 sm:min-h-12 sm:w-auto sm:py-2 sm:text-[13px] sm:leading-5",
+      )}
     >
       <span className="min-w-0 flex-1">{item.message}</span>
       {item.action ? (
@@ -169,12 +185,14 @@ export function ToastRegion({
   id,
   offset = 0,
   contained = false,
+  size = "auto",
   children,
   className,
 }: {
   id: string;
   offset?: number;
   contained?: boolean;
+  size?: ToastSize;
   children?: ReactNode;
   className?: string;
 }) {
@@ -209,7 +227,7 @@ export function ToastRegion({
   const cards = (
     <div className="flex w-full flex-col items-center gap-2">
       {mine.map((item) => (
-        <ToastCard key={item.id} toast={item} />
+        <ToastCard key={item.id} toast={item} size={size} />
       ))}
     </div>
   );
@@ -218,7 +236,8 @@ export function ToastRegion({
     ["--mobile-bottom-offset" as string]: `${offset}px`,
   };
   if (contained) {
-    viewportStyle.bottom = `calc(8px + ${offset}px)`;
+    viewportStyle.bottom =
+      size === "mobile" ? `calc(16px + ${offset}px)` : "24px";
   } else if (wide && frame) {
     viewportStyle.left = frame.left;
     viewportStyle.width = frame.width;
@@ -231,7 +250,10 @@ export function ToastRegion({
       data-toast-viewport={id}
       className={
         contained
-          ? "pointer-events-none absolute inset-x-4 z-50 flex justify-center"
+          ? cn(
+              "pointer-events-none absolute flex justify-center",
+              size === "mobile" ? "inset-x-4" : "inset-x-0",
+            )
           : "toast-viewport"
       }
       style={viewportStyle}

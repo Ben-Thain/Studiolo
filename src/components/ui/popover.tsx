@@ -66,7 +66,7 @@ function PopoverPanel({
             }
       }
       className={cn(
-        "z-40 w-[360px] rounded-pop border border-line bg-bg shadow-pop",
+        "z-40 w-[360px] max-w-[calc(100vw-16px)] rounded-pop border border-line bg-bg shadow-pop",
         panelClassName,
       )}
     >

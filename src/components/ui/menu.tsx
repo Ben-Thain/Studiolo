@@ -28,6 +28,7 @@ export type MenuItem = {
   destructive?: boolean;
   disabled?: boolean;
   onSelect?: () => void;
+  forceState?: "hover" | "active" | "focus" | "disabled";
 };
 
 export type MenuSeparator = { type: "separator"; id: string };
@@ -41,6 +42,7 @@ type MenuProps = {
   items: MenuEntry[];
   align?: "start" | "end";
   defaultOpen?: boolean;
+  preview?: boolean;
 };
 
 function isItem(entry: MenuEntry): entry is MenuItem {
@@ -60,6 +62,7 @@ export function Menu({
   items,
   align = "end",
   defaultOpen = false,
+  preview = false,
 }: MenuProps) {
   const [open, setOpen] = useState(defaultOpen);
   const mounted = useClient();
@@ -183,14 +186,25 @@ export function Menu({
     };
   }, [open, align, mounted]);
 
+  const didFocus = useRef(false);
+
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      didFocus.current = false;
+      return;
+    }
+    if (!box || didFocus.current) return;
+    didFocus.current = true;
     if (skipFocus.current) {
       skipFocus.current = false;
-    } else {
-      const first = enabled[0];
-      document.getElementById(first ? `${menuId}-${first.id}` : "")?.focus();
+      return;
     }
+    const first = enabled[0];
+    document.getElementById(first ? `${menuId}-${first.id}` : "")?.focus();
+  }, [open, box, menuId, enabled]);
+
+  useEffect(() => {
+    if (!open) return;
     function onPointer(event: globalThis.MouseEvent) {
       const target = event.target as Node;
       if (
@@ -203,9 +217,7 @@ export function Menu({
     }
     document.addEventListener("mousedown", onPointer);
     return () => document.removeEventListener("mousedown", onPointer);
-    // enabled is derived from items; the menu opens once per toggle.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, menuId]);
+  }, [open]);
 
   const triggerNode = cloneElement(trigger, {
     id: triggerId,
@@ -222,6 +234,36 @@ export function Menu({
       setOpen(true);
     },
   });
+
+  if (preview) {
+    return (
+      <div className="w-[220px] rounded-pop border border-line bg-bg p-1">
+        {items.map((entry) =>
+          entry.type === "separator" ? (
+            <div key={entry.id} className="my-1 h-px bg-line" />
+          ) : (
+            <button
+              key={entry.id}
+              type="button"
+              role="menuitem"
+              disabled={entry.disabled || entry.forceState === "disabled"}
+              data-force-state={entry.forceState}
+              className={cn(
+                "flex h-9 w-full items-center gap-2 rounded-control-inner px-2 text-left text-[13px] leading-5",
+                entry.disabled || entry.forceState === "disabled"
+                  ? "text-ink-4"
+                  : entry.destructive
+                    ? "text-error"
+                    : "text-ink",
+              )}
+            >
+              <span className="min-w-0 flex-1 truncate">{entry.label}</span>
+            </button>
+          ),
+        )}
+      </div>
+    );
+  }
 
   return (
     <div ref={rootRef} className="relative">
@@ -259,7 +301,8 @@ export function Menu({
                     type="button"
                     role="menuitem"
                     tabIndex={entry.id === activeId ? 0 : -1}
-                    disabled={entry.disabled}
+                    disabled={entry.disabled || entry.forceState === "disabled"}
+                    data-force-state={entry.forceState}
                     onClick={() => select(entry)}
                     onMouseEnter={() => {
                       if (!entry.disabled) setActiveId(entry.id);
@@ -268,7 +311,7 @@ export function Menu({
                       "flex w-full items-center gap-2 rounded-control-inner px-2 text-left",
                       "h-11 text-base leading-6 sm:h-9 sm:text-[13px] sm:leading-5",
                       "active:bg-fill-selected",
-                      entry.disabled
+                      entry.disabled || entry.forceState === "disabled"
                         ? "text-ink-4"
                         : entry.destructive
                           ? "text-error"

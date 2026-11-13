@@ -136,3 +136,67 @@
     animation: none;
   }
 }
+
+[data-gallery] [data-force-state="focus"] {
+  outline: 2px solid rgba(10, 10, 10, 0.4);
+  outline-offset: 2px;
+}
+
+[data-gallery] [data-variant="primary"][data-force-state="hover"],
+[data-gallery] [data-variant="primary"][data-force-state="active"] {
+  background-color: var(--ink-hover);
+}
+
+[data-gallery] [data-variant="destructive"][data-force-state="hover"],
+[data-gallery] [data-variant="destructive"][data-force-state="active"] {
+  background-color: var(--error-hover);
+}
+
+[data-gallery] [data-variant="secondary"][data-force-state="hover"],
+[data-gallery] [data-variant="ghost"][data-force-state="hover"],
+[data-gallery] [data-variant="danger"][data-force-state="hover"],
+[data-gallery] [data-variant="icon"][data-force-state="hover"],
+[data-gallery] [data-copy-field][data-force-state="hover"],
+[data-gallery] input[data-force-state="hover"],
+[data-gallery] [data-sidebar-row][data-force-state="hover"],
+[data-gallery] [role="radiogroup"][data-force-state="hover"] [aria-checked="false"] {
+  background-color: var(--fill-hover);
+}
+
+[data-gallery] [data-variant="secondary"][data-force-state="active"],
+[data-gallery] [data-variant="ghost"][data-force-state="active"],
+[data-gallery] [data-variant="danger"][data-force-state="active"],
+[data-gallery] [data-variant="icon"][data-force-state="active"],
+[data-gallery] [role="radiogroup"][data-force-state="active"] [aria-checked="true"] {
+  background-color: var(--fill-selected);
+}
+
+[data-gallery] [role="menuitem"][data-force-state="active"],
+[data-gallery] [role="menuitem"][data-force-state="hover"] {
+  background-color: var(--fill-selected);
+}
+
+[data-gallery] [role="menuitem"][data-force-state="disabled"] {
+  color: var(--ink-4);
+}
+
+[data-gallery] input[data-force-state="focus"],
+[data-gallery] textarea[data-force-state="focus"],
+[data-gallery] [data-copy-field][data-force-state="focus"] {
+  border-color: var(--ink);
+}
+
+[data-gallery] input[data-force-state="disabled"],
+[data-gallery] textarea[data-force-state="disabled"] {
+  background-color: var(--surface-2);
+  color: var(--ink-4);
+}
+
+[data-gallery] input[data-force-state="error"] {
+  border-color: var(--error);
+}
+
+[data-gallery] [role="radiogroup"][data-force-state="disabled"] button {
+  color: var(--ink-4);
+  background-color: transparent;
+}

@@ -88,9 +88,55 @@ test("gallery matches the real panels at 1440", async ({ page }) => {
     expect(toastBox.x + toastBox.width).toBeLessThanOrEqual(columnBox.x + columnBox.width + 1);
   }
   const toastCard = page.locator("[data-toast]").filter({ hasText: "Duplicated North Light" });
-  const toastHeight = await toastCard.evaluate((element) => parseFloat(getComputedStyle(element).height));
-  expect(toastHeight).toBeGreaterThanOrEqual(48);
+  await expect(toastCard).toHaveCSS("height", "48px");
   await expect(toastCard).toHaveCSS("font-size", "13px");
+
+  const toastBoxes = await page.locator("[data-toast]").evaluateAll((elements) =>
+    elements.map((element) => {
+      const card = element.getBoundingClientRect();
+      const frame = element.closest("[data-frame]")?.getBoundingClientRect();
+      const text = element.querySelector("span");
+      const line = text ? parseFloat(getComputedStyle(text).lineHeight) : 20;
+      const lines = text ? Math.round(text.getBoundingClientRect().height / line) : 1;
+      const mobile = Boolean(element.closest("[data-frame='mobile']"));
+      return {
+        x: card.x,
+        y: card.y,
+        width: card.width,
+        height: card.height,
+        right: card.right,
+        bottom: card.bottom,
+        lines,
+        mobile,
+        frame: frame
+          ? { x: frame.x, y: frame.y, right: frame.right, bottom: frame.bottom }
+          : null,
+      };
+    }),
+  );
+  expect(toastBoxes.length).toBeGreaterThanOrEqual(3);
+  for (const box of toastBoxes) {
+    expect(box.frame).toBeTruthy();
+    if (!box.frame) continue;
+    expect(box.x).toBeGreaterThanOrEqual(box.frame.x - 1);
+    expect(box.right).toBeLessThanOrEqual(box.frame.right + 1);
+    expect(box.y).toBeGreaterThanOrEqual(box.frame.y - 1);
+    expect(box.bottom).toBeLessThanOrEqual(box.frame.bottom + 1);
+    if (box.lines <= 1) {
+      expect(box.height).toBe(box.mobile ? 52 : 48);
+    }
+  }
+  for (let left = 0; left < toastBoxes.length; left += 1) {
+    for (let right = left + 1; right < toastBoxes.length; right += 1) {
+      const a = toastBoxes[left];
+      const b = toastBoxes[right];
+      const overlaps = a.x < b.right && a.right > b.x && a.y < b.bottom && a.bottom > b.y;
+      expect(overlaps).toBe(false);
+    }
+  }
+  await page.waitForTimeout(11000);
+  await expect(page.getByText("Duplicated North Light. The copy is a draft.")).toBeVisible();
+  await expect(page.getByText("North Light deleted").first()).toBeVisible();
 
   await page.getByRole("button", { name: "Open delete dialog" }).click();
   const liveDialog = page
@@ -102,11 +148,24 @@ test("gallery matches the real panels at 1440", async ({ page }) => {
   await expect(liveDialog).toBeHidden();
   await expect(page.getByRole("button", { name: "Open delete dialog" })).toBeFocused();
 
-  const menuButton = page.getByRole("button", { name: "Open menu" });
-  await menuButton.click();
-  await expect(page.getByRole("menu").last()).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(menuButton).toBeFocused();
+  async function exerciseMenu(name: string) {
+    const trigger = page.getByRole("button", { name });
+    await trigger.scrollIntoViewIfNeeded();
+    await trigger.click();
+    await expect(page.locator(":focus")).toHaveAttribute("role", "menuitem");
+    const first = await page.locator(":focus").innerText();
+    await page.keyboard.press("ArrowDown");
+    await expect(page.locator(":focus")).toHaveAttribute("role", "menuitem");
+    expect(await page.locator(":focus").innerText()).not.toBe(first);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+    await trigger.click();
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+  }
+  await exerciseMenu("Open menu");
+  await exerciseMenu("Actions for North Light");
 
   const publish = page.getByRole("button", { name: "Publish", exact: true }).first();
   await publish.click();
@@ -116,6 +175,36 @@ test("gallery matches the real panels at 1440", async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(publishDialog).toBeHidden();
   await expect(publish).toBeFocused();
+
+  const contained = await page.evaluate(() => {
+    function insets(element: Element) {
+      const box = element.getBoundingClientRect();
+      return Array.from(element.children).map((child) => {
+        const childBox = child.getBoundingClientRect();
+        return {
+          top: childBox.top - box.top,
+          left: childBox.left - box.left,
+          bottom: box.bottom - childBox.bottom,
+          right: box.right - childBox.right,
+        };
+      });
+    }
+    return [
+      ...Array.from(document.querySelectorAll("[data-picker], [data-copy-field]")).map(
+        (element) => insets(element),
+      ),
+    ];
+  });
+  expect(contained.length).toBeGreaterThan(0);
+  for (const children of contained) {
+    expect(children.length).toBeGreaterThan(0);
+    for (const inset of children) {
+      expect(inset.top).toBeGreaterThanOrEqual(1);
+      expect(inset.left).toBeGreaterThanOrEqual(1);
+      expect(inset.bottom).toBeGreaterThanOrEqual(1);
+      expect(inset.right).toBeGreaterThanOrEqual(1);
+    }
+  }
 
   const touch = page.getByRole("button", { name: "Touch" });
   await expect(touch).toHaveCSS("height", "48px");
@@ -192,6 +281,7 @@ test("gallery matches the real panels at 1440", async ({ page }) => {
 });
 
 test("mobile gallery stays on the page and uses real mobile panels", async ({ page }) => {
+  test.setTimeout(60_000);
   await page.setViewportSize({ width: 393, height: 852 });
   await page.goto("/dev/ui");
 
@@ -210,28 +300,35 @@ test("mobile gallery stays on the page and uses real mobile panels", async ({ pa
   const count = await targets.count();
   expect(count).toBeGreaterThan(0);
   for (let index = 0; index < count; index += 1) {
-    const box = await targets.nth(index).boundingBox();
+    const target = targets.nth(index);
+    const insideToast = await target.evaluate((element) =>
+      Boolean(element.closest("[data-toast]")),
+    );
+    if (insideToast) continue;
+    const box = await target.boundingBox();
     if (!box) continue;
     expect(box.width).toBeGreaterThanOrEqual(44);
     expect(box.height).toBeGreaterThanOrEqual(44);
   }
 
-  await page.getByRole("button", { name: "Left edge" }).scrollIntoViewIfNeeded();
-  const menus = page.getByRole("menu");
-  await expect(menus).toHaveCount(2);
-  await expect.poll(async () => {
-    const box = await menus.first().boundingBox();
-    if (!box) return false;
-    return box.y >= 8 && box.y + box.height <= 844;
-  }).toBe(true);
-  for (const menu of await menus.all()) {
-    const box = await menu.boundingBox();
-    expect(box).toBeTruthy();
-    if (!box) continue;
-    expect(box.x).toBeGreaterThanOrEqual(8);
-    expect(box.x + box.width).toBeLessThanOrEqual(385);
-    expect(box.y).toBeGreaterThanOrEqual(8);
-    expect(box.y + box.height).toBeLessThanOrEqual(852 - 8);
+  for (const name of ["Left edge", "Right edge"]) {
+    const trigger = page.getByRole("button", { name });
+    await trigger.scrollIntoViewIfNeeded();
+    await trigger.click();
+    const menu = page.getByRole("menu");
+    await expect(menu).toHaveCount(1);
+    await expect.poll(async () => {
+      const box = await menu.boundingBox();
+      if (!box) return false;
+      return (
+        box.x >= 8 &&
+        box.x + box.width <= 385 &&
+        box.y >= 8 &&
+        box.y + box.height <= 844
+      );
+    }).toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
   }
 
   const sheet = page.locator("[data-inline='sheet']");
@@ -263,6 +360,10 @@ test("mobile gallery stays on the page and uses real mobile panels", async ({ pa
   const backBox = await back.boundingBox();
   expect(backBox?.height).toBeGreaterThanOrEqual(44);
 
+  const detailHeader = page
+    .locator("[data-frame='mobile'] header")
+    .filter({ has: page.getByRole("button", { name: "Back", exact: true }) });
+  await expect(detailHeader).toHaveCSS("height", "44px");
   const detail = page.getByRole("button", { name: "Back", exact: true });
   await expect(detail).toBeVisible();
   const detailBox = await detail.boundingBox();
@@ -271,4 +372,34 @@ test("mobile gallery stays on the page and uses real mobile panels", async ({ pa
   const tab = page.locator("[data-frame='mobile']").getByRole("link", { name: "Account", exact: true });
   const tabBox = await tab.boundingBox();
   expect(tabBox?.height).toBeGreaterThanOrEqual(44);
+  await tab.click();
+  await expect(page).toHaveURL(/#account$/);
+
+  await page.getByRole("button", { name: "Open publish sheet" }).dispatchEvent("click");
+  const liveSheet = page.locator("[role='dialog'][aria-modal='true']");
+  await expect(liveSheet).toHaveAccessibleName("Publish Riverton House");
+  const maxHeight = await liveSheet.evaluate((element) => getComputedStyle(element).maxHeight);
+  expect(maxHeight).not.toBe("none");
+  const scrolls = await liveSheet.locator("[data-sheet-body]").evaluate((element) => {
+    const filler = document.createElement("div");
+    filler.style.height = "2000px";
+    element.appendChild(filler);
+    return element.scrollHeight > element.clientHeight;
+  });
+  expect(scrolls).toBe(true);
+
+  const mobileToast = page.locator("[data-frame='mobile'] [data-toast]");
+  await expect(mobileToast).toHaveCSS("height", "52px");
+  await expect(mobileToast).toHaveCSS("font-size", "14px");
+  const oneLine = await page.locator("[data-toast]").evaluateAll((elements) =>
+    elements.map((element) => {
+      const text = element.querySelector("span");
+      const line = text ? parseFloat(getComputedStyle(text).lineHeight) : 20;
+      const lines = text ? Math.round(text.getBoundingClientRect().height / line) : 1;
+      return { lines, height: parseFloat(getComputedStyle(element).height) };
+    }),
+  );
+  for (const toast of oneLine) {
+    if (toast.lines <= 1) expect(toast.height).toBe(52);
+  }
 });

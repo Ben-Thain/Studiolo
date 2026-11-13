@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Icon, type IconName } from "./icons";
 
@@ -20,7 +21,12 @@ export function MobileNavBar({
   variant?: "default" | "detail";
 }) {
   const titled = (
-    <span className="block truncate text-base leading-5 font-medium text-ink">
+    <span
+      className={cn(
+        "block truncate font-medium text-ink",
+        variant === "detail" ? "text-base leading-6" : "text-base leading-5",
+      )}
+    >
       {title}
       {onTitle ? (
         <Icon name="chevron-down" size={14} className="ml-1 inline align-[-2px]" />
@@ -32,7 +38,7 @@ export function MobileNavBar({
     <header
       className={cn(
         "relative flex items-center border-b border-line bg-bg px-1",
-        subtitle || variant === "detail" ? "min-h-14" : "h-11",
+        subtitle ? "min-h-14" : "h-11",
       )}
     >
       {onBack ? (
@@ -85,7 +91,7 @@ export type MobileTab = {
   id: string;
   label: string;
   icon: IconName;
-  href: string;
+  href?: string;
 };
 
 export function MobileTabBar({
@@ -95,7 +101,7 @@ export function MobileTabBar({
 }: {
   tabs: MobileTab[];
   value: string;
-  onChange: (id: string) => void;
+  onChange?: (id: string) => void;
 }) {
   return (
     <nav
@@ -104,22 +110,56 @@ export function MobileTabBar({
     >
       {tabs.map((tab) => {
         const selected = tab.id === value;
+        const className = cn(
+          "flex h-14 flex-1 flex-col items-center justify-center gap-0.5 text-xs leading-4",
+          selected ? "font-medium text-ink" : "font-normal text-ink-2",
+        );
+        const onClick = (event: { preventDefault: () => void }) => {
+          if (onChange && !tab.href) event.preventDefault();
+          onChange?.(tab.id);
+        };
+        const content = (
+          <>
+            <Icon name={tab.icon} size={20} />
+            {tab.label}
+          </>
+        );
+        if (!tab.href) {
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              aria-current={selected ? "page" : undefined}
+              onClick={onClick}
+              className={className}
+            >
+              {content}
+            </button>
+          );
+        }
+        const internal = tab.href.startsWith("/") && !tab.href.startsWith("//");
+        if (internal) {
+          return (
+            <Link
+              key={tab.id}
+              href={tab.href}
+              aria-current={selected ? "page" : undefined}
+              onClick={onClick}
+              className={className}
+            >
+              {content}
+            </Link>
+          );
+        }
         return (
           <a
             key={tab.id}
             href={tab.href}
             aria-current={selected ? "page" : undefined}
-            onClick={(event) => {
-              event.preventDefault();
-              onChange(tab.id);
-            }}
-            className={cn(
-              "flex h-14 flex-1 flex-col items-center justify-center gap-0.5 text-xs leading-4",
-              selected ? "font-medium text-ink" : "font-normal text-ink-2",
-            )}
+            onClick={onClick}
+            className={className}
           >
-            <Icon name={tab.icon} size={20} />
-            {tab.label}
+            {content}
           </a>
         );
       })}

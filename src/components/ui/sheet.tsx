@@ -51,28 +51,31 @@ function SheetPanel({
       data-inline={inline ? "sheet" : undefined}
       style={{ transform: offset ? `translateY(${offset}px)` : undefined }}
       className={cn(
-        "rounded-t-sheet bg-bg shadow-dialog",
+        "flex max-h-[calc(100dvh-24px)] flex-col overflow-hidden rounded-t-sheet bg-bg shadow-dialog",
         snapping && "transition-transform duration-200 motion-reduce:transition-none",
       )}
     >
       <div
         ref={handleRef}
         data-sheet-handle=""
-        className="px-6 pt-2 touch-none"
+        className="shrink-0 px-6 pt-2 touch-none"
         style={{ touchAction: "none" }}
       >
         <div className="flex h-5 items-center justify-center">
           <span className="h-[5px] w-9 rounded-full bg-line" />
         </div>
-        <h2 className="mt-1 text-lg leading-6 font-medium text-ink">
+        <h2 id={labelledBy} className="mt-1 text-lg leading-6 font-medium text-ink">
           {title}
         </h2>
         {meta ? (
           <p className="mt-1 text-sm leading-5 text-ink-3">{meta}</p>
         ) : null}
       </div>
-      <div className="mx-6 mt-4 border-t border-line" />
-      <div className="px-6 pt-4 pb-[max(16px,env(safe-area-inset-bottom))]">
+      <div className="mx-6 mt-4 shrink-0 border-t border-line" />
+      <div
+        data-sheet-body=""
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pt-4 pb-[max(16px,env(safe-area-inset-bottom))]"
+      >
         {children}
       </div>
     </div>

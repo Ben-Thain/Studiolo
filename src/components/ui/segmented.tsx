@@ -14,6 +14,8 @@ type SegmentedProps = {
   options: SegmentedOption[];
   onChange: (value: string) => void;
   bare?: boolean;
+  compact?: boolean;
+  forceState?: "hover" | "focus" | "active" | "disabled";
 };
 
 export function Segmented({
@@ -22,6 +24,8 @@ export function Segmented({
   options,
   onChange,
   bare = false,
+  compact = false,
+  forceState,
 }: SegmentedProps) {
   const baseId = useId();
   const pending = useRef<string | null>(null);
@@ -67,12 +71,12 @@ export function Segmented({
     <div
       role="radiogroup"
       aria-label={label}
+      data-force-state={forceState}
       onKeyDown={onKey}
       className={cn(
-        "inline-flex h-8 items-center",
-        bare
-          ? ""
-          : "rounded-control border border-line bg-bg p-0.5",
+        "inline-flex items-center",
+        compact ? "h-[26px]" : "h-8",
+        bare ? "" : "rounded-control border border-line bg-bg p-0.5",
       )}
     >
       {options.map((option) => {
@@ -88,7 +92,7 @@ export function Segmented({
             onClick={() => onChange(option.value)}
             className={cn(
               "rounded-control-inner px-3 text-sm active:bg-fill-selected",
-              bare ? "h-8" : "h-7",
+              compact ? "h-[26px]" : bare ? "h-8" : "h-7",
               selected
                 ? "bg-fill-selected font-medium text-ink"
                 : "font-normal text-ink-2 hover:bg-fill-hover",

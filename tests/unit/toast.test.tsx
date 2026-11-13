@@ -59,6 +59,21 @@ describe("Toast", () => {
     vi.useRealTimers();
   });
 
+  it("uses min-h-12 and py-2 for a desktop one-line toast", () => {
+    render(
+      <ToastProvider>
+        <ToastRegion id="main" size="desktop" />
+        <Probe message="Saved" duration={0} />
+      </ToastProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Notify" }));
+    const card = screen.getByText("Saved").closest("[data-toast]");
+    const tokens = card?.className.split(/\s+/) ?? [];
+    expect(tokens).toContain("min-h-12");
+    expect(tokens).toContain("py-2");
+    expect(tokens).not.toContain("py-3.5");
+  });
+
   it("keeps a live region before the first toast", () => {
     render(<Harness message="Saved" />);
     const region = screen.getByRole("status");
