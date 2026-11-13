@@ -42,7 +42,7 @@ type MenuProps = {
   items: MenuEntry[];
   align?: "start" | "end";
   defaultOpen?: boolean;
-  preview?: boolean;
+  inline?: boolean;
 };
 
 function isItem(entry: MenuEntry): entry is MenuItem {
@@ -62,7 +62,7 @@ export function Menu({
   items,
   align = "end",
   defaultOpen = false,
-  preview = false,
+  inline = false,
 }: MenuProps) {
   const [open, setOpen] = useState(defaultOpen);
   const mounted = useClient();
@@ -163,7 +163,7 @@ export function Menu({
   }
 
   useLayoutEffect(() => {
-    if (!open) return;
+    if (!open || inline) return;
     function update() {
       const anchor = rootRef.current?.querySelector("button");
       const panel = menuRef.current;
@@ -184,7 +184,7 @@ export function Menu({
       window.removeEventListener("resize", update);
       window.removeEventListener("scroll", update, true);
     };
-  }, [open, align, mounted]);
+  }, [open, align, mounted, inline]);
 
   const didFocus = useRef(false);
 
@@ -193,7 +193,7 @@ export function Menu({
       didFocus.current = false;
       return;
     }
-    if (!box || didFocus.current) return;
+    if ((!inline && !box) || didFocus.current) return;
     didFocus.current = true;
     if (skipFocus.current) {
       skipFocus.current = false;
@@ -201,10 +201,10 @@ export function Menu({
     }
     const first = enabled[0];
     document.getElementById(first ? `${menuId}-${first.id}` : "")?.focus();
-  }, [open, box, menuId, enabled]);
+  }, [open, box, inline, menuId, enabled]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || inline) return;
     function onPointer(event: globalThis.MouseEvent) {
       const target = event.target as Node;
       if (
@@ -217,7 +217,7 @@ export function Menu({
     }
     document.addEventListener("mousedown", onPointer);
     return () => document.removeEventListener("mousedown", onPointer);
-  }, [open]);
+  }, [open, inline]);
 
   const triggerNode = cloneElement(trigger, {
     id: triggerId,
@@ -235,108 +235,82 @@ export function Menu({
     },
   });
 
-  if (preview) {
-    return (
-      <div className="w-[220px] rounded-pop border border-line bg-bg p-1">
-        {items.map((entry) =>
-          entry.type === "separator" ? (
-            <div key={entry.id} className="my-1 h-px bg-line" />
-          ) : (
-            <button
-              key={entry.id}
-              type="button"
-              role="menuitem"
-              disabled={entry.disabled || entry.forceState === "disabled"}
-              data-force-state={entry.forceState}
-              className={cn(
-                "flex h-9 w-full items-center gap-2 rounded-control-inner px-2 text-left text-[13px] leading-5",
-                entry.disabled || entry.forceState === "disabled"
-                  ? "text-ink-4"
-                  : entry.destructive
-                    ? "text-error"
-                    : "text-ink",
-              )}
-            >
-              <span className="min-w-0 flex-1 truncate">{entry.label}</span>
-            </button>
-          ),
-        )}
-      </div>
-    );
-  }
+  const panel = (
+    <div
+      ref={menuRef}
+      id={menuId}
+      role="menu"
+      data-inline={inline ? "menu" : undefined}
+      aria-orientation="vertical"
+      aria-labelledby={triggerId}
+      onKeyDown={onMenuKey}
+      style={
+        inline
+          ? { position: "static" }
+          : {
+              position: "fixed",
+              top: box?.top ?? 0,
+              left: box?.left ?? 0,
+              maxHeight: box?.maxHeight ?? "calc(100dvh - 16px)",
+              visibility: box ? "visible" : "hidden",
+              overflowY: "auto",
+            }
+      }
+      className={cn(
+        "z-40 min-w-[180px] rounded-pop border border-line bg-bg p-1 shadow-pop",
+        inline && "w-max",
+      )}
+    >
+      {items.map((entry) =>
+        entry.type === "separator" ? (
+          <div key={entry.id} role="separator" className="my-1 h-px bg-line" />
+        ) : (
+          <button
+            key={entry.id}
+            id={`${menuId}-${entry.id}`}
+            type="button"
+            role="menuitem"
+            tabIndex={entry.id === activeId ? 0 : -1}
+            disabled={entry.disabled || entry.forceState === "disabled"}
+            data-force-state={entry.forceState}
+            onClick={() => select(entry)}
+            onMouseEnter={() => {
+              if (!entry.disabled) setActiveId(entry.id);
+            }}
+            className={cn(
+              "flex w-full items-center gap-2 rounded-control-inner px-2 text-left",
+              "h-11 text-base leading-6 sm:h-9 sm:text-[13px] sm:leading-5",
+              "active:bg-fill-selected",
+              entry.disabled || entry.forceState === "disabled"
+                ? "text-ink-4"
+                : entry.destructive
+                  ? "text-error"
+                  : "text-ink",
+              entry.id === activeId && !entry.disabled && "bg-fill-selected",
+            )}
+          >
+            {entry.icon ? (
+              <span className="inline-flex [&>svg]:size-5 sm:[&>svg]:size-4">
+                {entry.icon}
+              </span>
+            ) : (
+              <span className="size-5 sm:size-4" />
+            )}
+            <span className="min-w-0 flex-1 truncate">{entry.label}</span>
+            {entry.kbd ? (
+              <span className="text-xs text-ink-3">{entry.kbd}</span>
+            ) : null}
+          </button>
+        ),
+      )}
+    </div>
+  );
 
   return (
     <div ref={rootRef} className="relative">
       {triggerNode}
-      {open && mounted
-        ? createPortal(
-            <div
-              ref={menuRef}
-              id={menuId}
-              role="menu"
-              aria-orientation="vertical"
-              aria-labelledby={triggerId}
-              onKeyDown={onMenuKey}
-              style={{
-                position: "fixed",
-                top: box?.top ?? 0,
-                left: box?.left ?? 0,
-                maxHeight: box?.maxHeight ?? "calc(100dvh - 16px)",
-                visibility: box ? "visible" : "hidden",
-                overflowY: "auto",
-              }}
-              className="z-40 min-w-[180px] rounded-pop border border-line bg-bg p-1 shadow-pop"
-            >
-              {items.map((entry) =>
-                entry.type === "separator" ? (
-                  <div
-                    key={entry.id}
-                    role="separator"
-                    className="my-1 h-px bg-line"
-                  />
-                ) : (
-                  <button
-                    key={entry.id}
-                    id={`${menuId}-${entry.id}`}
-                    type="button"
-                    role="menuitem"
-                    tabIndex={entry.id === activeId ? 0 : -1}
-                    disabled={entry.disabled || entry.forceState === "disabled"}
-                    data-force-state={entry.forceState}
-                    onClick={() => select(entry)}
-                    onMouseEnter={() => {
-                      if (!entry.disabled) setActiveId(entry.id);
-                    }}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-control-inner px-2 text-left",
-                      "h-11 text-base leading-6 sm:h-9 sm:text-[13px] sm:leading-5",
-                      "active:bg-fill-selected",
-                      entry.disabled || entry.forceState === "disabled"
-                        ? "text-ink-4"
-                        : entry.destructive
-                          ? "text-error"
-                          : "text-ink",
-                      entry.id === activeId && !entry.disabled && "bg-fill-selected",
-                    )}
-                  >
-                    {entry.icon ? (
-                      <span className="inline-flex [&>svg]:size-5 sm:[&>svg]:size-4">
-                        {entry.icon}
-                      </span>
-                    ) : (
-                      <span className="size-5 sm:size-4" />
-                    )}
-                    <span className="min-w-0 flex-1 truncate">{entry.label}</span>
-                    {entry.kbd ? (
-                      <span className="text-xs text-ink-3">{entry.kbd}</span>
-                    ) : null}
-                  </button>
-                ),
-              )}
-            </div>,
-            document.body,
-          )
-        : null}
+      {open && inline ? panel : null}
+      {open && !inline && mounted ? createPortal(panel, document.body) : null}
     </div>
   );
 }

@@ -181,7 +181,7 @@ function SiteSidebar() {
 
 function LayerTree() {
   return (
-    <div role="tree" aria-label="Layers">
+    <div>
       <div className="mt-4 flex h-8 items-center justify-between px-2 text-xs leading-4 text-ink-2">
         <span>Layers</span>
         <span className="inline-flex items-center gap-1 text-ink">
@@ -195,42 +195,58 @@ function LayerTree() {
           </button>
         </span>
       </div>
-      <button
-        type="button"
-        className="flex h-8 w-full items-center gap-2 rounded-control px-2 text-left text-sm hover:bg-fill-hover"
-      >
-        <Icon name="chevron-right" size={14} className="text-ink-3" />
-        Header
-      </button>
-      <button
-        type="button"
-        className="flex h-8 w-full items-center gap-2 rounded-control px-2 text-left text-sm hover:bg-fill-hover"
-      >
-        <Icon name="chevron-down" size={14} className="text-ink-3" />
-        Intro
-      </button>
-      <p className="flex h-8 items-center gap-2 pl-7 text-sm text-ink-2">Heading</p>
-      <p className="flex h-8 items-center gap-2 pl-7 text-sm text-ink-2">Intro</p>
-      <button
-        type="button"
-        className="flex h-8 w-full items-center gap-2 rounded-control bg-fill-selected px-2 pl-7 text-left text-sm font-medium"
-      >
-        <Icon name="image" size={16} className="text-ink-2" />
-        Hero image
-      </button>
-      <button
-        type="button"
-        className="flex h-8 w-full items-center gap-2 rounded-control px-2 text-left text-sm hover:bg-fill-hover"
-      >
-        <Icon name="chevron-down" size={14} className="text-ink-3" />
-        Projects
-      </button>
-      {["Clifton, York", "Bootham Terrace", "Heworth Hall"].map((name) => (
-        <p key={name} className="flex h-8 items-center gap-2 pl-7 text-sm text-ink">
-          <Icon name="image" size={16} className="text-ink-2" />
-          {name}
-        </p>
-      ))}
+      <ul aria-label="Layers">
+        <li>
+          <button
+            type="button"
+            className="flex h-8 w-full items-center gap-2 rounded-control px-2 text-left text-sm hover:bg-fill-hover"
+          >
+            <Icon name="chevron-right" size={14} className="text-ink-3" />
+            Header
+          </button>
+        </li>
+        <li>
+          <button
+            type="button"
+            className="flex h-8 w-full items-center gap-2 rounded-control px-2 text-left text-sm hover:bg-fill-hover"
+          >
+            <Icon name="chevron-down" size={14} className="text-ink-3" />
+            Intro
+          </button>
+        </li>
+        <li>
+          <p className="flex h-8 items-center gap-2 pl-7 text-sm text-ink-2">Heading</p>
+        </li>
+        <li>
+          <p className="flex h-8 items-center gap-2 pl-7 text-sm text-ink-2">Intro</p>
+        </li>
+        <li>
+          <button
+            type="button"
+            className="flex h-8 w-full items-center gap-2 rounded-control bg-fill-selected px-2 pl-7 text-left text-sm font-medium"
+          >
+            <Icon name="image" size={16} className="text-ink-2" />
+            Hero image
+          </button>
+        </li>
+        <li>
+          <button
+            type="button"
+            className="flex h-8 w-full items-center gap-2 rounded-control px-2 text-left text-sm hover:bg-fill-hover"
+          >
+            <Icon name="chevron-down" size={14} className="text-ink-3" />
+            Projects
+          </button>
+        </li>
+        {["Clifton, York", "Bootham Terrace", "Heworth Hall"].map((name) => (
+          <li key={name}>
+            <p className="flex h-8 items-center gap-2 pl-7 text-sm text-ink">
+              <Icon name="image" size={16} className="text-ink-2" />
+              {name}
+            </p>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -591,7 +607,12 @@ function GalleryBody() {
       <Section title="Duplicated site">
         <Shell minWidth="min-w-[960px]" height="h-[420px]">
           <HomeSidebar />
-          <ToastRegion id="duplicated" contained className="relative min-w-0 flex-1">
+          <ToastRegion
+            id="duplicated"
+            contained
+            size="desktop"
+            className="relative min-w-0 flex-1"
+          >
             <div className="px-8 pt-8">
               <PageHead
                 title="Sites"
@@ -621,7 +642,12 @@ function GalleryBody() {
       <Section title="Deleted site">
         <Shell minWidth="min-w-[960px]" height="h-[420px]">
           <HomeSidebar />
-          <ToastRegion id="deleted" contained className="relative min-w-0 flex-1">
+          <ToastRegion
+            id="deleted"
+            contained
+            size="desktop"
+            className="relative min-w-0 flex-1"
+          >
             <div className="px-8 pt-8">
               <PageHead title="Sites" lead="Open a site to edit it." />
               <SitesTable
@@ -831,6 +857,34 @@ function GalleryBody() {
       </Section>
 
       <Section title="Mobile">
+        <div className="mb-4 flex flex-col gap-4">
+          <div className="w-max max-w-full">
+            <Menu
+              inline
+              defaultOpen
+              align="start"
+              trigger={
+                <Button size="touch" variant="secondary">
+                  Pinned left
+                </Button>
+              }
+              items={edgeItems}
+            />
+          </div>
+          <div className="ml-auto w-max max-w-full">
+            <Menu
+              inline
+              defaultOpen
+              align="end"
+              trigger={
+                <Button size="touch" variant="secondary">
+                  Pinned right
+                </Button>
+              }
+              items={edgeItems}
+            />
+          </div>
+        </div>
         <div className="mb-4 flex items-center justify-between">
           <Menu
             align="end"
@@ -855,7 +909,7 @@ function GalleryBody() {
           data-frame="mobile"
           className="relative mx-auto flex h-[852px] w-full max-w-[393px] flex-col overflow-hidden rounded-dialog border border-line"
         >
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto pb-[84px]">
             <MobileNavBar
               title="Riverton House"
               subtitle="Home"
@@ -1167,6 +1221,8 @@ function GalleryBody() {
           <Toggle checked={false} onChange={() => undefined} label="Toggle off" />
           <Toggle checked onChange={() => undefined} label="Toggle on hover" forceState="hover" />
           <Toggle checked={false} onChange={() => undefined} label="Toggle off hover" forceState="hover" />
+          <Toggle checked onChange={() => undefined} label="Toggle on active" forceState="active" />
+          <Toggle checked={false} onChange={() => undefined} label="Toggle off active" forceState="active" />
           <Toggle checked onChange={() => undefined} label="Toggle on focus" forceState="focus" />
           <Toggle checked={false} onChange={() => undefined} label="Toggle off focus" forceState="focus" />
           <Toggle checked onChange={() => undefined} label="Toggle on disabled" forceState="disabled" />
@@ -1223,7 +1279,8 @@ function GalleryBody() {
         </div>
         <div className="mt-4 max-w-[240px]">
           <Menu
-            preview
+            inline
+            defaultOpen
             trigger={<button type="button">Menu states</button>}
             items={[
               { id: "duplicate", label: "Duplicate", forceState: "active" },

@@ -166,9 +166,22 @@
 [data-gallery] [data-variant="secondary"][data-force-state="active"],
 [data-gallery] [data-variant="ghost"][data-force-state="active"],
 [data-gallery] [data-variant="danger"][data-force-state="active"],
-[data-gallery] [data-variant="icon"][data-force-state="active"],
-[data-gallery] [role="radiogroup"][data-force-state="active"] [aria-checked="true"] {
+[data-gallery] [data-variant="icon"][data-force-state="active"] {
   background-color: var(--fill-selected);
+}
+
+[data-gallery] [role="radiogroup"][data-force-state="active"] [aria-checked="false"] {
+  background-color: var(--surface-2);
+}
+
+[data-gallery] [role="switch"][data-force-state="hover"][aria-checked="true"] > span,
+[data-gallery] [role="switch"][data-force-state="active"][aria-checked="true"] > span {
+  background-color: var(--ink-hover);
+}
+
+[data-gallery] [role="switch"][data-force-state="hover"][aria-checked="false"] > span,
+[data-gallery] [role="switch"][data-force-state="active"][aria-checked="false"] > span {
+  background-color: var(--ink-4);
 }
 
 [data-gallery] [role="menuitem"][data-force-state="active"],

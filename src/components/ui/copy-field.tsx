@@ -74,7 +74,7 @@ export function CopyField({
       data-copy-field=""
       data-force-state={forceState}
       className={cn(
-        "flex items-center gap-2 rounded-control border border-line bg-bg px-3 focus-within:border-ink focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[rgba(10,10,10,0.4)]",
+        "flex items-center gap-2 rounded-control border border-line bg-bg pl-3 pr-0.5 focus-within:border-ink focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[rgba(10,10,10,0.4)]",
         fieldHeight,
       )}
     >

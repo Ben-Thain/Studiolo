@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
 const allowedColours = new Set([
@@ -158,11 +159,11 @@ test("gallery matches the real panels at 1440", async ({ page }) => {
     await expect(page.locator(":focus")).toHaveAttribute("role", "menuitem");
     expect(await page.locator(":focus").innerText()).not.toBe(first);
     await page.keyboard.press("Escape");
-    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(page.locator("[role=menu]:not([data-inline])")).toHaveCount(0);
     await expect(trigger).toBeFocused();
     await trigger.click();
     await page.keyboard.press("Tab");
-    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(page.locator("[role=menu]:not([data-inline])")).toHaveCount(0);
   }
   await exerciseMenu("Open menu");
   await exerciseMenu("Actions for North Light");
@@ -315,7 +316,7 @@ test("mobile gallery stays on the page and uses real mobile panels", async ({ pa
     const trigger = page.getByRole("button", { name });
     await trigger.scrollIntoViewIfNeeded();
     await trigger.click();
-    const menu = page.getByRole("menu");
+    const menu = page.locator("[role=menu]:not([data-inline])");
     await expect(menu).toHaveCount(1);
     await expect.poll(async () => {
       const box = await menu.boundingBox();
@@ -375,7 +376,7 @@ test("mobile gallery stays on the page and uses real mobile panels", async ({ pa
   await tab.click();
   await expect(page).toHaveURL(/#account$/);
 
-  await page.getByRole("button", { name: "Open publish sheet" }).dispatchEvent("click");
+  await page.getByRole("button", { name: "Open publish sheet" }).click();
   const liveSheet = page.locator("[role='dialog'][aria-modal='true']");
   await expect(liveSheet).toHaveAccessibleName("Publish Riverton House");
   const maxHeight = await liveSheet.evaluate((element) => getComputedStyle(element).maxHeight);
@@ -391,15 +392,57 @@ test("mobile gallery stays on the page and uses real mobile panels", async ({ pa
   const mobileToast = page.locator("[data-frame='mobile'] [data-toast]");
   await expect(mobileToast).toHaveCSS("height", "52px");
   await expect(mobileToast).toHaveCSS("font-size", "14px");
-  const oneLine = await page.locator("[data-toast]").evaluateAll((elements) =>
-    elements.map((element) => {
-      const text = element.querySelector("span");
-      const line = text ? parseFloat(getComputedStyle(text).lineHeight) : 20;
-      const lines = text ? Math.round(text.getBoundingClientRect().height / line) : 1;
-      return { lines, height: parseFloat(getComputedStyle(element).height) };
+  const desktopToasts = page.locator("[data-frame='desktop'] [data-toast]");
+  expect(await desktopToasts.count()).toBeGreaterThanOrEqual(2);
+  const desktopCount = await desktopToasts.count();
+  for (let index = 0; index < desktopCount; index += 1) {
+    await expect(desktopToasts.nth(index)).toHaveCSS("height", "48px");
+    await expect(desktopToasts.nth(index)).toHaveCSS("font-size", "13px");
+  }
+});
+
+test("copy buttons, forced states, and axe rules", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/dev/ui");
+
+  const insets = await page.locator("[data-copy-field] button").evaluateAll((buttons) =>
+    buttons.map((button) => {
+      const field = button.closest("[data-copy-field]");
+      if (!(field instanceof HTMLElement)) return null;
+      const fieldBox = field.getBoundingClientRect();
+      const buttonBox = button.getBoundingClientRect();
+      const border = parseFloat(getComputedStyle(field).borderRightWidth);
+      return fieldBox.right - buttonBox.right - border;
     }),
   );
-  for (const toast of oneLine) {
-    if (toast.lines <= 1) expect(toast.height).toBe(52);
+  expect(insets.length).toBeGreaterThan(0);
+  for (const inset of insets) {
+    expect(inset).toBeGreaterThanOrEqual(1.5);
+    expect(inset).toBeLessThanOrEqual(2.5);
+  }
+
+  const onTrack = page.getByRole("switch", { name: "Toggle on disabled" }).locator("span").first();
+  const offTrack = page.getByRole("switch", { name: "Toggle off disabled" }).locator("span").first();
+  await expect(onTrack).toHaveCSS("background-color", "rgb(163, 163, 163)");
+  await expect(offTrack).toHaveCSS("background-color", "rgb(245, 245, 245)");
+
+  const disabledGroup = page.getByRole("radiogroup", { name: "State layout disabled" });
+  await expect(disabledGroup).toHaveAttribute("aria-disabled", "true");
+  const radios = disabledGroup.getByRole("radio");
+  expect(await radios.count()).toBe(2);
+  for (const radio of await radios.all()) {
+    await expect(radio).toBeDisabled();
+  }
+
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 393, height: 852 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/dev/ui");
+    const results = await new AxeBuilder({ page })
+      .withRules(["aria-required-parent", "aria-required-children", "label"])
+      .analyze();
+    expect(results.violations).toEqual([]);
   }
 });

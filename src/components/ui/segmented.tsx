@@ -15,6 +15,7 @@ type SegmentedProps = {
   onChange: (value: string) => void;
   bare?: boolean;
   compact?: boolean;
+  disabled?: boolean;
   forceState?: "hover" | "focus" | "active" | "disabled";
 };
 
@@ -25,6 +26,7 @@ export function Segmented({
   onChange,
   bare = false,
   compact = false,
+  disabled = false,
   forceState,
 }: SegmentedProps) {
   const baseId = useId();
@@ -67,12 +69,15 @@ export function Segmented({
     }
   }
 
+  const isDisabled = disabled || forceState === "disabled";
+
   return (
     <div
       role="radiogroup"
       aria-label={label}
+      aria-disabled={isDisabled || undefined}
       data-force-state={forceState}
-      onKeyDown={onKey}
+      onKeyDown={isDisabled ? undefined : onKey}
       className={cn(
         "inline-flex items-center",
         compact ? "h-[26px]" : "h-8",
@@ -88,14 +93,22 @@ export function Segmented({
             type="button"
             role="radio"
             aria-checked={selected}
-            tabIndex={selected ? 0 : -1}
-            onClick={() => onChange(option.value)}
+            tabIndex={isDisabled ? -1 : selected ? 0 : -1}
+            disabled={isDisabled}
+            onClick={() => {
+              if (!isDisabled) onChange(option.value);
+            }}
             className={cn(
               "rounded-control-inner px-3 text-sm active:bg-fill-selected",
               compact ? "h-[26px]" : bare ? "h-8" : "h-7",
-              selected
-                ? "bg-fill-selected font-medium text-ink"
-                : "font-normal text-ink-2 hover:bg-fill-hover",
+              isDisabled
+                ? "bg-transparent font-normal text-ink-4"
+                : selected
+                  ? "bg-fill-selected font-medium text-ink"
+                  : cn(
+                      "font-normal text-ink-2 hover:bg-fill-hover",
+                      forceState === "active" && "bg-surface-2",
+                    ),
             )}
           >
             {option.label}
