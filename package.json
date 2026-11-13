@@ -12,7 +12,8 @@
     "format:check": "prettier --check .",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "db:check": "bash scripts/db-check.sh"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

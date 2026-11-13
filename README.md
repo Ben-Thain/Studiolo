@@ -2,7 +2,7 @@
 
 Freeform personal-site editor. One account owns many sites; each site has its own pages, slug, settings, password, domain, submissions, and stats. Desktop and Mobile layouts share content and store position, size, and hidden per layout.
 
-This repository is the Next.js app for the existing Vercel project `studiolo` in team `ben-thain-s-projects`. Prompt 00 is the scaffold: placeholder page, env readers, and test runners. No auth, schema, or editor UI yet.
+This repository is the Next.js app for the existing Vercel project `studiolo` in team `ben-thain-s-projects`. Prompt 00 is the scaffold. Prompt 02a adds the local database schema. There is no auth UI or editor UI yet.
 
 ## Scripts
 
@@ -16,9 +16,12 @@ npm run test
 npx playwright install chromium
 npm run test:e2e
 npm run build
+npm run db:check
 ```
 
 `npm run dev` serves [http://localhost:3000](http://localhost:3000). Public env defaults to that origin when the variables are unset outside production.
+
+`npm run db:check` resets the local database named `studiolo_check`, applies `supabase/migrations`, and runs `supabase/checks/rls_and_constraints.sql`. It refuses any host other than localhost. It does not run in CI and it does not connect to a hosted Supabase project. Create the database once with `createdb studiolo_check`. The default URL is `postgresql:///studiolo_check`; override it with `LOCAL_DB_URL` when the socket needs a host, for example `LOCAL_DB_URL=postgresql://127.0.0.1/studiolo_check`. Without the Supabase CLI, the script creates a stub `auth.users` table and the `anon`, `authenticated`, and `service_role` roles. `supabase/seed.sql` is local sample data (`@example.com` only) and is not loaded by `db:check`.
 
 ## Manual steps
 

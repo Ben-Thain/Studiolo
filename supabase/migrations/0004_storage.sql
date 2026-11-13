@@ -1,0 +1,2 @@
+-- Prompt 02c adds the storage bucket and its policies.
+-- This migration is the reserved slot. It applies with no statements.
