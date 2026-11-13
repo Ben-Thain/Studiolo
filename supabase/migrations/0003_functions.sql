@@ -202,21 +202,7 @@ create trigger domains_set_updated_at
   for each row
   execute function public.set_updated_at();
 
-create function public.is_site_owner(site uuid)
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select exists (
-    select 1
-    from public.sites
-    where id = site
-      and owner_id = auth.uid()
-      and deleted_at is null
-  );
-$$;
+-- is_site_owner lives in 0002_rls.sql: the 02c policies need it first.
 
 create function public.is_site_public(site uuid)
 returns boolean
@@ -394,6 +380,114 @@ begin
 end;
 $$;
 
+-- True when a save_draft payload touches a row of another site: an upserted
+-- page, section, element or layout id that already belongs to another site, or
+-- a section/element parent (page_id, section_id) that is not this site's (an
+-- existing row of this site, or a row the same payload upserts).
+-- security definer so the answer does not depend on what RLS lets the caller
+-- see. Returns only a boolean.
+create function public.crosses_site_draft(site uuid, payload jsonb)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select (exists (
+      select 1
+      from public.pages p
+      join jsonb_array_elements(coalesce(payload #> '{pages,upsert}', '[]'::jsonb)) item
+        on p.id = (item->>'id')::uuid
+      where p.site_id <> site
+    ) or exists (
+      select 1
+      from public.sections s
+      join jsonb_array_elements(coalesce(payload #> '{sections,upsert}', '[]'::jsonb)) item
+        on s.id = (item->>'id')::uuid
+      where s.site_id <> site
+    ) or exists (
+      select 1
+      from public.elements e
+      join jsonb_array_elements(coalesce(payload #> '{elements,upsert}', '[]'::jsonb)) item
+        on e.id = (item->>'id')::uuid
+      where e.site_id <> site
+    ) or exists (
+      select 1
+      from public.element_layouts el
+      join public.elements e on e.id = el.element_id
+      join jsonb_array_elements(coalesce(payload #> '{element_layouts,upsert}', '[]'::jsonb)) item
+        on el.id = (item->>'id')::uuid
+      where e.site_id <> site
+    ))
+  or (exists (
+      select 1
+      from jsonb_array_elements(coalesce(payload #> '{sections,upsert}', '[]'::jsonb)) item
+      where nullif(item->>'page_id', '') is not null
+        and not exists (
+          select 1
+          from public.pages p
+          where p.id = (item->>'page_id')::uuid
+            and p.site_id = site
+        )
+        and not exists (
+          select 1
+          from jsonb_array_elements(coalesce(payload #> '{pages,upsert}', '[]'::jsonb)) parent
+          where parent->>'id' = item->>'page_id'
+        )
+    ) or exists (
+      select 1
+      from jsonb_array_elements(coalesce(payload #> '{elements,upsert}', '[]'::jsonb)) item
+      where nullif(item->>'section_id', '') is not null
+        and not exists (
+          select 1
+          from public.sections s
+          where s.id = (item->>'section_id')::uuid
+            and s.site_id = site
+        )
+        and not exists (
+          select 1
+          from jsonb_array_elements(coalesce(payload #> '{sections,upsert}', '[]'::jsonb)) parent
+          where parent->>'id' = item->>'section_id'
+        )
+    ) or exists (
+      select 1
+      from jsonb_array_elements(coalesce(payload #> '{elements,upsert}', '[]'::jsonb)) item
+      where nullif(item->>'page_id', '') is not null
+        and not exists (
+          select 1
+          from public.pages p
+          where p.id = (item->>'page_id')::uuid
+            and p.site_id = site
+        )
+        and not exists (
+          select 1
+          from jsonb_array_elements(coalesce(payload #> '{pages,upsert}', '[]'::jsonb)) parent
+          where parent->>'id' = item->>'page_id'
+        )
+    ));
+$$;
+
+-- The signed-in owner has no UPDATE privilege on the draft columns (02c), so
+-- save_draft advances the revision through this helper. It only touches a
+-- site the caller owns that is not soft-deleted, and only when the expected
+-- revision matches. Returns the new revision, or null.
+create function public.bump_draft_revision(site uuid, expected_revision integer)
+returns integer
+language sql
+security definer
+set search_path = public
+as $$
+  update public.sites
+  set
+    draft_revision = draft_revision + 1,
+    draft_updated_at = now()
+  where id = site
+    and draft_revision = expected_revision
+    and owner_id = auth.uid()
+    and deleted_at is null
+  returning draft_revision;
+$$;
+
 -- Prompt 05 owns the changes document. Keys are pages, sections, elements
 -- and element_layouts. Each value is { "upsert": [row], "delete": [uuid] }.
 -- A missing key changes nothing. site_id always comes from the site argument.
@@ -407,96 +501,29 @@ declare
   payload jsonb := coalesce(changes, '{}'::jsonb);
   new_revision integer;
 begin
-  update public.sites
-  set
-    draft_revision = draft_revision + 1,
-    draft_updated_at = now()
-  where id = site
-    and draft_revision = expected_revision
-  returning draft_revision into new_revision;
+  -- service_role (and the table owner) may update the draft columns directly.
+  -- The signed-in owner goes through bump_draft_revision, which checks
+  -- ownership itself. Either way RLS still applies to every content write.
+  if has_column_privilege('public.sites', 'draft_revision', 'UPDATE') then
+    update public.sites
+    set
+      draft_revision = draft_revision + 1,
+      draft_updated_at = now()
+    where id = site
+      and draft_revision = expected_revision
+    returning draft_revision into new_revision;
+  else
+    new_revision := public.bump_draft_revision(site, expected_revision);
+  end if;
 
   if new_revision is null then
     raise exception 'stale_revision' using errcode = 'ST409';
   end if;
 
-  if exists (
-    select 1
-    from public.pages p
-    join jsonb_array_elements(coalesce(payload #> '{pages,upsert}', '[]'::jsonb)) item
-      on p.id = (item->>'id')::uuid
-    where p.site_id <> site
-  ) or exists (
-    select 1
-    from public.sections s
-    join jsonb_array_elements(coalesce(payload #> '{sections,upsert}', '[]'::jsonb)) item
-      on s.id = (item->>'id')::uuid
-    where s.site_id <> site
-  ) or exists (
-    select 1
-    from public.elements e
-    join jsonb_array_elements(coalesce(payload #> '{elements,upsert}', '[]'::jsonb)) item
-      on e.id = (item->>'id')::uuid
-    where e.site_id <> site
-  ) or exists (
-    select 1
-    from public.element_layouts el
-    join public.elements e on e.id = el.element_id
-    join jsonb_array_elements(coalesce(payload #> '{element_layouts,upsert}', '[]'::jsonb)) item
-      on el.id = (item->>'id')::uuid
-    where e.site_id <> site
-  ) then
-    raise exception 'cross_site_change' using errcode = 'ST007';
-  end if;
-
-  -- The parents a payload points at must be inside this site: an existing row
-  -- of this site, or a row this same payload upserts. The composite foreign keys
-  -- are the backstop; callers get ST007, not a raw 23503.
-  if exists (
-    select 1
-    from jsonb_array_elements(coalesce(payload #> '{sections,upsert}', '[]'::jsonb)) item
-    where nullif(item->>'page_id', '') is not null
-      and not exists (
-        select 1
-        from public.pages p
-        where p.id = (item->>'page_id')::uuid
-          and p.site_id = site
-      )
-      and not exists (
-        select 1
-        from jsonb_array_elements(coalesce(payload #> '{pages,upsert}', '[]'::jsonb)) parent
-        where parent->>'id' = item->>'page_id'
-      )
-  ) or exists (
-    select 1
-    from jsonb_array_elements(coalesce(payload #> '{elements,upsert}', '[]'::jsonb)) item
-    where nullif(item->>'section_id', '') is not null
-      and not exists (
-        select 1
-        from public.sections s
-        where s.id = (item->>'section_id')::uuid
-          and s.site_id = site
-      )
-      and not exists (
-        select 1
-        from jsonb_array_elements(coalesce(payload #> '{sections,upsert}', '[]'::jsonb)) parent
-        where parent->>'id' = item->>'section_id'
-      )
-  ) or exists (
-    select 1
-    from jsonb_array_elements(coalesce(payload #> '{elements,upsert}', '[]'::jsonb)) item
-    where nullif(item->>'page_id', '') is not null
-      and not exists (
-        select 1
-        from public.pages p
-        where p.id = (item->>'page_id')::uuid
-          and p.site_id = site
-      )
-      and not exists (
-        select 1
-        from jsonb_array_elements(coalesce(payload #> '{pages,upsert}', '[]'::jsonb)) parent
-        where parent->>'id' = item->>'page_id'
-      )
-  ) then
+  -- Both checks run in crosses_site_draft (security definer) so they see rows
+  -- RLS hides from the caller: a payload id or parent that belongs to another
+  -- site raises ST007 instead of being skipped or denied row by row.
+  if public.crosses_site_draft(site, payload) then
     raise exception 'cross_site_change' using errcode = 'ST007';
   end if;
 
@@ -836,34 +863,37 @@ create trigger assets_same_site
   for each row
   execute function public.assets_same_site();
 
-alter function public.is_site_owner(uuid) owner to postgres;
 alter function public.is_site_public(uuid) owner to postgres;
 alter function public.increment_page_views(uuid, date) owner to postgres;
 alter function public.resolve_host(text) owner to postgres;
 alter function public.rate_limit_hit(text, integer, integer) owner to postgres;
 alter function public.restore_site(uuid, uuid) owner to postgres;
 alter function public.save_draft(uuid, integer, jsonb) owner to postgres;
+alter function public.bump_draft_revision(uuid, integer) owner to postgres;
+alter function public.crosses_site_draft(uuid, jsonb) owner to postgres;
 alter function public.assets_same_site() owner to postgres;
 alter function public.elements_page_matches_section() owner to postgres;
 alter function public.sections_move_elements() owner to postgres;
 alter function public.domains_hostnames_unique() owner to postgres;
 
-revoke all on function public.is_site_owner(uuid) from public;
 revoke all on function public.is_site_public(uuid) from public;
 revoke all on function public.increment_page_views(uuid, date) from public, anon, authenticated;
 revoke all on function public.resolve_host(text) from public;
 revoke all on function public.rate_limit_hit(text, integer, integer) from public, anon, authenticated;
 revoke all on function public.restore_site(uuid, uuid) from public, anon, authenticated;
 revoke all on function public.save_draft(uuid, integer, jsonb) from public, anon;
+revoke all on function public.bump_draft_revision(uuid, integer) from public, anon;
+revoke all on function public.crosses_site_draft(uuid, jsonb) from public, anon;
 revoke all on function public.assets_same_site() from public, anon, authenticated;
 revoke all on function public.elements_page_matches_section() from public, anon, authenticated;
 revoke all on function public.sections_move_elements() from public, anon, authenticated;
 revoke all on function public.domains_hostnames_unique() from public, anon, authenticated;
 
-grant execute on function public.is_site_owner(uuid) to authenticated, service_role;
 grant execute on function public.is_site_public(uuid) to anon, authenticated, service_role;
 grant execute on function public.increment_page_views(uuid, date) to service_role;
 grant execute on function public.resolve_host(text) to anon, authenticated, service_role;
 grant execute on function public.rate_limit_hit(text, integer, integer) to service_role;
 grant execute on function public.restore_site(uuid, uuid) to service_role;
 grant execute on function public.save_draft(uuid, integer, jsonb) to authenticated, service_role;
+grant execute on function public.bump_draft_revision(uuid, integer) to authenticated, service_role;
+grant execute on function public.crosses_site_draft(uuid, jsonb) to authenticated, service_role;

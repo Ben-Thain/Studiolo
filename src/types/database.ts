@@ -663,6 +663,26 @@ export type Database = {
         };
         Returns: number;
       };
+      bump_draft_revision: {
+        Args: {
+          site: string;
+          expected_revision: number;
+        };
+        Returns: number | null;
+      };
+      crosses_site_draft: {
+        Args: {
+          site: string;
+          payload: Json;
+        };
+        Returns: boolean;
+      };
+      storage_object_site_id: {
+        Args: {
+          object_name: string;
+        };
+        Returns: string | null;
+      };
     };
     Enums: {
       [_ in never]: never;
@@ -698,3 +718,32 @@ export const SITE_ROW_KEYS = [
   "created_at",
   "updated_at",
 ] as const satisfies readonly (keyof Database["public"]["Tables"]["sites"]["Row"])[];
+
+type SiteColumn = keyof Database["public"]["Tables"]["sites"]["Row"];
+
+/**
+ * Columns a signed-in owner may select on public.sites (02c column grants).
+ * password_hash is server-only, so `select("*")` fails for the owner: list
+ * these columns instead, for example `.select(SITE_OWNER_SELECT)`.
+ */
+export const SITE_OWNER_SELECT_COLUMNS = SITE_ROW_KEYS.filter(
+  (key): key is Exclude<SiteColumn, "password_hash"> => key !== "password_hash",
+);
+
+export const SITE_OWNER_SELECT = SITE_OWNER_SELECT_COLUMNS.join(",");
+
+/**
+ * Columns a signed-in owner may update on public.sites. Draft columns change
+ * through save_draft; publish, password, lock and delete columns are written
+ * by server actions with the service role after an ownership check.
+ */
+export const SITE_OWNER_UPDATE_COLUMNS = [
+  "name",
+  "slug",
+  "seo_title",
+  "seo_description",
+  "og_asset_id",
+  "favicon_asset_id",
+  "desktop_layout_seen_at",
+  "mobile_layout_seen_at",
+] as const satisfies readonly SiteColumn[];

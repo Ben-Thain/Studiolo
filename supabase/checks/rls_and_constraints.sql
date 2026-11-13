@@ -897,22 +897,15 @@ begin
     raise exception 'expected 8 RLS tables, found %', rel_count;
   end if;
 
+  -- 02c: the 02b tables carry exactly their owner policies (asserted in full
+  -- in the 02c policy block below). rate_limits has none.
   if exists (
     select 1
     from pg_policies
     where schemaname = 'public'
-      and tablename in (
-        'pages',
-        'sections',
-        'elements',
-        'element_layouts',
-        'submissions',
-        'page_views_daily',
-        'rate_limits',
-        'domains'
-      )
+      and tablename = 'rate_limits'
   ) then
-    raise exception '02b tables have policies';
+    raise exception 'rate_limits has a policy';
   end if;
 
   select string_agg(name, ', ' order by name)
@@ -2413,6 +2406,749 @@ where id in (
   '20000000-0000-4000-8000-000000000001',
   '20000000-0000-4000-8000-000000000002'
 );
+
+-- 02c: policies, grants, storage and per-role access ------------------------
+-- Owner A and owner B each have a live site; A also has a soft-deleted site
+-- and B a password-protected one. Every check below runs as a real API role.
+
+create function pg_temp.expect_denied(q text)
+returns void
+language plpgsql
+as $$
+begin
+  execute q;
+  raise exception 'not denied: %', q;
+exception
+  when insufficient_privilege then
+    null;
+end
+$$;
+
+create function pg_temp.expect_state(q text, state text)
+returns void
+language plpgsql
+as $$
+declare
+  got text;
+begin
+  begin
+    execute q;
+  exception
+    when others then
+      got := sqlstate;
+  end;
+  if got is distinct from state then
+    raise exception 'expected % from %, got %', state, q, coalesce(got, 'success');
+  end if;
+end
+$$;
+
+create function pg_temp.affected(q text)
+returns bigint
+language plpgsql
+as $$
+declare
+  n bigint;
+begin
+  execute q;
+  get diagnostics n = row_count;
+  return n;
+end
+$$;
+
+create function pg_temp.counted(q text)
+returns bigint
+language plpgsql
+as $$
+declare
+  n bigint;
+begin
+  execute 'select count(*) from (' || q || ') as rows' into n;
+  return n;
+end
+$$;
+
+grant execute on function pg_temp.expect_denied(text) to anon, authenticated, service_role;
+grant execute on function pg_temp.expect_state(text, text) to anon, authenticated, service_role;
+grant execute on function pg_temp.affected(text) to anon, authenticated, service_role;
+grant execute on function pg_temp.counted(text) to anon, authenticated, service_role;
+
+insert into auth.users (id, email)
+values
+  ('c2000000-0000-4000-8000-000000000001', 'rls-a@example.com'),
+  ('c2000000-0000-4000-8000-000000000002', 'rls-b@example.com');
+
+insert into public.sites (id, owner_id, name, slug)
+values
+  ('c2000000-0000-4000-8000-000000000011', 'c2000000-0000-4000-8000-000000000001', 'A live', 'rls-a-live'),
+  ('c2000000-0000-4000-8000-000000000012', 'c2000000-0000-4000-8000-000000000001', 'A gone', 'rls-a-gone'),
+  ('c2000000-0000-4000-8000-000000000021', 'c2000000-0000-4000-8000-000000000002', 'B live', 'rls-b-live'),
+  ('c2000000-0000-4000-8000-000000000022', 'c2000000-0000-4000-8000-000000000002', 'B draft', 'rls-b-draft');
+
+insert into public.site_publishes (id, site_id, snapshot, published_by)
+values
+  ('c2000000-0000-4000-8000-000000000091', 'c2000000-0000-4000-8000-000000000011', '{"version":1}', 'c2000000-0000-4000-8000-000000000001'),
+  ('c2000000-0000-4000-8000-000000000092', 'c2000000-0000-4000-8000-000000000012', '{"version":1}', 'c2000000-0000-4000-8000-000000000001'),
+  ('c2000000-0000-4000-8000-000000000093', 'c2000000-0000-4000-8000-000000000021', '{"version":1}', 'c2000000-0000-4000-8000-000000000002');
+
+update public.sites
+set live_publish_id = 'c2000000-0000-4000-8000-000000000091', slug_locked_at = now()
+where id = 'c2000000-0000-4000-8000-000000000011';
+
+update public.sites
+set
+  live_publish_id = 'c2000000-0000-4000-8000-000000000093',
+  slug_locked_at = now(),
+  password_enabled = true,
+  password_hash = 'b-hash-placeholder'
+where id = 'c2000000-0000-4000-8000-000000000021';
+
+insert into public.pages (id, site_id, title, slug, sort_order, is_home)
+values
+  ('c2000000-0000-4000-8000-000000000031', 'c2000000-0000-4000-8000-000000000011', 'Home', '', 0, true),
+  ('c2000000-0000-4000-8000-000000000032', 'c2000000-0000-4000-8000-000000000012', 'Home', '', 0, true),
+  ('c2000000-0000-4000-8000-000000000033', 'c2000000-0000-4000-8000-000000000021', 'Home', '', 0, true);
+
+insert into public.sections (id, site_id, page_id, name, sort_order)
+values
+  ('c2000000-0000-4000-8000-000000000041', 'c2000000-0000-4000-8000-000000000011', 'c2000000-0000-4000-8000-000000000031', 'Body', 0),
+  ('c2000000-0000-4000-8000-000000000042', 'c2000000-0000-4000-8000-000000000012', 'c2000000-0000-4000-8000-000000000032', 'Body', 0),
+  ('c2000000-0000-4000-8000-000000000043', 'c2000000-0000-4000-8000-000000000021', 'c2000000-0000-4000-8000-000000000033', 'Body', 0);
+
+insert into public.elements (id, site_id, page_id, section_id, type, name, content, sort_order)
+values
+  ('c2000000-0000-4000-8000-000000000051', 'c2000000-0000-4000-8000-000000000011', 'c2000000-0000-4000-8000-000000000031', 'c2000000-0000-4000-8000-000000000041', 'text', 'Hi', '{}', 0),
+  ('c2000000-0000-4000-8000-000000000052', 'c2000000-0000-4000-8000-000000000012', 'c2000000-0000-4000-8000-000000000032', 'c2000000-0000-4000-8000-000000000042', 'text', 'Hi', '{}', 0),
+  ('c2000000-0000-4000-8000-000000000053', 'c2000000-0000-4000-8000-000000000021', 'c2000000-0000-4000-8000-000000000033', 'c2000000-0000-4000-8000-000000000043', 'text', 'Hi', '{}', 0);
+
+insert into public.element_layouts (id, element_id, breakpoint, col_start, col_span, row_start, row_span)
+values
+  ('c2000000-0000-4000-8000-000000000061', 'c2000000-0000-4000-8000-000000000051', 'desktop', 1, 6, 1, 2),
+  ('c2000000-0000-4000-8000-000000000062', 'c2000000-0000-4000-8000-000000000052', 'desktop', 1, 6, 1, 2),
+  ('c2000000-0000-4000-8000-000000000063', 'c2000000-0000-4000-8000-000000000053', 'desktop', 1, 6, 1, 2);
+
+insert into public.submissions (id, site_id, page_id, name, email, message)
+values
+  ('c2000000-0000-4000-8000-000000000071', 'c2000000-0000-4000-8000-000000000011', null, 'Ann', 'ann@example.com', 'Hi'),
+  ('c2000000-0000-4000-8000-000000000072', 'c2000000-0000-4000-8000-000000000011', null, 'Ben', 'ben@example.com', 'Hi'),
+  ('c2000000-0000-4000-8000-000000000073', 'c2000000-0000-4000-8000-000000000012', null, 'Cat', 'cat@example.com', 'Hi'),
+  ('c2000000-0000-4000-8000-000000000074', 'c2000000-0000-4000-8000-000000000021', null, 'Dan', 'dan@example.com', 'Hi');
+
+insert into public.assets (id, site_id, path, mime, bytes)
+values
+  ('c2000000-0000-4000-8000-000000000081', 'c2000000-0000-4000-8000-000000000011', 'c2000000-0000-4000-8000-000000000011/draft/a.png', 'image/png', 10),
+  ('c2000000-0000-4000-8000-000000000082', 'c2000000-0000-4000-8000-000000000012', 'c2000000-0000-4000-8000-000000000012/draft/g.png', 'image/png', 10),
+  ('c2000000-0000-4000-8000-000000000083', 'c2000000-0000-4000-8000-000000000021', 'c2000000-0000-4000-8000-000000000021/draft/b.png', 'image/png', 10);
+
+insert into public.domains (site_id, hostname, status)
+values
+  ('c2000000-0000-4000-8000-000000000011', 'rls-a.example.com', 'connected'),
+  ('c2000000-0000-4000-8000-000000000021', 'rls-b.example.com', 'connected');
+
+insert into public.page_views_daily (site_id, day, views)
+values
+  ('c2000000-0000-4000-8000-000000000011', current_date, 5),
+  ('c2000000-0000-4000-8000-000000000012', current_date, 6),
+  ('c2000000-0000-4000-8000-000000000021', current_date, 7);
+
+insert into storage.objects (bucket_id, name)
+values
+  ('site-assets', 'c2000000-0000-4000-8000-000000000011/draft/a.png'),
+  ('site-assets', 'c2000000-0000-4000-8000-000000000011/published/c2000000-0000-4000-8000-000000000091/a.png'),
+  ('site-assets', 'c2000000-0000-4000-8000-000000000012/draft/g.png'),
+  ('site-assets', 'c2000000-0000-4000-8000-000000000021/draft/b.png'),
+  ('site-assets', 'c2000000-0000-4000-8000-000000000021/published/c2000000-0000-4000-8000-000000000093/b.png');
+
+-- soft-delete A's second site the way the server will.
+update public.sites
+set deleted_at = now(), purge_after = now() + interval '30 days', live_publish_id = null
+where id = 'c2000000-0000-4000-8000-000000000012';
+
+-- the exact policy set, RLS on everywhere, the private bucket ---------------
+
+do $$
+declare
+  expected text[] := array[
+    'public.assets|assets_owner_all|ALL|{authenticated}',
+    'public.domains|domains_select_owner|SELECT|{authenticated}',
+    'public.element_layouts|element_layouts_owner_all|ALL|{authenticated}',
+    'public.elements|elements_owner_all|ALL|{authenticated}',
+    'public.page_views_daily|page_views_daily_select_owner|SELECT|{authenticated}',
+    'public.pages|pages_owner_all|ALL|{authenticated}',
+    'public.profiles|profiles_select_own|SELECT|{authenticated}',
+    'public.profiles|profiles_update_own|UPDATE|{authenticated}',
+    'public.reserved_slugs|reserved_slugs_select|SELECT|{anon,authenticated}',
+    'public.sections|sections_owner_all|ALL|{authenticated}',
+    'public.site_publishes|site_publishes_select_owner|SELECT|{authenticated}',
+    'public.sites|sites_insert_own|INSERT|{authenticated}',
+    'public.sites|sites_select_own|SELECT|{authenticated}',
+    'public.sites|sites_update_own|UPDATE|{authenticated}',
+    'public.submissions|submissions_delete_owner|DELETE|{authenticated}',
+    'public.submissions|submissions_select_owner|SELECT|{authenticated}',
+    'public.submissions|submissions_update_owner|UPDATE|{authenticated}',
+    'storage.objects|site_assets_owner_delete|DELETE|{authenticated}',
+    'storage.objects|site_assets_owner_insert|INSERT|{authenticated}',
+    'storage.objects|site_assets_owner_select|SELECT|{authenticated}',
+    'storage.objects|site_assets_owner_update|UPDATE|{authenticated}'
+  ];
+  actual text[];
+  rls_off text;
+begin
+  select array_agg(
+    schemaname || '.' || tablename || '|' || policyname || '|' || cmd || '|'
+      || (select array_agg(r order by r) from unnest(roles) as r)::text
+    order by schemaname, tablename, policyname
+  )
+  into actual
+  from pg_policies
+  where schemaname in ('public', 'storage');
+
+  if actual is distinct from expected then
+    raise exception 'policy set mismatch: %', actual;
+  end if;
+
+  if exists (
+    select 1
+    from pg_policies
+    where schemaname in ('public', 'storage')
+      and 'public' = any (roles)
+  ) then
+    raise exception 'a policy applies to public';
+  end if;
+
+  select string_agg(c.relname, ', ')
+  into rls_off
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public'
+    and c.relkind = 'r'
+    and not c.relrowsecurity;
+
+  if rls_off is not null then
+    raise exception 'RLS is off on: %', rls_off;
+  end if;
+
+  if not exists (
+    select 1
+    from storage.buckets
+    where id = 'site-assets'
+      and public = false
+      and file_size_limit = 8388608
+      and allowed_mime_types = array['image/webp', 'image/avif', 'image/jpeg', 'image/png']
+  ) then
+    raise exception 'site-assets bucket is missing or misconfigured';
+  end if;
+end
+$$;
+
+\echo ok: exact policy set and RLS on every table
+\echo ok: site-assets bucket is private, 8 MB, images only
+
+-- table and column privileges ------------------------------------------------
+
+do $$
+declare
+  t text;
+begin
+  foreach t in array array[
+    'profiles', 'sites', 'site_publishes', 'assets', 'pages', 'sections',
+    'elements', 'element_layouts', 'submissions', 'page_views_daily',
+    'rate_limits', 'domains'
+  ] loop
+    if has_table_privilege('anon', 'public.' || t, 'select')
+      or has_table_privilege('anon', 'public.' || t, 'insert')
+      or has_table_privilege('anon', 'public.' || t, 'update')
+      or has_table_privilege('anon', 'public.' || t, 'delete')
+      or has_any_column_privilege('anon', 'public.' || t, 'select')
+    then
+      raise exception 'anon has a privilege on %', t;
+    end if;
+  end loop;
+
+  if not has_table_privilege('anon', 'public.reserved_slugs', 'select')
+    or has_table_privilege('anon', 'public.reserved_slugs', 'insert')
+    or has_table_privilege('authenticated', 'public.reserved_slugs', 'insert')
+    or has_table_privilege('authenticated', 'public.reserved_slugs', 'delete')
+    or has_table_privilege('authenticated', 'public.rate_limits', 'select')
+  then
+    raise exception 'reserved_slugs or rate_limits privileges mismatch';
+  end if;
+
+  if has_column_privilege('authenticated', 'public.sites', 'password_hash', 'select')
+    or not has_column_privilege('authenticated', 'public.sites', 'password_enabled', 'select')
+    or has_table_privilege('authenticated', 'public.sites', 'delete')
+  then
+    raise exception 'sites column privileges mismatch';
+  end if;
+
+  if has_column_privilege('authenticated', 'public.profiles', 'plan', 'update')
+    or has_column_privilege('authenticated', 'public.profiles', 'trial_started_at', 'update')
+    or not has_column_privilege('authenticated', 'public.profiles', 'display_name', 'update')
+  then
+    raise exception 'profiles column privileges mismatch';
+  end if;
+
+  if has_column_privilege('authenticated', 'public.submissions', 'message', 'update')
+    or not has_column_privilege('authenticated', 'public.submissions', 'read_at', 'update')
+    or has_table_privilege('authenticated', 'public.submissions', 'insert')
+    or has_table_privilege('authenticated', 'public.page_views_daily', 'insert')
+    or has_table_privilege('authenticated', 'public.domains', 'insert')
+    or has_table_privilege('authenticated', 'public.domains', 'update')
+    or has_table_privilege('authenticated', 'public.site_publishes', 'insert')
+    or has_table_privilege('authenticated', 'public.site_publishes', 'delete')
+  then
+    raise exception 'server-only writes are open to authenticated';
+  end if;
+
+  if has_function_privilege('authenticated', 'public.increment_page_views(uuid, date)', 'execute')
+    or has_function_privilege('authenticated', 'public.rate_limit_hit(text, integer, integer)', 'execute')
+    or has_function_privilege('authenticated', 'public.restore_site(uuid, uuid)', 'execute')
+    or has_function_privilege('anon', 'public.save_draft(uuid, integer, jsonb)', 'execute')
+    or has_function_privilege('anon', 'public.bump_draft_revision(uuid, integer)', 'execute')
+    or has_function_privilege('anon', 'public.is_site_owner(uuid)', 'execute')
+    or has_function_privilege('anon', 'public.storage_object_site_id(text)', 'execute')
+  then
+    raise exception 'function privileges mismatch';
+  end if;
+end
+$$;
+
+\echo ok: grants match the 02c table
+
+-- owner A, signed in --------------------------------------------------------
+
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', 'c2000000-0000-4000-8000-000000000001', true) \g /dev/null
+
+do $$
+declare
+  a_live constant text := '''c2000000-0000-4000-8000-000000000011''';
+  a_gone constant text := '''c2000000-0000-4000-8000-000000000012''';
+  b_live constant text := '''c2000000-0000-4000-8000-000000000021''';
+  t text;
+begin
+  -- A sees both own sites, including the soft-deleted one, and none of B's.
+  if pg_temp.counted('select id from public.sites') <> 2
+    or pg_temp.counted('select id from public.sites where id = ' || a_gone) <> 1
+    or pg_temp.counted('select id from public.sites where owner_id = ''c2000000-0000-4000-8000-000000000002''') <> 0
+  then
+    raise exception 'A sees the wrong sites';
+  end if;
+
+  -- Children: A's live site only. Not B's, not the deleted site's.
+  foreach t in array array['pages', 'sections', 'elements', 'submissions', 'assets', 'domains', 'page_views_daily', 'site_publishes'] loop
+    if pg_temp.counted('select 1 from public.' || t || ' where site_id = ' || a_live) < 1 then
+      raise exception 'A cannot read own %', t;
+    end if;
+    if pg_temp.counted('select 1 from public.' || t || ' where site_id <> ' || a_live) <> 0 then
+      raise exception 'A can read another or deleted site''s %', t;
+    end if;
+  end loop;
+
+  if pg_temp.counted('select 1 from public.element_layouts') <> 1 then
+    raise exception 'A sees the wrong element layouts';
+  end if;
+
+  if pg_temp.counted('select 1 from public.profiles') <> 1
+    or public.is_site_owner('c2000000-0000-4000-8000-000000000012') is not false
+    or public.is_site_owner('c2000000-0000-4000-8000-000000000011') is not true
+    or public.is_site_owner('c2000000-0000-4000-8000-000000000021') is not false
+  then
+    raise exception 'A profile or is_site_owner mismatch';
+  end if;
+
+  -- password_hash is not readable, by name or by *.
+  perform pg_temp.expect_denied('select password_hash from public.sites');
+  perform pg_temp.expect_denied('select * from public.sites');
+
+  -- profiles: own display name yes; plan and trial no; B's profile untouched.
+  if pg_temp.affected('update public.profiles set display_name = ''A'' where id = ''c2000000-0000-4000-8000-000000000001''') <> 1
+    or pg_temp.affected('update public.profiles set display_name = ''X'' where id = ''c2000000-0000-4000-8000-000000000002''') <> 0
+  then
+    raise exception 'profiles update scope mismatch';
+  end if;
+  perform pg_temp.expect_denied('update public.profiles set plan = ''pro''');
+  perform pg_temp.expect_denied('update public.profiles set trial_started_at = now()');
+  perform pg_temp.expect_denied('insert into public.profiles (id) values (gen_random_uuid())');
+  perform pg_temp.expect_denied('delete from public.profiles');
+
+  -- sites: owner columns on the live site; nothing on the deleted site or B's.
+  if pg_temp.affected('update public.sites set name = ''A live 2'' where id = ' || a_live) <> 1
+    or pg_temp.affected('update public.sites set name = ''Back'' where id = ' || a_gone) <> 0
+    or pg_temp.affected('update public.sites set name = ''Mine'' where id = ' || b_live) <> 0
+  then
+    raise exception 'sites update scope mismatch';
+  end if;
+  foreach t in array array[
+    'password_hash = ''x''', 'password_enabled = false', 'gate_version = 9',
+    'live_publish_id = null', 'first_published_at = now()', 'last_published_at = now()',
+    'slug_locked_at = null', 'deleted_at = null', 'purge_after = null',
+    'draft_revision = 99', 'draft_updated_at = now()', 'owner_id = owner_id'
+  ] loop
+    perform pg_temp.expect_denied('update public.sites set ' || t || ' where id = ' || a_live);
+  end loop;
+  perform pg_temp.expect_denied('delete from public.sites where id = ' || a_live);
+  perform pg_temp.expect_denied(
+    'insert into public.sites (owner_id, name, slug, live_publish_id) values (''c2000000-0000-4000-8000-000000000001'', ''Hijack'', ''rls-hijack'', ''c2000000-0000-4000-8000-000000000093'')'
+  );
+  perform pg_temp.expect_denied(
+    'insert into public.sites (owner_id, name, slug, password_enabled, password_hash) values (''c2000000-0000-4000-8000-000000000001'', ''Pw'', ''rls-pw'', true, ''x'')'
+  );
+  perform pg_temp.expect_denied(
+    'insert into public.sites (owner_id, name, slug) values (''c2000000-0000-4000-8000-000000000002'', ''For B'', ''rls-for-b'')'
+  );
+  if pg_temp.affected(
+    'insert into public.sites (id, owner_id, name, slug) values (''c2000000-0000-4000-8000-000000000013'', ''c2000000-0000-4000-8000-000000000001'', ''A new'', ''rls-a-new'')'
+  ) <> 1 then
+    raise exception 'owner could not create a site';
+  end if;
+  -- the locked slug stays locked for the owner.
+  perform pg_temp.expect_state('update public.sites set slug = ''rls-a-moved'' where id = ' || a_live, 'ST002');
+
+  -- children of B: no update, no delete, no insert.
+  foreach t in array array['pages', 'sections', 'elements', 'assets', 'submissions'] loop
+    if pg_temp.affected('delete from public.' || t || ' where site_id = ' || b_live) <> 0 then
+      raise exception 'A deleted B''s %', t;
+    end if;
+  end loop;
+  if pg_temp.affected('update public.pages set title = ''Mine'' where site_id = ' || b_live) <> 0
+    or pg_temp.affected('update public.sections set name = ''Mine'' where site_id = ' || b_live) <> 0
+    or pg_temp.affected('update public.elements set name = ''Mine'' where site_id = ' || b_live) <> 0
+    or pg_temp.affected('update public.element_layouts set hidden = true where element_id = ''c2000000-0000-4000-8000-000000000053''') <> 0
+    or pg_temp.affected('delete from public.element_layouts where element_id = ''c2000000-0000-4000-8000-000000000053''') <> 0
+    or pg_temp.affected('update public.assets set width = 1 where site_id = ' || b_live) <> 0
+    or pg_temp.affected('update public.submissions set read_at = now() where site_id = ' || b_live) <> 0
+  then
+    raise exception 'A changed B''s rows';
+  end if;
+  perform pg_temp.expect_denied('insert into public.pages (site_id, title, slug, sort_order) values (' || b_live || ', ''X'', ''x'', 9)');
+  perform pg_temp.expect_denied('insert into public.assets (site_id, path, mime, bytes) values (' || b_live || ', ''x/draft/x.png'', ''image/png'', 1)');
+  perform pg_temp.expect_denied(
+    'insert into public.element_layouts (element_id, breakpoint, col_start, col_span, row_start, row_span) values (''c2000000-0000-4000-8000-000000000053'', ''mobile'', 1, 1, 1, 1)'
+  );
+  -- moving A's own row onto B's site fails the with check.
+  perform pg_temp.expect_denied('update public.assets set site_id = ' || b_live || ' where site_id = ' || a_live);
+  -- children of A's deleted site are frozen too.
+  if pg_temp.affected('update public.pages set title = ''Back'' where site_id = ' || a_gone) <> 0 then
+    raise exception 'A changed a deleted site''s page';
+  end if;
+  perform pg_temp.expect_denied('insert into public.pages (site_id, title, slug, sort_order) values (' || a_gone || ', ''X'', ''x'', 9)');
+
+  -- server-only tables and columns.
+  perform pg_temp.expect_denied('update public.domains set status = ''pending''');
+  perform pg_temp.expect_denied('delete from public.domains');
+  perform pg_temp.expect_denied('insert into public.domains (site_id, hostname) values (' || a_live || ', ''x.example.com'')');
+  perform pg_temp.expect_denied('update public.page_views_daily set views = 0');
+  perform pg_temp.expect_denied('insert into public.page_views_daily (site_id, day, views) values (' || a_live || ', current_date - 1, 1)');
+  perform pg_temp.expect_denied('insert into public.submissions (site_id, name, email, message) values (' || a_live || ', ''n'', ''n@example.com'', ''m'')');
+  perform pg_temp.expect_denied('update public.submissions set message = ''edited'' where site_id = ' || a_live);
+  perform pg_temp.expect_denied('insert into public.site_publishes (site_id, snapshot) values (' || a_live || ', ''{}'')');
+  perform pg_temp.expect_denied('update public.site_publishes set snapshot = ''{}''');
+  perform pg_temp.expect_denied('delete from public.site_publishes');
+  perform pg_temp.expect_denied('select * from public.rate_limits');
+  perform pg_temp.expect_denied('insert into public.reserved_slugs (slug) values (''mine'')');
+  perform pg_temp.expect_denied('select public.increment_page_views(' || a_live || ', current_date)');
+  perform pg_temp.expect_denied('select public.rate_limit_hit(''x'', 60, 5)');
+  perform pg_temp.expect_denied('select public.restore_site(' || a_gone || ', ''c2000000-0000-4000-8000-000000000001'')');
+
+  -- submissions: own read_at and delete.
+  if pg_temp.affected('update public.submissions set read_at = now() where id = ''c2000000-0000-4000-8000-000000000071''') <> 1
+    or pg_temp.affected('delete from public.submissions where id = ''c2000000-0000-4000-8000-000000000072''') <> 1
+    or pg_temp.affected('delete from public.submissions where id = ''c2000000-0000-4000-8000-000000000073''') <> 0
+  then
+    raise exception 'submissions owner scope mismatch';
+  end if;
+
+  if pg_temp.counted('select 1 from public.reserved_slugs') < 1 then
+    raise exception 'authenticated cannot read reserved slugs';
+  end if;
+end
+$$;
+
+commit;
+
+\echo ok: owner reads own rows, including soft-deleted sites, and nothing else
+\echo ok: owner cannot update a soft-deleted site or read its children
+\echo 'ok: user A cannot select, update or delete user B''s rows'
+\echo ok: authenticated cannot read password_hash or update plan
+\echo ok: server-only columns, tables and functions are closed to authenticated
+
+-- save_draft and storage as owner A -----------------------------------------
+
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', 'c2000000-0000-4000-8000-000000000001', true) \g /dev/null
+
+do $$
+declare
+  rev integer;
+  b_rev integer;
+begin
+  select draft_revision into rev from public.sites where id = 'c2000000-0000-4000-8000-000000000011';
+
+  if public.save_draft(
+    'c2000000-0000-4000-8000-000000000011',
+    rev,
+    '{"pages":{"upsert":[{"id":"c2000000-0000-4000-8000-0000000000a1","title":"About","slug":"about","sort_order":1}]}}'
+  ) <> rev + 1 then
+    raise exception 'owner save_draft did not advance the revision';
+  end if;
+
+  perform pg_temp.expect_state(
+    'select public.save_draft(''c2000000-0000-4000-8000-000000000021'', 0, ''{}'')',
+    'ST409'
+  );
+  perform pg_temp.expect_state(
+    'select public.save_draft(''c2000000-0000-4000-8000-000000000012'', 0, ''{}'')',
+    'ST409'
+  );
+  perform pg_temp.expect_state(
+    'select public.save_draft(''c2000000-0000-4000-8000-000000000011'', ' || (rev + 1)
+      || ', ''{"sections":{"upsert":[{"id":"c2000000-0000-4000-8000-0000000000a2","page_id":"c2000000-0000-4000-8000-000000000033","name":"x","sort_order":0}]}}'')',
+    'ST007'
+  );
+  -- reusing B's page id is refused with ST007 even though RLS hides B's row.
+  perform pg_temp.expect_state(
+    'select public.save_draft(''c2000000-0000-4000-8000-000000000011'', ' || (rev + 1)
+      || ', ''{"pages":{"upsert":[{"id":"c2000000-0000-4000-8000-000000000033","title":"Stolen","slug":"stolen","sort_order":5}]}}'')',
+    'ST007'
+  );
+  perform pg_temp.expect_state(
+    'select public.save_draft(''c2000000-0000-4000-8000-000000000011'', ' || (rev + 1)
+      || ', ''{"element_layouts":{"upsert":[{"id":"c2000000-0000-4000-8000-000000000063","element_id":"c2000000-0000-4000-8000-000000000051","breakpoint":"mobile","col_start":1,"col_span":1,"row_start":1,"row_span":1}]}}'')',
+    'ST007'
+  );
+
+  if public.bump_draft_revision('c2000000-0000-4000-8000-000000000021', 0) is not null
+    or public.bump_draft_revision('c2000000-0000-4000-8000-000000000012', 0) is not null
+  then
+    raise exception 'bump_draft_revision touched a site A does not own';
+  end if;
+
+  -- storage: own objects only, never B's, never the deleted site's.
+  if pg_temp.counted('select 1 from storage.objects') <> 2 then
+    raise exception 'A sees the wrong storage objects';
+  end if;
+  if pg_temp.affected(
+    'insert into storage.objects (bucket_id, name) values (''site-assets'', ''c2000000-0000-4000-8000-000000000011/draft/new.png'')'
+  ) <> 1 then
+    raise exception 'owner could not upload';
+  end if;
+  perform pg_temp.expect_denied(
+    'insert into storage.objects (bucket_id, name) values (''site-assets'', ''c2000000-0000-4000-8000-000000000021/draft/evil.png'')'
+  );
+  perform pg_temp.expect_denied(
+    'insert into storage.objects (bucket_id, name) values (''site-assets'', ''c2000000-0000-4000-8000-000000000012/draft/evil.png'')'
+  );
+  perform pg_temp.expect_denied(
+    'insert into storage.objects (bucket_id, name) values (''site-assets'', ''not-a-uuid/draft/evil.png'')'
+  );
+  perform pg_temp.expect_denied(
+    'insert into storage.objects (bucket_id, name) values (''other-bucket'', ''c2000000-0000-4000-8000-000000000011/draft/x.png'')'
+  );
+  if pg_temp.affected('delete from storage.objects where name like ''c2000000-0000-4000-8000-000000000021/%''') <> 0
+    or pg_temp.affected('update storage.objects set name = name where name like ''c2000000-0000-4000-8000-000000000021/%''') <> 0
+  then
+    raise exception 'A changed B''s storage objects';
+  end if;
+  perform pg_temp.expect_denied(
+    'update storage.objects set name = ''c2000000-0000-4000-8000-000000000021/draft/moved.png'' where name = ''c2000000-0000-4000-8000-000000000011/draft/new.png'''
+  );
+  if pg_temp.affected('delete from storage.objects where name = ''c2000000-0000-4000-8000-000000000011/draft/new.png''') <> 1 then
+    raise exception 'owner could not delete own object';
+  end if;
+end
+$$;
+
+commit;
+
+\echo ok: save_draft runs as the owner and is refused on other or deleted sites
+\echo ok: owner storage access is limited to their own live sites
+
+-- anon ------------------------------------------------------------------------
+
+begin;
+set local role anon;
+select set_config('request.jwt.claim.sub', '', true) \g /dev/null
+
+do $$
+declare
+  t text;
+  found_id uuid;
+begin
+  foreach t in array array[
+    'profiles', 'sites', 'site_publishes', 'assets', 'pages', 'sections',
+    'elements', 'element_layouts', 'submissions', 'page_views_daily',
+    'rate_limits', 'domains'
+  ] loop
+    perform pg_temp.expect_denied('select 1 from public.' || t);
+  end loop;
+
+  if pg_temp.counted('select 1 from public.reserved_slugs') < 1 then
+    raise exception 'anon cannot read reserved slugs';
+  end if;
+
+  perform pg_temp.expect_denied(
+    'insert into public.submissions (site_id, name, email, message) values (''c2000000-0000-4000-8000-000000000011'', ''n'', ''n@example.com'', ''m'')'
+  );
+  perform pg_temp.expect_denied(
+    'insert into public.page_views_daily (site_id, day, views) values (''c2000000-0000-4000-8000-000000000011'', current_date - 2, 1)'
+  );
+  perform pg_temp.expect_denied('select public.increment_page_views(''c2000000-0000-4000-8000-000000000011'', current_date)');
+  perform pg_temp.expect_denied('select public.rate_limit_hit(''form:x'', 60, 5)');
+  perform pg_temp.expect_denied('select public.restore_site(''c2000000-0000-4000-8000-000000000012'', ''c2000000-0000-4000-8000-000000000001'')');
+  perform pg_temp.expect_denied('select public.save_draft(''c2000000-0000-4000-8000-000000000011'', 0, ''{}'')');
+  perform pg_temp.expect_denied('select public.bump_draft_revision(''c2000000-0000-4000-8000-000000000011'', 0)');
+  perform pg_temp.expect_denied('select public.is_site_owner(''c2000000-0000-4000-8000-000000000011'')');
+  perform pg_temp.expect_denied('select public.slug_is_free(''anything'', null)');
+
+  -- storage: nothing readable, nothing writable, draft or published.
+  if pg_temp.counted('select 1 from storage.objects') <> 0 then
+    raise exception 'anon can read storage objects';
+  end if;
+  perform pg_temp.expect_denied(
+    'insert into storage.objects (bucket_id, name) values (''site-assets'', ''c2000000-0000-4000-8000-000000000011/draft/anon.png'')'
+  );
+  if pg_temp.affected('delete from storage.objects') <> 0
+    or pg_temp.affected('update storage.objects set name = name') <> 0
+  then
+    raise exception 'anon changed storage objects';
+  end if;
+
+  -- resolve_host: live public and live protected resolve; draft and deleted do not.
+  select r.site_id into found_id from public.resolve_host('rls-a-live') r;
+  if found_id is distinct from 'c2000000-0000-4000-8000-000000000011' then
+    raise exception 'anon could not resolve a live site';
+  end if;
+  if (select r.password_enabled from public.resolve_host('rls-b.example.com') r) is not true then
+    raise exception 'protected site did not report its gate';
+  end if;
+  if exists (select 1 from public.resolve_host('rls-b-draft'))
+    or exists (select 1 from public.resolve_host('rls-a-gone'))
+  then
+    raise exception 'anon resolved a draft or deleted site';
+  end if;
+  if public.is_site_public('c2000000-0000-4000-8000-000000000011') is not true
+    or public.is_site_public('c2000000-0000-4000-8000-000000000021') is not false
+    or public.is_site_public('c2000000-0000-4000-8000-000000000022') is not false
+    or public.is_site_public('c2000000-0000-4000-8000-000000000012') is not false
+  then
+    raise exception 'is_site_public mismatch for anon';
+  end if;
+end
+$$;
+
+commit;
+
+\echo ok: anon cannot select any table except reserved_slugs
+\echo ok: anon cannot insert submissions or page views
+\echo ok: anon cannot read or write any storage object
+\echo ok: anon resolves live sites only, never password_hash
+
+-- service_role ----------------------------------------------------------------
+
+begin;
+set local role service_role;
+
+do $$
+begin
+  if (select password_hash from public.sites where id = 'c2000000-0000-4000-8000-000000000021') is distinct from 'b-hash-placeholder' then
+    raise exception 'service_role cannot read password_hash';
+  end if;
+
+  -- the form route: rate limit, then insert.
+  if public.rate_limit_hit('form:c2000000-0000-4000-8000-000000000011', 3600, 1) is not true
+    or public.rate_limit_hit('form:c2000000-0000-4000-8000-000000000011', 3600, 1) is not false
+  then
+    raise exception 'service_role rate limit mismatch';
+  end if;
+  insert into public.submissions (site_id, name, email, message)
+  values ('c2000000-0000-4000-8000-000000000011', 'Eve', 'eve@example.com', 'Hello');
+  perform public.increment_page_views('c2000000-0000-4000-8000-000000000011', current_date);
+
+  perform pg_temp.expect_denied('update public.site_publishes set snapshot = ''{}''');
+  perform pg_temp.expect_denied('insert into public.reserved_slugs (slug) values (''svc'')');
+
+  if pg_temp.counted('select 1 from storage.objects where bucket_id = ''site-assets''') < 4 then
+    raise exception 'service_role cannot read storage objects';
+  end if;
+end
+$$;
+
+commit;
+
+\echo ok: service_role writes server-only rows and reads password_hash
+
+-- restore_site with the north-light case --------------------------------------
+
+do $$
+declare
+  owner uuid := 'c2000000-0000-4000-8000-000000000001';
+  gone uuid := 'c2000000-0000-4000-8000-000000000014';
+  expired uuid := 'c2000000-0000-4000-8000-000000000015';
+  got_slug text;
+  got_changed boolean;
+begin
+  insert into public.site_publishes (id, site_id, snapshot, published_by)
+  values ('c2000000-0000-4000-8000-000000000094', 'c2000000-0000-4000-8000-000000000011', '{}', owner);
+
+  insert into public.sites (id, owner_id, name, slug, slug_locked_at, deleted_at, purge_after)
+  values (gone, owner, 'North Light', 'north-light', now(), now() - interval '1 day', now() + interval '29 days');
+
+  -- the owner has since used north-light for a new site.
+  insert into public.sites (owner_id, name, slug)
+  values (owner, 'North Light again', 'north-light');
+
+  select r.slug, r.slug_changed into got_slug, got_changed
+  from public.restore_site(gone, owner) r;
+
+  if got_slug is distinct from 'north-light-2'
+    or got_changed is not true
+    or exists (
+      select 1 from public.sites
+      where id = gone
+        and (live_publish_id is not null or deleted_at is not null or slug_locked_at is not null)
+    )
+  then
+    raise exception 'north-light restore mismatch: %', got_slug;
+  end if;
+
+  insert into public.sites (id, owner_id, name, slug, deleted_at, purge_after)
+  values (expired, owner, 'Expired', 'rls-expired', now() - interval '31 days', now() - interval '1 day');
+
+  begin
+    perform public.restore_site(expired, owner);
+    raise exception 'expired site was restored';
+  exception
+    when sqlstate 'ST404' then
+      null;
+  end;
+end
+$$;
+
+\echo ok: restore_site returns north-light-2 as a draft and refuses an expired site
+
+do $$
+begin
+  insert into public.element_layouts (element_id, breakpoint, col_start, col_span, row_start, row_span)
+  values ('c2000000-0000-4000-8000-000000000051', 'mobile', 1, 13, 1, 1);
+  raise exception 'col_span 13 was accepted';
+exception
+  when check_violation then
+    null;
+end
+$$;
+
+\echo ok: col_span 13 rejected
+
+delete from auth.users
+where id in (
+  'c2000000-0000-4000-8000-000000000001',
+  'c2000000-0000-4000-8000-000000000002'
+);
+delete from storage.objects where name like 'c2000000-%';
+delete from public.rate_limits where bucket like 'form:c2000000-%';
 
 delete from auth.users
 where id in (

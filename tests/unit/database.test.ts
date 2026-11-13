@@ -2,7 +2,12 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { SITE_ROW_KEYS, type Database } from "@/types/database";
+import {
+  SITE_OWNER_SELECT_COLUMNS,
+  SITE_OWNER_UPDATE_COLUMNS,
+  SITE_ROW_KEYS,
+  type Database,
+} from "@/types/database";
 import { siteColumns } from "../fixtures/site-columns";
 
 const root = path.resolve(
@@ -42,6 +47,41 @@ describe("sites database types", () => {
       "utf8",
     );
     expect(migrationSiteColumns(sql)).toEqual([...siteColumns]);
+  });
+});
+
+function grantedSiteColumns(sql: string, privilege: string): string[] {
+  const match = new RegExp(
+    `grant ${privilege} \\(([^)]*)\\) on table public\\.sites to authenticated;`,
+  ).exec(sql);
+  if (!match?.[1]) {
+    throw new Error(
+      `grant ${privilege} on sites was not found in 0002_rls.sql`,
+    );
+  }
+  return match[1]
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean);
+}
+
+describe("sites owner column grants", () => {
+  const sql = readFileSync(
+    path.join(root, "supabase/migrations/0002_rls.sql"),
+    "utf8",
+  );
+
+  it("lets the owner select every column except password_hash", () => {
+    expect(SITE_OWNER_SELECT_COLUMNS).not.toContain("password_hash");
+    expect(grantedSiteColumns(sql, "select")).toEqual([
+      ...SITE_OWNER_SELECT_COLUMNS,
+    ]);
+  });
+
+  it("limits owner updates to the editable columns", () => {
+    expect(grantedSiteColumns(sql, "update")).toEqual([
+      ...SITE_OWNER_UPDATE_COLUMNS,
+    ]);
   });
 });
 
