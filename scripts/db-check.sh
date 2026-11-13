@@ -78,4 +78,26 @@ do
 done
 
 psql "$url" -q -v ON_ERROR_STOP=1 -f "$root/supabase/checks/rls_and_constraints.sql"
+
+psql "$url" -q -v ON_ERROR_STOP=1 -f "$root/supabase/seed.sql"
+psql "$url" -q -v ON_ERROR_STOP=1 <<'SQL'
+delete from auth.users;
+do $$
+declare
+  leftover bigint;
+begin
+  select
+    (select count(*) from public.profiles)
+    + (select count(*) from public.sites)
+    + (select count(*) from public.site_publishes)
+    + (select count(*) from public.assets)
+  into leftover;
+  if leftover <> 0 then
+    raise exception 'seeded account deletion left % row(s)', leftover;
+  end if;
+end
+$$;
+SQL
+echo "ok: seeded account deletion"
+
 echo "db:check passed"

@@ -323,6 +323,20 @@ $$;
 \echo ok: locked slug allowed while restoring
 \echo ok: restoring setting cleared after commit
 
+begin;
+select set_config('studiolo.restoring', 'on', true) \gset
+commit;
+
+do $$
+begin
+  if coalesce(current_setting('studiolo.restoring', true), '') <> '' then
+    raise exception 'restoring setting survived commit';
+  end if;
+end
+$$;
+
+\echo ok: restoring is transaction-local in restore path
+
 -- slug_is_free truth table --------------------------------------------------
 
 do $$
@@ -427,6 +441,9 @@ begin
   if has_table_privilege('authenticated', 'public.site_publishes', 'update') then
     raise exception 'authenticated has update on site_publishes';
   end if;
+  if has_table_privilege('service_role', 'public.site_publishes', 'update') then
+    raise exception 'service_role has update on site_publishes';
+  end if;
 
   insert into public.site_publishes (id, site_id, snapshot, published_by)
   values (
@@ -441,6 +458,16 @@ begin
     set snapshot = '{"version":2}'::jsonb
     where id = '10000000-0000-4000-8000-000000000031';
     raise exception 'publish update was accepted';
+  exception
+    when sqlstate 'ST004' then
+      null;
+  end;
+
+  begin
+    update public.site_publishes
+    set published_by = '10000000-0000-4000-8000-000000000002'
+    where id = '10000000-0000-4000-8000-000000000031';
+    raise exception 'publish reassignment was accepted';
   exception
     when sqlstate 'ST004' then
       null;
@@ -556,6 +583,187 @@ end
 $$;
 
 \echo ok: dormant column is not referenced
+
+-- account deletion and asset allow-list ------------------------------------
+
+do $$
+declare
+  owner uuid := '10000000-0000-4000-8000-000000000003';
+  site uuid := '10000000-0000-4000-8000-000000000017';
+  publish uuid := '10000000-0000-4000-8000-000000000032';
+  asset uuid := '10000000-0000-4000-8000-000000000042';
+  fk text;
+begin
+  select pg_get_constraintdef(oid)
+  into fk
+  from pg_constraint
+  where conname = 'site_publishes_published_by_fkey';
+
+  if fk is null or fk not like '%ON DELETE SET NULL%' then
+    raise exception 'published_by foreign key is %', coalesce(fk, 'missing');
+  end if;
+
+  insert into auth.users (id, email)
+  values (owner, 'publisher@example.com');
+
+  insert into public.sites (id, owner_id, name, slug)
+  values (site, owner, 'Publisher', 'publisher-address');
+
+  insert into public.site_publishes (id, site_id, snapshot, published_by)
+  values (publish, site, '{"version":1}'::jsonb, owner);
+
+  update public.sites
+  set live_publish_id = publish
+  where id = site;
+
+  insert into public.assets (id, site_id, path, mime, bytes)
+  values (asset, site, 'publisher-address/og.png', 'image/png', 128);
+
+  delete from auth.users
+  where id = owner;
+
+  if exists (select 1 from public.profiles where id = owner)
+    or exists (select 1 from public.sites where id = site)
+    or exists (select 1 from public.site_publishes where id = publish)
+    or exists (select 1 from public.assets where id = asset)
+  then
+    raise exception 'account deletion left rows behind';
+  end if;
+end
+$$;
+
+\echo ok: account deletion cascades
+
+do $$
+declare
+  publisher uuid := '10000000-0000-4000-8000-000000000004';
+  publish uuid := '10000000-0000-4000-8000-000000000033';
+begin
+  insert into auth.users (id, email)
+  values (publisher, 'guest-publisher@example.com');
+
+  insert into public.site_publishes (id, site_id, snapshot, published_by)
+  values (
+    publish,
+    '10000000-0000-4000-8000-000000000012',
+    '{"version":1}'::jsonb,
+    publisher
+  );
+
+  delete from auth.users
+  where id = publisher;
+
+  if not exists (
+    select 1
+    from public.site_publishes
+    where id = publish
+      and published_by is null
+  ) then
+    raise exception 'cross-owner publish was not kept with a null publisher';
+  end if;
+end
+$$;
+
+\echo ok: cross-owner publisher set null
+
+do $$
+declare
+  allowed text;
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'assets_mime_allowed'
+  ) or exists (
+    select 1
+    from pg_constraint
+    where conname = 'assets_mime_present'
+  ) then
+    raise exception 'mime allow-list constraint is missing';
+  end if;
+
+  foreach allowed in array array['image/webp', 'image/avif', 'image/jpeg', 'image/png']
+  loop
+    insert into public.assets (site_id, path, mime, bytes)
+    values (
+      '10000000-0000-4000-8000-000000000012',
+      'held-address/' || allowed,
+      allowed,
+      64
+    );
+  end loop;
+
+  begin
+    insert into public.assets (site_id, path, mime, bytes)
+    values (
+      '10000000-0000-4000-8000-000000000012',
+      'held-address/no.gif',
+      'image/gif',
+      1
+    );
+    raise exception 'image/gif was accepted';
+  exception
+    when check_violation then
+      null;
+  end;
+
+  begin
+    insert into public.assets (site_id, path, mime, bytes)
+    values (
+      '10000000-0000-4000-8000-000000000012',
+      'held-address/no.html',
+      'text/html',
+      1
+    );
+    raise exception 'text/html was accepted';
+  exception
+    when check_violation then
+      null;
+  end;
+end
+$$;
+
+\echo ok: asset mime allow-list
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'assets_bytes_range'
+  ) or exists (
+    select 1
+    from pg_constraint
+    where conname = 'assets_bytes_positive'
+  ) then
+    raise exception 'byte range constraint is missing';
+  end if;
+
+  insert into public.assets (site_id, path, mime, bytes)
+  values (
+    '10000000-0000-4000-8000-000000000012',
+    'held-address/max.png',
+    'image/png',
+    8388608
+  );
+
+  begin
+    insert into public.assets (site_id, path, mime, bytes)
+    values (
+      '10000000-0000-4000-8000-000000000012',
+      'held-address/over.png',
+      'image/png',
+      8388609
+    );
+    raise exception '8388609 bytes was accepted';
+  exception
+    when check_violation then
+      null;
+  end;
+end
+$$;
+
+\echo ok: asset 8 MiB cap
 
 delete from auth.users
 where id in (

@@ -134,6 +134,10 @@ begin
     end if;
   end if;
 
+  -- Only restore_site (02b) may set studiolo.restoring, and only with
+  -- set_config('studiolo.restoring', 'on', true) so is_local is true and the
+  -- bypass ends when that transaction commits. A session-wide SET would also
+  -- match this read; restore_site must not use one.
   if tg_op = 'UPDATE'
     and new.slug is distinct from old.slug
     and old.slug_locked_at is not null
@@ -162,6 +166,10 @@ language plpgsql
 set search_path = public
 as $$
 begin
+  if new.published_by is null and old.published_by is not null
+     and (to_jsonb(new) - 'published_by') = (to_jsonb(old) - 'published_by') then
+    return new;
+  end if;
   raise exception 'site_publishes is insert-only'
     using errcode = 'ST004';
 end;

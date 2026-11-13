@@ -109,12 +109,14 @@ create table public.site_publishes (
   id uuid primary key default gen_random_uuid(),
   site_id uuid not null references public.sites (id) on delete cascade,
   snapshot jsonb not null,
-  published_by uuid references public.profiles (id),
+  published_by uuid references public.profiles (id) on delete set null,
   created_at timestamptz not null default now()
 );
 
 -- assets --------------------------------------------------------------------
--- Column list shared with prompt 02b so that prompt does not recreate this table.
+-- 02b's assets definition is already satisfied here. 02b must not
+-- create table assets again. The required assets (site_id) index is the
+-- leading column of assets_site_path_key.
 -- No updated_at: an upload is insert-only history of a file.
 
 create table public.assets (
@@ -130,13 +132,18 @@ create table public.assets (
   constraint assets_path_present check (char_length(path) between 1 and 1024),
   constraint assets_width_positive check (width is null or width > 0),
   constraint assets_height_positive check (height is null or height > 0),
-  constraint assets_mime_present check (char_length(mime) between 1 and 255),
-  constraint assets_bytes_positive check (bytes > 0),
+  constraint assets_mime_allowed check (
+    mime in ('image/webp', 'image/avif', 'image/jpeg', 'image/png')
+  ),
+  constraint assets_bytes_range check (bytes > 0 and bytes <= 8388608),
   constraint assets_blur_data_url_length check (
     blur_data_url is null or char_length(blur_data_url) <= 16384
   ),
   constraint assets_site_path_key unique (site_id, path)
 );
+
+comment on table public.assets is
+  '02b assets definition is already satisfied by 0001. Do not create this table again. The assets (site_id) index is the leading column of assets_site_path_key.';
 
 -- foreign keys that close the cycle ----------------------------------------
 
