@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Icon } from "./icons";
@@ -5,7 +6,13 @@ import { Icon } from "./icons";
 export type ButtonVariant =
   "primary" | "secondary" | "ghost" | "danger" | "destructive";
 
-export type ButtonSize = "sm" | "lg" | "touch" | "nav" | "desktop";
+/**
+ * sm / desktop: 32px. lg: 40px. touch: 48px. nav: 44px hit area around a 36px
+ * pill. block: the full-width auth and landing buttons, 48px with 16px text
+ * below 900px and 40px with 14px text from 900px. Unset: 48px below 640px,
+ * 32px from 640px.
+ */
+export type ButtonSize = "sm" | "lg" | "touch" | "nav" | "desktop" | "block";
 
 export type ForceState = "hover" | "active" | "focus" | "disabled" | "loading";
 
@@ -22,6 +29,18 @@ const variants: Record<ButtonVariant, string> = {
     "bg-error text-bg enabled:hover:bg-error-hover enabled:active:bg-error-hover",
 };
 
+// Links have no :enabled state, so hover and active apply directly. Spelled
+// out (not derived) so Tailwind sees every class.
+const linkVariants: Record<ButtonVariant, string> = {
+  primary: "bg-ink text-bg hover:bg-ink-hover active:bg-ink-hover",
+  secondary:
+    "border border-line bg-bg text-ink hover:bg-fill-hover active:bg-fill-selected",
+  ghost: "bg-transparent text-ink hover:bg-fill-hover active:bg-fill-selected",
+  danger:
+    "bg-transparent text-error hover:bg-fill-hover active:bg-fill-selected",
+  destructive: "bg-error text-bg hover:bg-error-hover active:bg-error-hover",
+};
+
 const disabledVariants: Record<ButtonVariant, string> = {
   primary: "bg-surface-2 text-ink-4",
   secondary: "border border-line bg-bg text-ink-4",
@@ -35,6 +54,7 @@ const sizes: Record<Exclude<ButtonSize, "nav">, string> = {
   desktop: "h-8 gap-2 px-3 text-sm",
   lg: "h-10 gap-2 px-4 text-sm",
   touch: "h-12 gap-2 px-4 text-base",
+  block: "h-12 gap-2 px-4 text-base min-[900px]:h-10 min-[900px]:text-sm",
 };
 
 const responsiveSize =
@@ -47,6 +67,8 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   chevron?: boolean;
   loading?: boolean;
   forceState?: ForceState;
+  /** Renders a next/link with the same look. Not for size "nav". */
+  href?: string;
 };
 
 export function Button({
@@ -60,6 +82,7 @@ export function Button({
   children,
   disabled,
   type = "button",
+  href,
   ...props
 }: ButtonProps) {
   const isDisabled = disabled || loading || forceState === "disabled";
@@ -72,6 +95,26 @@ export function Button({
       {chevron ? <Icon name="chevron-down" size={14} /> : null}
     </>
   );
+
+  if (href !== undefined && size !== "nav") {
+    return (
+      <Link
+        href={href}
+        data-variant={variant}
+        id={props.id}
+        aria-label={props["aria-label"]}
+        className={cn(
+          "inline-flex shrink-0 items-center justify-center rounded-control font-medium whitespace-nowrap",
+          linkVariants[variant],
+          size ? sizes[size] : responsiveSize,
+          className,
+        )}
+      >
+        {icon}
+        {children}
+      </Link>
+    );
+  }
 
   if (size === "nav") {
     return (

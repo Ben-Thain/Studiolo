@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { AuthPanel } from "@/components/auth/auth-panel";
 import { WordmarkBar } from "@/components/auth/wordmark";
 import { safeNext } from "@/lib/auth/next";
+import { isGoogleEnabled } from "@/lib/auth/providers";
 
 export const metadata: Metadata = { title: "This link has expired · Studiolo" };
 
@@ -21,6 +22,7 @@ export default async function AuthExpiredPage({ searchParams }: Props) {
       <WordmarkBar />
       <AuthPanel
         mode="expired"
+        googleEnabled={await isGoogleEnabled()}
         next={safeNext(typeof next === "string" ? next : null)}
         initialEmail={prefill}
       />

@@ -5,11 +5,13 @@
 // no third party. Test helpers: GET /__otp?email=… (latest request for that
 // address) and GET /__otp-count?email=…. Tests run in parallel, so failures
 // are keyed by address: fail-server.* answers 500, fail-rate.* answers 429,
-// slow.* waits 4s (for loading-state screenshots).
+// slow.* waits 4s (for loading-state screenshots). POST /__google?enabled=false
+// switches the Google provider off in /auth/v1/settings.
 import { createServer } from "node:http";
 
 const PORT = Number(process.env.MOCK_AUTH_PORT ?? 54399);
 let otpRequests = [];
+let googleEnabled = true;
 
 const b64 = (value) => Buffer.from(value).toString("base64url");
 
@@ -117,6 +119,17 @@ createServer(async (req, res) => {
     });
   }
 
+  if (path === "/__google" && req.method === "POST") {
+    googleEnabled = url.searchParams.get("enabled") !== "false";
+    return send(res, 200, { google: googleEnabled });
+  }
+  if (path === "/auth/v1/settings" && req.method === "GET") {
+    return send(res, 200, {
+      external: { email: true, google: googleEnabled, apple: false },
+      disable_signup: false,
+    });
+  }
+
   if (path === "/auth/v1/otp" && req.method === "POST") {
     const body = await readJson(req);
     const email = String(body.email ?? "");
@@ -187,6 +200,24 @@ createServer(async (req, res) => {
       );
     }
     return authError(res, 400, "unsupported_grant_type", "unsupported grant");
+  }
+
+  if (path === "/auth/v1/verify" && req.method === "POST") {
+    const body = await readJson(req);
+    const token = String(body.token_hash ?? "");
+    if (!token.startsWith("ok.")) {
+      return authError(
+        res,
+        403,
+        "otp_expired",
+        "Email link is invalid or has expired",
+      );
+    }
+    return send(
+      res,
+      200,
+      session(Buffer.from(token.slice(3), "base64url").toString()),
+    );
   }
 
   if (path === "/auth/v1/user" && req.method === "GET") {

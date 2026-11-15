@@ -1,27 +1,23 @@
-import Link from "next/link";
 import { Wordmark } from "@/components/auth/wordmark";
-import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 // Public landing. Signed-in visitors are sent to /sites by the middleware.
 // `?ref=<slug>` (the "Made with Studiolo" credit) is accepted and ignored.
-
-const linkButton =
-  "inline-flex shrink-0 items-center justify-center rounded-control font-medium whitespace-nowrap";
 
 export default function LandingPage() {
   return (
     <>
       <header className="flex h-16 items-center justify-between px-6 min-[900px]:px-12">
         <Wordmark />
-        <Link
+        {/* Ghost sm on desktop; a 44px tap target below 900px. */}
+        <Button
           href="/login"
-          className={cn(
-            linkButton,
-            "h-11 px-3 text-base text-ink hover:bg-fill-hover active:bg-fill-selected min-[900px]:h-8 min-[900px]:text-sm",
-          )}
+          variant="ghost"
+          size="sm"
+          className="max-[899px]:h-11 max-[899px]:text-base"
         >
           Log in
-        </Link>
+        </Button>
       </header>
       <main className="px-6 pt-16 pb-16 min-[900px]:pt-[200px] min-[900px]:pl-[160px]">
         <h1 className="max-w-[600px] text-[40px] leading-[44px] font-medium tracking-[-0.03em] text-ink min-[900px]:text-[56px] min-[900px]:leading-[60px]">
@@ -31,24 +27,12 @@ export default function LandingPage() {
           Pages, photos and a contact form, published at your own address.
         </p>
         <div className="mt-10 flex flex-col gap-2 min-[900px]:flex-row">
-          <Link
-            href="/signup"
-            className={cn(
-              linkButton,
-              "h-12 px-4 text-base bg-ink text-bg hover:bg-ink-hover min-[900px]:h-10 min-[900px]:text-sm",
-            )}
-          >
+          <Button href="/signup" size="block">
             Get started
-          </Link>
-          <Link
-            href="/login"
-            className={cn(
-              linkButton,
-              "h-12 border border-line bg-bg px-4 text-base text-ink hover:bg-fill-hover active:bg-fill-selected min-[900px]:h-10 min-[900px]:text-sm",
-            )}
-          >
+          </Button>
+          <Button href="/login" variant="secondary" size="block">
             Log in
-          </Link>
+          </Button>
         </div>
       </main>
     </>

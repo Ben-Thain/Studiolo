@@ -3,7 +3,6 @@
 import Link from "next/link";
 import {
   useEffect,
-  useId,
   useRef,
   useState,
   useTransition,
@@ -11,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { Button } from "@/components/ui/button";
+import { Field, Input } from "@/components/ui/field";
 import { GoogleMark } from "@/components/auth/google-mark";
 import { AUTH_COPY } from "@/lib/auth/copy";
 import { sendMagicLink, startGoogleSignIn } from "@/lib/auth/actions";
@@ -41,12 +41,9 @@ const COPY: Record<AuthMode, { title: string; lead: string; submit: string }> =
     },
   };
 
-// Desktop: 40px controls with 14px text. Below 900px: 48px, 16px text.
-const blockButton = "w-full min-[900px]:h-10 min-[900px]:text-sm";
-
 function rememberEmail(email: string) {
   try {
-    window.localStorage.setItem(LAST_EMAIL_KEY, email);
+    window.sessionStorage.setItem(LAST_EMAIL_KEY, email);
   } catch {
     // Storage can be unavailable (private mode); prefill is a nicety.
   }
@@ -54,7 +51,7 @@ function rememberEmail(email: string) {
 
 function recallEmail(): string {
   try {
-    return window.localStorage.getItem(LAST_EMAIL_KEY) ?? "";
+    return window.sessionStorage.getItem(LAST_EMAIL_KEY) ?? "";
   } catch {
     return "";
   }
@@ -64,10 +61,13 @@ export function AuthPanel({
   mode,
   next,
   initialEmail = "",
+  googleEnabled,
 }: {
   mode: AuthMode;
   next: string | null;
   initialEmail?: string;
+  /** False when the Supabase project has the Google provider switched off. */
+  googleEnabled: boolean;
 }) {
   const [email, setEmail] = useState(initialEmail);
   const [sentTo, setSentTo] = useState<string | null>(null);
@@ -79,7 +79,8 @@ export function AuthPanel({
   const emailRef = useRef<HTMLInputElement>(null);
   const firstRender = useRef(true);
 
-  // The expired page prefills the address used for the last link sent here.
+  // The expired page prefills the address used for the last link sent from
+  // this tab (sessionStorage: nothing outlives the tab).
   useEffect(() => {
     if (mode !== "expired" || initialEmail) return;
     const remembered = recallEmail();
@@ -169,11 +170,13 @@ export function AuthPanel({
   }
 
   const copy = COPY[mode];
-  const googleButton = (
+  // With the provider off, Supabase would answer with a raw JSON error, so
+  // the button says so instead of failing silently (03b wording).
+  const googleButton = googleEnabled ? (
     <Button
       variant="secondary"
-      size="touch"
-      className={blockButton}
+      size="block"
+      className="w-full"
       onClick={onGoogle}
       loading={pending === "google"}
       disabled={pending === "email"}
@@ -181,24 +184,42 @@ export function AuthPanel({
     >
       Continue with Google
     </Button>
+  ) : (
+    <Button
+      variant="secondary"
+      size="block"
+      className="w-full"
+      disabled
+      icon={<GoogleMark />}
+    >
+      {AUTH_COPY.googleUnavailable}
+    </Button>
   );
 
   const emailForm = (
     <form noValidate onSubmit={onSubmit} className="flex flex-col gap-4">
-      <EmailField
-        inputRef={emailRef}
-        value={email}
-        onChange={(value) => {
-          setEmail(value);
-          if (fieldError) setFieldError(null);
-        }}
-        error={fieldError}
-        disabled={pending !== null}
-      />
+      <Field label="Email" layout="block" error={fieldError ?? undefined}>
+        <Input
+          ref={emailRef}
+          size="block"
+          type="email"
+          name="email"
+          autoComplete="email"
+          inputMode="email"
+          autoCapitalize="none"
+          spellCheck={false}
+          value={email}
+          onChange={(event) => {
+            setEmail(event.target.value);
+            if (fieldError) setFieldError(null);
+          }}
+          disabled={pending !== null}
+        />
+      </Field>
       <Button
         type="submit"
-        size="touch"
-        className={blockButton}
+        size="block"
+        className="w-full"
         loading={pending === "email"}
         disabled={pending === "google"}
       >
@@ -235,7 +256,7 @@ export function AuthPanel({
             : "New to Studiolo? "}
           <Link
             href={authHref(mode === "signup" ? "/login" : "/signup", next)}
-            className="rounded-control font-medium text-ink hover:underline"
+            className="rounded-control font-medium text-ink hover:underline max-[899px]:-my-3 max-[899px]:inline-flex max-[899px]:min-h-11 max-[899px]:items-center"
           >
             {mode === "signup" ? "Log in" : "Create an account"}
           </Link>
@@ -297,23 +318,21 @@ function CheckInbox({
     <AuthColumn>
       <AuthHeading title="Check your inbox" titleRef={titleRef}>
         We sent a sign-in link to{" "}
-        <span className="font-medium break-all text-ink">{email}</span>. Open it
-        on this device.
+        <span className="font-medium [overflow-wrap:anywhere] text-ink">
+          {email}
+        </span>
+        . Open it on this device.
       </AuthHeading>
       <div className="mt-8 flex flex-col gap-2">
         {waiting ? (
-          <Button
-            size="touch"
-            className={cn(blockButton, "border border-line")}
-            disabled
-          >
+          <Button size="block" className="w-full border border-line" disabled>
             Resend in {seconds}s
           </Button>
         ) : (
           <Button
             variant="secondary"
-            size="touch"
-            className={blockButton}
+            size="block"
+            className="w-full"
             onClick={resend}
             loading={pending}
           >
@@ -322,8 +341,8 @@ function CheckInbox({
         )}
         <Button
           variant="ghost"
-          size="touch"
-          className={cn(blockButton, "text-ink-2 enabled:hover:text-ink")}
+          size="block"
+          className="w-full text-ink-2 enabled:hover:text-ink"
           onClick={onBack}
         >
           Use a different email
@@ -379,57 +398,6 @@ function Divider() {
         or
       </span>
       <span className="h-px flex-1 bg-line" />
-    </div>
-  );
-}
-
-function EmailField({
-  inputRef,
-  value,
-  onChange,
-  error,
-  disabled,
-}: {
-  inputRef: React.RefObject<HTMLInputElement | null>;
-  value: string;
-  onChange: (value: string) => void;
-  error: string | null;
-  disabled: boolean;
-}) {
-  const id = useId();
-  const errorId = `${id}-error`;
-  return (
-    <div className="flex flex-col gap-2">
-      <label
-        htmlFor={id}
-        className="text-sm leading-4 font-medium text-ink-2 min-[900px]:text-xs"
-      >
-        Email
-      </label>
-      <input
-        ref={inputRef}
-        id={id}
-        type="email"
-        name="email"
-        autoComplete="email"
-        inputMode="email"
-        autoCapitalize="none"
-        spellCheck={false}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        disabled={disabled}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error ? errorId : undefined}
-        className={cn(
-          "h-12 w-full rounded-control border border-line bg-bg px-3 text-base text-ink placeholder:text-ink-3 focus-visible:border-ink disabled:bg-surface-2 disabled:text-ink-4 aria-invalid:border-error",
-          "min-[900px]:h-10 min-[900px]:text-sm",
-        )}
-      />
-      {error ? (
-        <p id={errorId} className="text-xs leading-4 text-error">
-          {error}
-        </p>
-      ) : null}
     </div>
   );
 }

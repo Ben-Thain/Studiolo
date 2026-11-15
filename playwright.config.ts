@@ -13,6 +13,15 @@ export default defineConfig({
   use: {
     baseURL: APP_URL,
   },
+  projects: [
+    { name: "main", testIgnore: /auth-google-off\.spec\.ts/ },
+    // Flips server-wide mock state, so it runs alone after everything else.
+    {
+      name: "google-off",
+      testMatch: /auth-google-off\.spec\.ts/,
+      dependencies: ["main"],
+    },
+  ],
   webServer: [
     {
       command: "node tests/e2e/mock-auth-server.mjs",

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { AuthPanel } from "@/components/auth/auth-panel";
 import { WordmarkBar } from "@/components/auth/wordmark";
 import { safeNext } from "@/lib/auth/next";
+import { isGoogleEnabled } from "@/lib/auth/providers";
 
 export const metadata: Metadata = { title: "Log in · Studiolo" };
 
@@ -14,6 +15,7 @@ export default async function LoginPage({ searchParams }: Props) {
       <WordmarkBar />
       <AuthPanel
         mode="login"
+        googleEnabled={await isGoogleEnabled()}
         next={safeNext(typeof next === "string" ? next : null)}
       />
     </>

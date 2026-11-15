@@ -1,5 +1,6 @@
 import {
   cloneElement,
+  type ComponentPropsWithRef,
   isValidElement,
   useId,
   type InputHTMLAttributes,
@@ -15,11 +16,18 @@ const controlClass =
 
 const responsiveHeight = "h-12 text-base sm:h-8 sm:text-sm";
 
-export type ControlSize = "desktop" | "touch";
+/**
+ * desktop: 32px. touch: 48px. block: the full-width auth and landing controls,
+ * 48px with 16px text below 900px and 40px with 14px text from 900px.
+ * Unset: 48px below 640px, 32px from 640px.
+ */
+export type ControlSize = "desktop" | "touch" | "block";
 
 function heightClass(size?: ControlSize) {
   if (size === "touch") return "h-12 text-base";
   if (size === "desktop") return "h-8 text-sm";
+  if (size === "block")
+    return "h-12 text-base min-[900px]:h-10 min-[900px]:text-sm";
   return responsiveHeight;
 }
 
@@ -39,7 +47,7 @@ export function Input({
   touch = false,
   className,
   ...props
-}: Omit<InputHTMLAttributes<HTMLInputElement>, "size"> & Sized) {
+}: Omit<ComponentPropsWithRef<"input">, "size"> & Sized) {
   return (
     <input
       className={cn(
@@ -86,10 +94,21 @@ type FieldProps = {
   label: string;
   hint?: string;
   error?: string;
+  /**
+   * block: the auth forms. 8px between label and control; the label is 14px
+   * below 900px and 12px from 900px. Default: 4px gap, 12px label.
+   */
+  layout?: "default" | "block";
   children: ReactElement<FieldChildProps>;
 };
 
-export function Field({ label, hint, error, children }: FieldProps) {
+export function Field({
+  label,
+  hint,
+  error,
+  layout = "default",
+  children,
+}: FieldProps) {
   const id = useId();
   const messageId = `${id}-message`;
   const control = isValidElement(children)
@@ -101,8 +120,16 @@ export function Field({ label, hint, error, children }: FieldProps) {
     : children;
 
   return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-xs leading-4 font-medium text-ink-2">
+    <div
+      className={cn("flex flex-col", layout === "block" ? "gap-2" : "gap-1")}
+    >
+      <label
+        htmlFor={id}
+        className={cn(
+          layout === "block" ? "text-sm min-[900px]:text-xs" : "text-xs",
+          "leading-4 font-medium text-ink-2",
+        )}
+      >
         {label}
       </label>
       {control}

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getPublicEnv } from "@/lib/env";
 import { AUTH_COPY } from "@/lib/auth/copy";
 import { safeNext } from "@/lib/auth/next";
+import { isGoogleEnabled } from "@/lib/auth/providers";
 import { supabasePublicConfig } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 
@@ -73,6 +74,9 @@ export async function startGoogleSignIn(input: {
 }): Promise<AuthActionResult> {
   if (!supabasePublicConfig()) {
     return { ok: false, message: AUTH_COPY.unavailable };
+  }
+  if (!(await isGoogleEnabled())) {
+    return { ok: false, message: AUTH_COPY.googleUnavailable };
   }
   let url: string | null = null;
   try {

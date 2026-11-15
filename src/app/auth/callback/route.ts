@@ -2,7 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { safeNext } from "@/lib/auth/next";
 import { getPublicEnv } from "@/lib/env";
-import { HOME_ROUTE, isAppHost } from "@/lib/auth/routes";
+import { callbackOrigin } from "@/lib/auth/origin";
+import { HOME_ROUTE } from "@/lib/auth/routes";
 import { supabasePublicConfig } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 
@@ -27,24 +28,22 @@ function isOtpType(value: string | null): value is EmailOtpType {
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
-  // Redirect on the app host that received the request, since the session
-  // cookies are set there. request.url can be normalised to localhost by the
-  // dev server, so read the Host header, and fall back to the app URL when the
-  // header is not an app host.
   const env = getPublicEnv();
-  const host =
-    request.headers.get("x-forwarded-host") ?? request.headers.get("host");
-  const forwardedProto = request.headers
-    .get("x-forwarded-proto")
-    ?.split(",")[0]
-    ?.trim();
-  const origin = isAppHost(host, {
+  const origin = callbackOrigin({
+    host:
+      request.headers.get("x-forwarded-host") ?? request.headers.get("host"),
+    forwardedProto: request.headers.get("x-forwarded-proto"),
+    requestProtocol: request.nextUrl.protocol,
+    nodeEnv: process.env.NODE_ENV,
     appUrl: env.NEXT_PUBLIC_APP_URL,
-    rootDomain: env.NEXT_PUBLIC_ROOT_DOMAIN,
-  })
-    ? `${forwardedProto === "http" || forwardedProto === "https" ? forwardedProto : request.nextUrl.protocol.replace(":", "")}://${host}`
-    : new URL(env.NEXT_PUBLIC_APP_URL).origin;
-  const at = (path: string) => new URL(path, origin);
+    vercelUrl: process.env.VERCEL_URL,
+    vercelBranchUrl: process.env.VERCEL_BRANCH_URL,
+  });
+  // Belt and braces: whatever safeNext returned must resolve on this origin.
+  const at = (path: string) => {
+    const url = new URL(path, origin);
+    return url.origin === origin ? url : new URL(HOME_ROUTE, origin);
+  };
   const next = safeNext(searchParams.get("next")) ?? HOME_ROUTE;
   const expired = at("/auth/expired");
   const nextParam = safeNext(searchParams.get("next"));

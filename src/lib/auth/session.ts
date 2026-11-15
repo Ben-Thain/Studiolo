@@ -1,6 +1,7 @@
 import "server-only";
 
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import type { User } from "@supabase/supabase-js";
 import { authHref } from "@/lib/auth/next";
 import { supabasePublicConfig } from "@/lib/supabase/config";
@@ -8,6 +9,9 @@ import { createClient } from "@/lib/supabase/server";
 
 /** The signed-in user, or null (also null when Supabase is not configured). */
 export async function getUser(): Promise<User | null> {
+  // Always per request: without this, a build with no Supabase env would
+  // prerender guarded pages as a fixed redirect.
+  await connection();
   if (!supabasePublicConfig()) return null;
   try {
     const supabase = await createClient();

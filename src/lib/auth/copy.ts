@@ -5,4 +5,5 @@ export const AUTH_COPY = {
   rateLimited: "Too many sign-in links. Wait a minute, then try again.",
   sendFailed: "We couldn't send the link. Try again.",
   googleFailed: "We couldn't start Google sign-in. Try again.",
+  googleUnavailable: "Google sign-in isn't set up yet",
 } as const;

@@ -7,7 +7,8 @@ export function Wordmark({ className }: { className?: string }) {
     <Link
       href="/"
       className={cn(
-        "rounded-control text-base leading-6 font-medium tracking-[-0.02em] text-ink",
+        // 44px tall hit area; the bar centres it, so the glyphs do not move.
+        "inline-flex min-h-11 items-center rounded-control text-base leading-6 font-medium tracking-[-0.02em] text-ink",
         className,
       )}
     >

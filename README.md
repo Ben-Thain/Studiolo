@@ -53,6 +53,11 @@ psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/checks/rls_and_constraints.sql
 - `src/middleware.ts` refreshes the Supabase session on app hosts and app routes only (anon key, no UI, no service role). It must live in `src/` because the app uses `src/app`; a root `middleware.ts` is ignored. Pages also check the session on the server (`requireUser`).
 - Email sign-in is a magic link (`signInWithOtp`, new addresses get an account). `/auth/callback` exchanges the PKCE code (or verifies a `token_hash`) and redirects to `next` or `/sites`; any failure lands on `/auth/expired`. Raw auth errors are never shown.
 - `/sites`, `/account` and `/plan` are placeholders until prompt 03b builds the home shell.
+- `next` is checked again after URL normalisation and after each further percent-decoding, so dot-segment tricks (`/.//evil.com`, `/%2e%2e//evil.com`, `/%252e%252e//evil.com`) are refused, and the callback only redirects to a URL on its own origin.
+- The callback redirects on `NEXT_PUBLIC_APP_URL` in production. It uses the request's host only when that host is this deployment's `VERCEL_URL` or `VERCEL_BRANCH_URL` (or, in development, the app host or its loopback alias on the same port). `Host` / `X-Forwarded-Host` cannot move it anywhere else.
+- Google: the sign-in pages read `/auth/v1/settings` (anon key, cached for a minute in production). With the provider off the button is disabled and reads "Google sign-in isn't set up yet" instead of sending people to Supabase's raw error.
+- The last email used is kept in `sessionStorage` for this tab only, to prefill `/auth/expired`.
+- Guarded pages render per request (`connection()`), so `npm run build` works without env; a production server without `NEXT_PUBLIC_APP_URL` / `NEXT_PUBLIC_ROOT_DOMAIN` fails each request with a clear error.
 
 Supabase settings (Ben, in the dashboard; nothing here changes them):
 

@@ -348,3 +348,93 @@ test.describe("accessibility", () => {
     expect(results.violations).toEqual([]);
   });
 });
+
+test.describe("open redirects", () => {
+  const evil = [
+    "//evil.com",
+    "/\\evil.com",
+    "https://evil.com",
+    "/.//evil.com",
+    "/..//evil.com",
+    "/%2e%2e//evil.com",
+    "/x/..//evil.com",
+    "/%252e%252e//evil.com",
+  ];
+
+  for (const next of evil) {
+    test(`callback never leaves the app for next=${next}`, async ({ page }) => {
+      const email = uniqueEmail("redir");
+      await signIn(page, email);
+      const response = await page.request.get(
+        `/auth/callback?code=${codeFor(email)}&next=${encodeURIComponent(next)}`,
+        { maxRedirects: 0 },
+      );
+      expect(response.status()).toBe(307);
+      const location = new URL(
+        response.headers()["location"],
+        "http://127.0.0.1:3000",
+      );
+      expect(location.host).toBe("127.0.0.1:3000");
+      expect(location.pathname).not.toMatch(/^\/\//);
+
+      // The token_hash path too (the audit's proof of concept).
+      const viaHash = await page.request.get(
+        `/auth/callback?token_hash=${codeFor(email)}&type=magiclink&next=${encodeURIComponent(next)}`,
+        { maxRedirects: 0 },
+      );
+      const hashLocation = new URL(
+        viaHash.headers()["location"],
+        "http://127.0.0.1:3000",
+      );
+      expect(viaHash.status()).toBe(307);
+      expect(hashLocation.host).toBe("127.0.0.1:3000");
+      // A verified token_hash signs in, so it lands on /sites, not the
+      // expired page: the redirect really is the success path.
+      expect(hashLocation.pathname).toBe("/sites");
+
+      // And the login page never puts it into the email link.
+      await page.goto(`/login?next=${encodeURIComponent(next)}`);
+      const sent = uniqueEmail("redir-link");
+      await page.getByLabel("Email").fill(sent);
+      await page.getByRole("button", { name: "Continue", exact: true }).click();
+      await expect(
+        page.getByRole("heading", { name: "Check your inbox" }),
+      ).toBeVisible();
+      const link = new URL((await lastOtp(page, sent)).redirect_to);
+      expect(link.searchParams.get("next")).toBeNull();
+    });
+  }
+
+  test("callback ignores a forged forwarded host", async ({ request }) => {
+    for (const host of ["evil.vercel.app", "localhost:6666", "evil.com"]) {
+      const response = await request.get("/auth/callback?error=x", {
+        headers: { "x-forwarded-host": host },
+        maxRedirects: 0,
+      });
+      expect(
+        new URL(response.headers()["location"]).host,
+        `x-forwarded-host ${host}`,
+      ).toBe("127.0.0.1:3000");
+    }
+  });
+});
+
+test.describe("tap targets", () => {
+  test.use({ viewport: { width: 393, height: 852 } });
+
+  for (const path of ["/login", "/signup", "/"]) {
+    test(`${path} links are at least 44px tall on mobile`, async ({ page }) => {
+      await page.goto(path);
+      const links = page.locator("a:visible");
+      const count = await links.count();
+      expect(count).toBeGreaterThan(0);
+      for (let i = 0; i < count; i += 1) {
+        const box = await links.nth(i).boundingBox();
+        expect(
+          box?.height,
+          await links.nth(i).innerText(),
+        ).toBeGreaterThanOrEqual(44);
+      }
+    });
+  }
+});
