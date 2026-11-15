@@ -207,8 +207,23 @@ test.describe("new site dialog", () => {
       "Cancel",
       "Create site",
     ]);
+    // The actions are the small (13px, 32px) buttons of d-new-site.png.
+    for (const label of ["Cancel", "Create site"]) {
+      const action = dialog.getByRole("button", { name: label });
+      await expect(action).toHaveCSS("font-size", "13px");
+      expect((await action.boundingBox())!.height).toBe(32);
+    }
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
+    await expect(button).toBeFocused();
+
+    // Opened by the URL (nothing had focus): Escape returns to New site,
+    // not the page body.
+    await page.goto("/sites?new=1");
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(page).toHaveURL("/sites");
     await expect(button).toBeFocused();
 
     await page.goto("/sites?new=1");
@@ -256,6 +271,30 @@ test.describe("new site dialog", () => {
   });
 });
 
+test.describe("slug check limit", () => {
+  test("too many address checks show a calm note; Create site still works", async ({
+    page,
+    request,
+  }) => {
+    const email = uniqueEmail("slug-limit");
+    await signInAs(page, email);
+    await request.post(
+      `${MOCK}/__slug-limit?email=${encodeURIComponent(email)}`,
+    );
+    const name = uniqueName("Busy Studio");
+    await page.getByRole("textbox", { name: "Site name" }).fill(name);
+    const note = page.getByRole("status").filter({
+      hasText: "Too many attempts. Wait a minute and try again.",
+    });
+    await expect(note).toBeVisible();
+    await expect(note).toHaveCSS("color", "rgb(82, 82, 82)");
+    // Not an error: no alert in the form (Next's route announcer is outside).
+    await expect(page.locator("form").getByRole("alert")).toHaveCount(0);
+    await page.getByRole("button", { name: "Create site" }).click();
+    await expect(page).toHaveURL(new RegExp(`/sites/${UUID}/editor/${UUID}$`));
+  });
+});
+
 test.describe("duplicate", () => {
   test("copies the site, its content and images as a highlighted draft", async ({
     page,
@@ -278,6 +317,7 @@ test.describe("duplicate", () => {
     await expect(rows).toHaveCount(3);
     await expect(rows.nth(1)).toContainText(`Copy of ${source}`);
     await expect(rows.nth(1)).toContainText("Draft");
+    await expect(rows.nth(1)).toContainText("Just now");
     await expect(rows.nth(1)).toContainText(
       `${HOST}copy-of-${source.toLowerCase().replace(/ /g, "-")}`,
     );
@@ -344,6 +384,28 @@ test.describe("duplicate", () => {
     const { siteId } = await createFirstSite(page, source);
     await request.post(`${MOCK}/__seed-asset?site=${siteId}`);
     await request.post(`${MOCK}/__fail-copy?site=${siteId}`);
+    await page.goto("/sites");
+    await page.getByRole("button", { name: `Actions for ${source}` }).click();
+    await page.getByRole("menuitem", { name: "Duplicate" }).click();
+    await expect(
+      page.getByText(`We couldn't duplicate ${source}. Try again.`),
+    ).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole("table").getByRole("row")).toHaveCount(2);
+    await expect(page.getByText(`Copy of ${source}`)).toHaveCount(0);
+  });
+});
+
+test.describe("duplicate with a missing image file", () => {
+  test("an asset whose file is missing fails cleanly and leaves no copy", async ({
+    page,
+    request,
+  }) => {
+    await signInAs(page, uniqueEmail("dup-missing"));
+    const source = uniqueName("Lost Print");
+    const { siteId } = await createFirstSite(page, source);
+    // The asset row exists, its storage object does not.
+    await request.post(`${MOCK}/__seed-asset?site=${siteId}&missing=1`);
     await page.goto("/sites");
     await page.getByRole("button", { name: `Actions for ${source}` }).click();
     await page.getByRole("menuitem", { name: "Duplicate" }).click();
@@ -566,6 +628,17 @@ test.describe("mobile site areas", () => {
     for (const button of await dialog.getByRole("button").all()) {
       expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     }
+    for (const label of ["Cancel", "Create site"]) {
+      const action = dialog.getByRole("button", { name: label });
+      expect((await action.boundingBox())!.height).toBe(48);
+      await expect(action).toHaveCSS("font-size", "16px");
+    }
+    // Loaded straight from the URL, Escape returns to the nav bar's +.
+    await page.goto("/sites?new=1");
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(page.getByRole("link", { name: "New site" })).toBeFocused();
   });
 });
 

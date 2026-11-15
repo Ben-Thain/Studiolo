@@ -13,6 +13,11 @@ type DialogProps = {
   children?: ReactNode;
   actions?: ReactNode;
   inline?: boolean;
+  /**
+   * Where focus goes on close when nothing had focus before opening (a
+   * dialog opened by the URL, e.g. /sites?new=1), instead of the page body.
+   */
+  returnFocus?: () => HTMLElement | null | undefined;
 };
 
 function DialogPanel({
@@ -69,9 +74,11 @@ export function Dialog({
   children,
   actions,
   inline = false,
+  returnFocus,
 }: DialogProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
+  const returnFocusRef = useRef(returnFocus);
   const titleId = useId();
   // Portals only exist in the browser; opening on first render (/sites?new=1)
   // must hydrate as "closed" and then open, or React reports a mismatch.
@@ -80,6 +87,7 @@ export function Dialog({
 
   useEffect(() => {
     onCloseRef.current = onClose;
+    returnFocusRef.current = returnFocus;
   });
 
   useEffect(() => {
@@ -110,7 +118,11 @@ export function Dialog({
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = previousOverflow;
       root?.removeAttribute("inert");
-      previously?.focus();
+      const back =
+        previously && previously !== document.body && previously.isConnected
+          ? previously
+          : returnFocusRef.current?.();
+      back?.focus();
     };
   }, [shown, inline]);
 

@@ -23,13 +23,17 @@ export function formatDayMonth(date: Date, timeZone?: string): string {
   }).format(date);
 }
 
-/** "Today, 09:42" for today, otherwise "6 Nov". */
+/** "Just now" under a minute ago, "Today, 09:42" for today, else "6 Nov". */
 export function formatLastEdited(
   date: Date,
   now: Date = new Date(),
   timeZone?: string,
 ): string {
   if (Number.isNaN(date.getTime())) return "";
+  const age = now.getTime() - date.getTime();
+  // A little clock skew (a just-made copy stamped by the database a moment
+  // "ahead" of this device) still reads as Just now.
+  if (age < 60_000 && age > -60_000) return "Just now";
   if (parts(date, timeZone) === parts(now, timeZone)) {
     const time = new Intl.DateTimeFormat("en-GB", {
       timeZone,

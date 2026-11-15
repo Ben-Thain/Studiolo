@@ -667,6 +667,21 @@ export type Database = {
           asset_paths: Json;
         }[];
       };
+      create_site: {
+        Args: {
+          p_name: string;
+          p_slug: string;
+          p_changes: Json;
+        };
+        Returns: string;
+      };
+      first_free_slug: {
+        Args: {
+          s: string;
+          for_owner: string;
+        };
+        Returns: string | null;
+      };
       save_draft: {
         Args: {
           site: string;

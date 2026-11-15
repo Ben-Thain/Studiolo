@@ -50,6 +50,46 @@ psql "$url" -q -v ON_ERROR_STOP=1 -f "$checks"
 echo "== checks again (re-runnable)"
 psql "$url" -q -v ON_ERROR_STOP=1 -f "$checks"
 
+# 04a-fix: two duplicates of the same site at the same moment, in two
+# sessions. The first holds its transaction open for a second; the second
+# starts meanwhile. Both must succeed, with different copy-of-… addresses.
+echo "== concurrent duplicate_site"
+race_owner="e7000000-0000-4000-8000-0000000000f1"
+race_site="e7000000-0000-4000-8000-0000000000f2"
+psql "$url" -q -v ON_ERROR_STOP=1 <<SQL
+delete from auth.users where id = '$race_owner';
+insert into auth.users (id, email) values ('$race_owner', 'race@example.com');
+insert into public.sites (id, owner_id, name, slug)
+values ('$race_site', '$race_owner', 'Race', 'e7-race');
+SQL
+race_dir="$(mktemp -d)"
+psql "$url" -At -v ON_ERROR_STOP=1 >"$race_dir/a" 2>&1 <<SQL &
+begin;
+select slug from public.duplicate_site('$race_site', '$race_owner');
+select pg_sleep(1.5) \g /dev/null
+commit;
+SQL
+first=$!
+sleep 0.5
+psql "$url" -At -v ON_ERROR_STOP=1 >"$race_dir/b" 2>&1 <<SQL &
+select slug from public.duplicate_site('$race_site', '$race_owner');
+SQL
+second=$!
+race_ok=1
+wait "$first" || race_ok=0
+wait "$second" || race_ok=0
+slug_a="$(grep -v '^BEGIN$\|^COMMIT$' "$race_dir/a" | head -n 1)"
+slug_b="$(head -n 1 "$race_dir/b")"
+copies="$(psql "$url" -At -c "select count(*) from public.sites where owner_id = '$race_owner' and slug like 'copy-of-e7-race%'")"
+psql "$url" -q -c "delete from auth.users where id = '$race_owner'"
+rm -rf "$race_dir"
+if [ "$race_ok" != 1 ] || [ "$slug_a" != "copy-of-e7-race" ] \
+  || [ "$slug_b" != "copy-of-e7-race-2" ] || [ "$copies" != 2 ]; then
+  echo "concurrent duplicates failed: '$slug_a' '$slug_b' ($copies copies)" >&2
+  exit 1
+fi
+echo "ok: concurrent duplicates both succeed ($slug_a, $slug_b)"
+
 psql "$url" -q -v ON_ERROR_STOP=1 <<'SQL'
 do $$
 begin

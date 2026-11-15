@@ -352,6 +352,12 @@ update public.profiles
 set trial_started_at = now() - interval '2 days'
 where id = '5a000000-0000-4000-8000-000000000001';
 
+-- Riverton House reads "Today, hh:mm": a few minutes ago, so it is past the
+-- one-minute "Just now".
+update public.sites
+set draft_updated_at = now() - interval '5 minutes'
+where id = '5a000000-0000-4000-8000-000000000011';
+
 update public.sites
 set draft_updated_at = now() - interval '9 days'
 where id = '5a000000-0000-4000-8000-000000000012';

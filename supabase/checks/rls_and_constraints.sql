@@ -56,7 +56,15 @@ do $$
 declare
   bad text;
 begin
-  foreach bad in array array['   ', repeat('n', 81), ' ' || repeat('n', 81) || ' '] loop
+  foreach bad in array array[
+    '   ',
+    E'\t',
+    E' \t\n ',
+    repeat('n', 81),
+    ' ' || repeat('n', 81) || ' ',
+    repeat(' ', 500) || 'a',
+    repeat('n', 80) || ' '
+  ] loop
     begin
       update public.profiles set display_name = bad
       where id = '10000000-0000-4000-8000-000000000001';
@@ -68,6 +76,8 @@ begin
   end loop;
   update public.profiles set display_name = repeat('n', 80)
   where id = '10000000-0000-4000-8000-000000000001';
+  update public.profiles set display_name = ' ' || repeat('n', 79)
+  where id = '10000000-0000-4000-8000-000000000001';
   update public.profiles set display_name = 'Sam Carter'
   where id = '10000000-0000-4000-8000-000000000001';
   update public.profiles set display_name = ''
@@ -75,7 +85,8 @@ begin
 end
 $$;
 
-\echo ok: display_name is empty or 1 to 80 characters after trim
+\echo ok: display_name is empty or at most 80 characters with a non-space character
+\echo ok: tab-only and over-80 padded display names rejected
 
 do $$
 declare
@@ -3583,7 +3594,7 @@ begin
       and p.proname = 'duplicate_site'
       and p.prosecdef
       and r.rolname = 'postgres'
-      and 'search_path=public' = any (p.proconfig)
+      and 'search_path=public, pg_temp' = any (p.proconfig)
   ) then
     raise exception 'duplicate_site is not a postgres-owned security definer';
   end if;
@@ -3593,6 +3604,102 @@ $$;
 rollback;
 
 \echo ok: duplicate_site deep-copies a site as a draft with remapped ids
+
+-- 04a-fix: create_site writes the site and its starter content in one
+-- transaction, as the signed-in user; first_free_slug suggests in one query.
+begin;
+
+insert into auth.users (id, email)
+values
+  ('e7000000-0000-4000-8000-000000000001', 'create-owner@example.com'),
+  ('e7000000-0000-4000-8000-000000000002', 'create-other@example.com');
+
+insert into public.sites (id, owner_id, name, slug)
+values
+  ('e7000000-0000-4000-8000-000000000012', 'e7000000-0000-4000-8000-000000000002', 'Taken', 'e7-taken'),
+  ('e7000000-0000-4000-8000-000000000013', 'e7000000-0000-4000-8000-000000000002', 'Taken 2', 'e7-taken-2');
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', 'e7000000-0000-4000-8000-000000000001', true) \g /dev/null
+
+do $$
+declare
+  made uuid;
+  home constant text := '{"pages":{"upsert":[{"id":"e7000000-0000-4000-8000-000000000021","title":"Home","slug":"","sort_order":0,"in_nav":true,"is_home":true}]}}';
+  two_homes constant text := '{"pages":{"upsert":[{"id":"e7000000-0000-4000-8000-000000000031","title":"Home","slug":"","sort_order":0,"in_nav":true,"is_home":true},{"id":"e7000000-0000-4000-8000-000000000032","title":"Also home","slug":"also","sort_order":1,"in_nav":true,"is_home":true}]}}';
+begin
+  made := public.create_site('Made Here', 'e7-made-here', home::jsonb);
+  if not exists (
+    select 1 from public.sites
+    where id = made
+      and owner_id = 'e7000000-0000-4000-8000-000000000001'
+      and slug = 'e7-made-here'
+      and draft_revision = 1
+  ) or (select count(*) from public.pages where site_id = made and is_home) <> 1 then
+    raise exception 'create_site did not create the site with its content';
+  end if;
+
+  -- A failure in the content leaves no site behind.
+  perform pg_temp.expect_state(
+    format('select public.create_site(%L, %L, %L::jsonb)', 'Broken', 'e7-broken', two_homes),
+    'ST010'
+  );
+  if exists (select 1 from public.sites where slug = 'e7-broken') then
+    raise exception 'create_site left a site behind after a content failure';
+  end if;
+
+  -- The address race maps to "That address is taken." (23505).
+  perform pg_temp.expect_state(
+    format('select public.create_site(%L, %L, %L::jsonb)', 'Again', 'e7-taken', '{}'),
+    '23505'
+  );
+  perform pg_temp.expect_state(
+    format('select public.create_site(%L, %L, %L::jsonb)', 'Reserved', 'admin', '{}'),
+    'ST003'
+  );
+  perform pg_temp.expect_state(
+    format('select public.create_site(%L, %L, %L::jsonb)', '', 'e7-no-name', '{}'),
+    '23514'
+  );
+
+  if public.first_free_slug('e7-taken', 'e7000000-0000-4000-8000-000000000001') <> 'e7-taken-3'
+    or public.first_free_slug('e7-made-here', 'e7000000-0000-4000-8000-000000000001') <> 'e7-made-here-2'
+    or public.first_free_slug(repeat('a', 40), 'e7000000-0000-4000-8000-000000000001') <> repeat('a', 38) || '-2'
+  then
+    raise exception 'first_free_slug suggestion mismatch';
+  end if;
+end
+$$;
+
+-- Signed out: no owner, nothing created.
+select set_config('request.jwt.claim.sub', '', true) \g /dev/null
+select pg_temp.expect_state(
+  'select public.create_site(''Nobody'', ''e7-nobody'', ''{}'')',
+  '42501'
+) \g /dev/null
+
+reset role;
+
+do $$
+begin
+  if has_function_privilege('anon', 'public.create_site(text, text, jsonb)', 'execute')
+    or has_function_privilege('anon', 'public.first_free_slug(text, uuid)', 'execute')
+    or not has_function_privilege('authenticated', 'public.create_site(text, text, jsonb)', 'execute')
+    or exists (
+      select 1 from pg_proc
+      where proname = 'create_site' and prosecdef
+    )
+  then
+    raise exception 'create_site or first_free_slug grants are wrong';
+  end if;
+end
+$$;
+
+rollback;
+
+\echo ok: create_site creates the site and its content in one transaction
+\echo ok: create_site leaves no site when the content fails
+\echo ok: first_free_slug suggests the first free -n in one query
 
 delete from auth.users
 where id in (

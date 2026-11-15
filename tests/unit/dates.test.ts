@@ -13,6 +13,22 @@ describe("dates", () => {
     ).toBe("Today, 18:42");
   });
 
+  it("shows Just now for under a minute ago", () => {
+    expect(formatLastEdited(new Date("2026-11-15T12:00:00Z"), now, "UTC")).toBe(
+      "Just now",
+    );
+    expect(formatLastEdited(new Date("2026-11-15T11:59:01Z"), now, "UTC")).toBe(
+      "Just now",
+    );
+    // A few seconds "in the future" (clock skew) is still Just now.
+    expect(formatLastEdited(new Date("2026-11-15T12:00:05Z"), now, "UTC")).toBe(
+      "Just now",
+    );
+    expect(formatLastEdited(new Date("2026-11-15T11:59:00Z"), now, "UTC")).toBe(
+      "Today, 11:59",
+    );
+  });
+
   it("shows day and month for other days", () => {
     expect(
       formatLastEdited(new Date("2026-11-06T15:00:00Z"), now, "Europe/London"),

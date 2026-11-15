@@ -15,7 +15,9 @@
 //   POST /__google?enabled=false  switch the Google provider off
 //   POST /__seed-asset?site=…  add an image asset (row, storage object and an
 //                             image element on the home page) to a site
+//   POST /__seed-asset?site=…&missing=1  the same, without the storage object
 //   POST /__fail-copy?site=…   storage copies out of that site answer 500
+//   POST /__slug-limit?email=… use up that user's slug checks for 2 minutes
 //   GET /__objects?prefix=…    storage object names under a prefix
 // Storage: /storage/v1/object/{list,copy} and DELETE /storage/v1/object/:bucket
 // for the service role only, backed by the local storage.objects table.
@@ -241,7 +243,7 @@ async function storageApi(req, res, path) {
 }
 
 // POST /__seed-asset?site=…: an uploaded image, as prompt 06 will create it.
-async function seedAsset(siteId) {
+async function seedAsset(siteId, withObject = true) {
   const asset = (await pool.query("select gen_random_uuid()::text as id"))
     .rows[0].id;
   const name = `${siteId}/draft/${asset}.webp`;
@@ -250,11 +252,13 @@ async function seedAsset(siteId) {
      values ($1, $2, $3, 1600, 1200, 'image/webp', 2048)`,
     [asset, siteId, name],
   );
-  await pool.query(
-    `insert into storage.objects (bucket_id, name, metadata)
-     values ('site-assets', $1, '{"mimetype":"image/webp"}')`,
-    [name],
-  );
+  if (withObject) {
+    await pool.query(
+      `insert into storage.objects (bucket_id, name, metadata)
+       values ('site-assets', $1, '{"mimetype":"image/webp"}')`,
+      [name],
+    );
+  }
   await pool.query(
     `update public.elements set content = jsonb_set(content, '{assetId}', to_jsonb($2::text))
      where site_id = $1 and type = 'image'`,
@@ -327,7 +331,28 @@ createServer(async (req, res) => {
 
   if (path.startsWith("/storage/v1/")) return storageApi(req, res, path);
   if (path === "/__seed-asset" && req.method === "POST") {
-    return send(res, 200, await seedAsset(url.searchParams.get("site")));
+    return send(
+      res,
+      200,
+      await seedAsset(
+        url.searchParams.get("site"),
+        url.searchParams.get("missing") !== "1",
+      ),
+    );
+  }
+  if (path === "/__slug-limit" && req.method === "POST") {
+    // rate_limit_hit's 60-second windows: this one and the next, full.
+    await pool.query(
+      `insert into public.rate_limits (bucket, window_start, count)
+       select 'slug:' || u.id::text,
+              to_timestamp(floor(extract(epoch from clock_timestamp()) / 60) * 60 + w * 60),
+              1000
+       from auth.users u, generate_series(0, 1) w
+       where u.email = $1
+       on conflict (bucket, window_start) do update set count = 1000`,
+      [url.searchParams.get("email")],
+    );
+    return send(res, 200, { ok: true });
   }
   if (path === "/__fail-copy" && req.method === "POST") {
     failCopy.add(url.searchParams.get("site"));

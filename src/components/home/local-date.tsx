@@ -24,5 +24,11 @@ export function LocalDate({
     format === "last-edited"
       ? formatLastEdited(date, new Date(), timeZone)
       : formatDayMonth(date, timeZone);
-  return <time dateTime={iso}>{text}</time>;
+  // "Just now" can turn into "Today, 09:42" between the server render and
+  // hydration; the client value wins.
+  return (
+    <time dateTime={iso} suppressHydrationWarning>
+      {text}
+    </time>
+  );
 }

@@ -18,6 +18,8 @@ export const SITES_COPY = {
   slugInvalid: "Use 3–40 lowercase letters, numbers or dashes.",
   slugReserved: "That address is reserved.",
   slugTaken: "That address is taken.",
+  // Same words as the Account page's limit (ACCOUNT_COPY.rateLimited).
+  slugRateLimited: "Too many attempts. Wait a minute and try again.",
   suggestionLabel: (slug: string) => `Use ${slug}`,
   createFailed: "We couldn't create your site. Try again.",
   duplicated: (name: string) => `Duplicated ${name}. The copy is a draft.`,

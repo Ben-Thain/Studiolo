@@ -72,6 +72,9 @@ export function NewSiteForm({
   const slug = typedSlug ?? (name.trim() ? deriveSlug(name) : "");
   const current = check && check.slug === slug ? check.result : null;
   const slugError = slugMessage(current);
+  // Too many checks this minute: a quiet note, not an error. Create site
+  // still works (the server checks the address again).
+  const slugPaused = current?.status === "rate_limited";
 
   useEffect(() => {
     if (!slug) return;
@@ -266,6 +269,12 @@ export function NewSiteForm({
         </div>
       ) : null}
 
+      {slugPaused ? (
+        <p role="status" className="mt-2 text-xs leading-4 text-ink-2">
+          {SITES_COPY.slugRateLimited}
+        </p>
+      ) : null}
+
       <p className="mt-2 text-xs leading-4 text-ink-3">{SITES_COPY.lockHint}</p>
 
       {formError ? (
@@ -289,13 +298,14 @@ export function NewSiteForm({
             <Button
               type="button"
               variant="secondary"
+              size="touch-sm"
               onClick={onCancel}
               disabled={pending}
             >
               {SITES_COPY.cancel}
             </Button>
           )}
-          <Button type="submit" loading={pending}>
+          <Button type="submit" size="touch-sm" loading={pending}>
             {SITES_COPY.create}
           </Button>
         </div>
