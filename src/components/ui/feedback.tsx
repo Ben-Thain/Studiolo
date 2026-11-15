@@ -20,13 +20,23 @@ export function EmptyState({
   );
 }
 
-export function Skeleton({ rows = 3 }: { rows?: number }) {
+export function Skeleton({
+  rows = 3,
+  size = "desktop",
+}: {
+  rows?: number;
+  /** "responsive": 64px rows below 900px (mobile list rows), 56px from 900px. */
+  size?: "desktop" | "responsive";
+}) {
   return (
     <div aria-hidden="true">
       {Array.from({ length: rows }, (_, index) => (
         <div
           key={index}
-          className="flex h-14 items-center border-b border-line"
+          className={cn(
+            "flex items-center border-b border-line",
+            size === "responsive" ? "h-16 min-[900px]:h-14" : "h-14",
+          )}
         >
           <div className="h-4 w-40 animate-pulse rounded-control bg-fill-selected motion-reduce:animate-none" />
         </div>

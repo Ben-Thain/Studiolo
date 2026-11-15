@@ -157,9 +157,15 @@ test.describe("new account", () => {
     const email = uniqueEmail("slow");
     await signInAs(page, email, "/account");
     await page.getByRole("link", { name: "Sites" }).first().click();
-    await expect(
-      page.getByRole("status").filter({ hasText: "Loading sites" }),
-    ).toBeVisible();
+    const loading = page
+      .getByRole("status")
+      .filter({ hasText: "Loading sites" });
+    await expect(loading).toBeVisible();
+    // Same geometry as the loaded table: the 40px header and 56px rows.
+    await expect(loading.getByRole("columnheader")).toHaveCount(5);
+    const rows = loading.locator("[aria-hidden=true] > div");
+    await expect(rows).toHaveCount(3);
+    expect((await rows.first().boundingBox())!.height).toBe(56);
     await expect(page.getByText("No sites yet")).toBeVisible({
       timeout: 15_000,
     });
@@ -329,10 +335,43 @@ test.describe("account", () => {
     const redirect = new URL(change.redirect_to);
     expect(redirect.pathname).toBe("/auth/callback");
     expect(redirect.searchParams.get("next")).toBe("/account");
-    // Until both inboxes confirm, the login email is unchanged.
+    // Until both inboxes confirm, the login email is unchanged, and after a
+    // reload the pending address is shown.
     await expect(
       page.locator("main").getByText("Login email").locator(".."),
     ).toContainText(email);
+    await page.reload();
+    await expect(
+      page.getByText(`Waiting for confirmation: ${next}`),
+    ).toBeVisible();
+    await expect(
+      page.locator("main").getByText("Login email").locator(".."),
+    ).toContainText(email);
+  });
+
+  test("one /account render makes one Auth call and one profile read", async ({
+    page,
+  }) => {
+    const email = uniqueEmail("calls");
+    await signInAs(page, email, "/account");
+    const calls = async () =>
+      (await (
+        await page.request.get(
+          `${MOCK}/__calls?email=${encodeURIComponent(email)}`,
+        )
+      ).json()) as Record<string, number>;
+    const before = await calls();
+    await page.reload();
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Account" }),
+    ).toBeVisible();
+    const after = await calls();
+    const delta = (key: string) => (after[key] ?? 0) - (before[key] ?? 0);
+    // One in the middleware (session refresh) and one for the whole render:
+    // the layout and the page share getUser() and getHomeContext().
+    expect(delta("GET /auth/v1/user")).toBe(2);
+    expect(delta("GET /rest/v1/profiles")).toBe(1);
+    expect(delta("HEAD /rest/v1/sites")).toBe(1);
   });
 
   test("delete account is shown but not available yet", async ({ page }) => {
@@ -536,13 +575,55 @@ test.describe("mobile home", () => {
     }
   });
 
-  test("account inputs use 16px text", async ({ page }) => {
+  test("account inline edit: full-width 16px input, buttons underneath", async ({
+    page,
+  }) => {
     await signInAs(page, uniqueEmail("mobile-input"), "/account");
+    await expect(
+      page.getByText("Removes your account. This can't be undone."),
+    ).toBeVisible();
     await page.getByRole("button", { name: "Edit name" }).click();
-    await expect(page.getByRole("textbox", { name: "Name" })).toHaveCSS(
-      "font-size",
-      "16px",
-    );
+    const input = page.getByRole("textbox", { name: "Name" });
+    await expect(input).toHaveCSS("font-size", "16px");
+    const inputBox = (await input.boundingBox())!;
+    expect(inputBox.width).toBeGreaterThanOrEqual(393 - 48 - 1);
+    const save = (await page
+      .getByRole("button", { name: "Save" })
+      .boundingBox())!;
+    const cancel = (await page
+      .getByRole("button", { name: "Cancel" })
+      .boundingBox())!;
+    expect(save.y).toBeGreaterThan(inputBox.y + inputBox.height);
+    expect(Math.abs(save.y - cancel.y)).toBeLessThan(1);
+    expect(save.height).toBeGreaterThanOrEqual(44);
+    await input.fill("");
+    await page.getByRole("button", { name: "Save" }).click();
+    const error = page.getByText("Enter your name.");
+    await expect(error).toBeVisible();
+    const errorBox = (await error.boundingBox())!;
+    expect(errorBox.y).toBeGreaterThan(inputBox.y + inputBox.height);
+    expect(errorBox.y).toBeLessThan(save.y);
+    expect(errorBox.height).toBeLessThanOrEqual(16);
+  });
+
+  test("the 404 button is a 48px block button", async ({ page }) => {
+    await page.goto("/nowhere");
+    const box = (await page
+      .getByRole("link", { name: "Go to Sites" })
+      .boundingBox())!;
+    expect(box.height).toBe(48);
+  });
+
+  test("the nav bar is 44px and the title sits 8px below it", async ({
+    page,
+  }) => {
+    await signInAs(page, SAM);
+    const bar = (await page.locator("header").first().boundingBox())!;
+    expect(bar.height).toBe(44);
+    const title = (await page
+      .getByRole("heading", { level: 1, name: "Sites" })
+      .boundingBox())!;
+    expect(title.y).toBe(52);
   });
 });
 

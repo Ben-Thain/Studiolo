@@ -11,6 +11,7 @@
 //   GET /__otp?email=…        latest OTP request for that address
 //   GET /__otp-count?email=…  number of OTP requests for that address
 //   GET /__email-change?email=… latest login-email change for that address
+//   GET /__calls?email=…      counts of Auth and /rest/v1 calls for that user
 //   POST /__google?enabled=false  switch the Google provider off
 // Tests run in parallel, so behaviour is keyed by address prefix:
 //   fail-server.*  OTP answers 500        fail-rate.*  OTP answers 429
@@ -31,6 +32,18 @@ const pool = new pg.Pool({ connectionString: DB_URL, max: 4 });
 
 let otpRequests = [];
 let emailChanges = [];
+// Pending login-email changes by user id, returned as new_email by GET
+// /auth/v1/user until confirmed (as GoTrue does).
+const pendingEmail = new Map();
+// Request log for "how many calls does one page make" tests: per email,
+// counts of GET /auth/v1/user and of each /rest/v1 table.
+const calls = new Map();
+function count(email, key) {
+  if (!email) return;
+  const entry = calls.get(email) ?? {};
+  entry[key] = (entry[key] ?? 0) + 1;
+  calls.set(email, entry);
+}
 let googleEnabled = true;
 
 const b64 = (value) => Buffer.from(value).toString("base64url");
@@ -135,6 +148,7 @@ const bearer = (req) =>
 async function proxyRest(req, res, path, search) {
   const claims = bearer(req);
   const email = claims?.email ?? "";
+  count(email, `${req.method} ${path.split("?")[0]}`);
   if (email.startsWith("slow.")) await sleep(3000);
   if (
     email.startsWith("fail-data.") ||
@@ -216,6 +230,9 @@ createServer(async (req, res) => {
       200,
       emailChanges.filter((r) => r.email === email).at(-1) ?? null,
     );
+  }
+  if (path === "/__calls") {
+    return send(res, 200, calls.get(url.searchParams.get("email")) ?? {});
   }
   if (path.startsWith("/rest/v1/"))
     return proxyRest(req, res, path, url.search);
@@ -324,7 +341,19 @@ createServer(async (req, res) => {
   if (path === "/auth/v1/user" && req.method === "GET") {
     const claims = bearer(req);
     if (!claims) return authError(res, 403, "bad_jwt", "invalid JWT");
-    return send(res, 200, userJson(claims.sub, claims.email));
+    count(claims.email, "GET /auth/v1/user");
+    const pending = pendingEmail.get(claims.sub);
+    return send(
+      res,
+      200,
+      userJson(
+        claims.sub,
+        claims.email,
+        pending
+          ? { new_email: pending.email, email_change_sent_at: pending.at }
+          : {},
+      ),
+    );
   }
 
   // Login email change: GoTrue keeps the old address until both the old and
@@ -342,6 +371,10 @@ createServer(async (req, res) => {
         "Unable to validate email address",
       );
     }
+    pendingEmail.set(claims.sub, {
+      email: next,
+      at: new Date().toISOString(),
+    });
     emailChanges.push({
       email: claims.email,
       new_email: next,

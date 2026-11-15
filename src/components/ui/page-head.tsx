@@ -31,7 +31,7 @@ export function PageHead({
             size === "mobile" && "text-[32px] leading-10",
             size === "desktop" && "text-2xl leading-8",
             responsive &&
-              "text-[32px] leading-10 min-[900px]:text-2xl min-[900px]:leading-8",
+              "mt-2 text-[32px] leading-10 min-[900px]:mt-0 min-[900px]:text-2xl min-[900px]:leading-8",
           )}
         >
           {title}

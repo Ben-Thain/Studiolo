@@ -39,7 +39,7 @@ const NUMBER_WORDS = [
 /** "Removes all three sites, their images, submissions and domains. …" */
 export function deleteAccountLead(siteCount: number): string {
   const end = "This can't be undone.";
-  if (siteCount <= 0) return `Removes your account and sign-in. ${end}`;
+  if (siteCount <= 0) return `Removes your account. ${end}`;
   if (siteCount === 1) {
     return `Removes your site, its images, submissions and domain. ${end}`;
   }

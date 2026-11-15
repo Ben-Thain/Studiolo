@@ -16,7 +16,7 @@ export const metadata: Metadata = { title: "Plan · Studiolo" };
 
 // Display only: the trial never blocks anything, and there is nothing to buy.
 export default async function PlanPage() {
-  const { profile } = await getHomeContext("/plan");
+  const { profile } = await getHomeContext();
   const now = new Date();
   const active = isTrialActive(profile, now);
   const daysLeft = trialDaysLeft(profile, now);

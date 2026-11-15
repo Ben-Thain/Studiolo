@@ -90,7 +90,13 @@ function EditableRow({
       >
         {label}
       </div>
-      <div className="col-start-1 row-start-2 min-w-0 min-[900px]:col-start-2 min-[900px]:row-start-1">
+      <div
+        className={cn(
+          "col-start-1 row-start-2 min-w-0 min-[900px]:col-start-2 min-[900px]:row-start-1",
+          // Below 640px the field takes the full width.
+          editing && "col-span-2 sm:col-span-1",
+        )}
+      >
         {editing ? (
           <form id={formId} onSubmit={submit} noValidate className="py-1">
             <Input
@@ -110,7 +116,7 @@ function EditableRow({
               placeholder={placeholder}
               spellCheck={false}
               autoFocus
-              className="max-w-[360px]"
+              className="sm:max-w-[360px]"
             />
             {error ? (
               <p
@@ -142,13 +148,31 @@ function EditableRow({
           </>
         )}
       </div>
-      <div className="col-start-2 row-span-2 row-start-1 flex items-center justify-end gap-2 min-[900px]:col-start-3 min-[900px]:row-span-1">
+      <div
+        className={cn(
+          "flex items-center justify-end gap-2 min-[900px]:col-start-3 min-[900px]:row-span-1 min-[900px]:row-start-1",
+          editing
+            ? // Below 640px, Cancel and Save sit on their own row under the field.
+              "col-span-2 col-start-1 row-start-3 pt-2 sm:col-span-1 sm:col-start-2 sm:row-span-2 sm:row-start-1 sm:pt-0 min-[900px]:col-span-1"
+            : "col-start-2 row-span-2 row-start-1",
+        )}
+      >
         {editing ? (
           <>
-            <Button variant="ghost" onClick={close} disabled={pending}>
+            <Button
+              variant="ghost"
+              size="touch-sm"
+              onClick={close}
+              disabled={pending}
+            >
               Cancel
             </Button>
-            <Button type="submit" form={formId} loading={pending}>
+            <Button
+              type="submit"
+              size="touch-sm"
+              form={formId}
+              loading={pending}
+            >
               Save
             </Button>
           </>
@@ -156,6 +180,7 @@ function EditableRow({
           <Button
             ref={openButton}
             variant="ghost"
+            size="touch-sm"
             aria-label={`${action} ${label.toLowerCase()}`}
             onClick={() => {
               setDraft(initial);
@@ -233,6 +258,7 @@ export function AccountSettings({
       <div className="mt-6">
         <Button
           variant="secondary"
+          size="touch-sm"
           icon={<Icon name="sign-out" size={16} />}
           loading={signingOut}
           onClick={() =>
@@ -268,6 +294,7 @@ export function AccountSettings({
         {/* Prompt 15 wires this; until then it opens nothing. */}
         <Button
           variant="secondary"
+          size="touch-sm"
           aria-disabled="true"
           title={ACCOUNT_COPY.availableSoon}
           className="mt-4 text-error"

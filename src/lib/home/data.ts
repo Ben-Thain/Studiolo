@@ -27,26 +27,24 @@ export type HomeContext = {
 };
 
 /** The user and their profile, once per request. */
-export const getHomeContext = cache(
-  async (path: string): Promise<HomeContext> => {
-    const user = await requireUser(path);
-    const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("display_name, notification_email, trial_started_at")
-      .eq("id", user.id)
-      .maybeSingle();
-    if (error || !data) {
-      throw new Error("Could not load your profile.");
-    }
-    return {
-      userId: user.id,
-      email: user.email ?? "",
-      newEmail: user.new_email ?? null,
-      profile: data,
-    };
-  },
-);
+export const getHomeContext = cache(async (): Promise<HomeContext> => {
+  const user = await requireUser();
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("display_name, notification_email, trial_started_at")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (error || !data) {
+    throw new Error("Could not load your profile.");
+  }
+  return {
+    userId: user.id,
+    email: user.email ?? "",
+    newEmail: user.new_email ?? null,
+    profile: data,
+  };
+});
 
 export type SiteListItem = {
   id: string;
@@ -59,7 +57,7 @@ export type SiteListItem = {
 
 /** The user's sites, not deleted, most recently edited first. */
 export async function listSites(): Promise<SiteListItem[]> {
-  await requireUser("/sites");
+  await requireUser();
   const supabase = await createClient();
   const { data: sites, error } = await supabase
     .from("sites")
@@ -107,8 +105,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * One of the user's own, non-deleted sites, or the app 404 (another user's
  * site, a deleted one, or an id that isn't one).
  */
-export async function requireOwnSite(siteId: string, path: string) {
-  await requireUser(path);
+export async function requireOwnSite(siteId: string) {
+  await requireUser();
   if (!UUID.test(siteId)) notFound();
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -125,7 +123,7 @@ export async function requireOwnSite(siteId: string, path: string) {
 
 /** How many sites the user has (not deleted), for the Delete account copy. */
 export async function countSites(): Promise<number> {
-  await requireUser("/account");
+  await requireUser();
   const supabase = await createClient();
   const { count, error } = await supabase
     .from("sites")

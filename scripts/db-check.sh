@@ -30,11 +30,7 @@ echo "Resetting local database studiolo_check"
 
 psql "$url" -q -v ON_ERROR_STOP=1 -f "$root/scripts/local-stub.sql"
 
-for file in \
-  "$root/supabase/migrations/0001_core.sql" \
-  "$root/supabase/migrations/0002_rls.sql" \
-  "$root/supabase/migrations/0003_functions.sql" \
-  "$root/supabase/migrations/0004_storage.sql"
+for file in "$root"/supabase/migrations/[0-9][0-9][0-9][0-9]_*.sql
 do
   psql "$url" -q -v ON_ERROR_STOP=1 -f "$file"
 done

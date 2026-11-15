@@ -7,12 +7,14 @@ export type ButtonVariant =
   "primary" | "secondary" | "ghost" | "danger" | "destructive";
 
 /**
- * sm / desktop: 32px. lg: 40px. touch: 48px. nav: 44px hit area around a 36px
+ * sm: 32px with 13px text (the home and settings actions). desktop: 32px.
+ * lg: 40px. touch-sm: 48px with 16px text below 640px, sm from 640px. touch: 48px. nav: 44px hit area around a 36px
  * pill. block: the full-width auth and landing buttons, 48px with 16px text
  * below 900px and 40px with 14px text from 900px. Unset: 48px below 640px,
  * 32px from 640px.
  */
-export type ButtonSize = "sm" | "lg" | "touch" | "nav" | "desktop" | "block";
+export type ButtonSize =
+  "sm" | "lg" | "touch" | "nav" | "desktop" | "block" | "touch-sm";
 
 export type ForceState = "hover" | "active" | "focus" | "disabled" | "loading";
 
@@ -41,6 +43,16 @@ const linkVariants: Record<ButtonVariant, string> = {
   destructive: "bg-error text-bg hover:bg-error-hover active:bg-error-hover",
 };
 
+// aria-disabled ("Available soon"): the normal look, but no hover or press
+// change, since nothing happens.
+const staticVariants: Record<ButtonVariant, string> = {
+  primary: "bg-ink text-bg cursor-not-allowed",
+  secondary: "border border-line bg-bg text-ink cursor-not-allowed",
+  ghost: "bg-transparent text-ink cursor-not-allowed",
+  danger: "bg-transparent text-error cursor-not-allowed",
+  destructive: "bg-error text-bg cursor-not-allowed",
+};
+
 const disabledVariants: Record<ButtonVariant, string> = {
   primary: "bg-surface-2 text-ink-4",
   secondary: "border border-line bg-bg text-ink-4",
@@ -50,11 +62,12 @@ const disabledVariants: Record<ButtonVariant, string> = {
 };
 
 const sizes: Record<Exclude<ButtonSize, "nav">, string> = {
-  sm: "h-8 gap-2 px-3 text-sm",
+  sm: "h-8 gap-2 px-3 text-[13px]",
   desktop: "h-8 gap-2 px-3 text-sm",
   lg: "h-10 gap-2 px-4 text-sm",
   touch: "h-12 gap-2 px-4 text-base",
   block: "h-12 gap-2 px-4 text-base min-[900px]:h-10 min-[900px]:text-sm",
+  "touch-sm": "h-12 gap-2 px-4 text-base sm:h-8 sm:px-3 sm:text-[13px]",
 };
 
 const responsiveSize =
@@ -87,7 +100,12 @@ export function Button({
 }: ButtonProps) {
   const isDisabled = disabled || loading || forceState === "disabled";
   const isLoading = loading || forceState === "loading";
-  const visual = cn(variants[variant], isDisabled && disabledVariants[variant]);
+  const ariaDisabled =
+    props["aria-disabled"] === true || props["aria-disabled"] === "true";
+  const visual = cn(
+    ariaDisabled ? staticVariants[variant] : variants[variant],
+    isDisabled && disabledVariants[variant],
+  );
   const content = (
     <>
       {isLoading ? <Spinner /> : icon}

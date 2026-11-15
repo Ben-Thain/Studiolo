@@ -8,10 +8,20 @@ import type { Database } from "@/types/database";
  * Refreshes the Supabase session cookies for this request and returns the
  * signed-in user (or null). No UI and no service-role code: anon key only.
  */
+/** Request header carrying the current path to server components. */
+export const PATH_HEADER = "x-studiolo-path";
+
 export async function updateSession(
   request: NextRequest,
 ): Promise<{ response: NextResponse; user: User | null }> {
-  let response = NextResponse.next({ request });
+  // Always overwritten here, so a client can't choose it; the guards still
+  // pass it through safeNext.
+  const headers = new Headers(request.headers);
+  headers.set(
+    PATH_HEADER,
+    `${request.nextUrl.pathname}${request.nextUrl.search}`,
+  );
+  let response = NextResponse.next({ request: { headers } });
   const config = supabasePublicConfig();
   if (!config) return { response, user: null };
 
@@ -24,7 +34,9 @@ export async function updateSession(
         for (const { name, value } of cookiesToSet) {
           request.cookies.set(name, value);
         }
-        response = NextResponse.next({ request });
+        // Forward the refreshed cookies to this request's server render.
+        headers.set("cookie", request.cookies.toString());
+        response = NextResponse.next({ request: { headers } });
         for (const { name, value, options } of cookiesToSet) {
           response.cookies.set(name, value, options);
         }

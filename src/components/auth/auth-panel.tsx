@@ -256,7 +256,7 @@ export function AuthPanel({
             : "New to Studiolo? "}
           <Link
             href={authHref(mode === "signup" ? "/login" : "/signup", next)}
-            className="rounded-control font-medium text-ink hover:underline max-[899px]:-my-3 max-[899px]:inline-flex max-[899px]:min-h-11 max-[899px]:items-center"
+            className="rounded-control font-medium text-ink hover:underline max-[899px]:-my-3 max-[899px]:inline-flex max-[899px]:min-h-11 max-[899px]:min-w-11 max-[899px]:items-center max-[899px]:justify-center"
           >
             {mode === "signup" ? "Log in" : "Create an account"}
           </Link>

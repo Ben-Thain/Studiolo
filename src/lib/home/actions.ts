@@ -59,7 +59,11 @@ export async function updateDisplayName(input: {
   return { ok: true, value: parsed.data };
 }
 
-/** Empty clears it: form notifications then go to the login email. */
+/**
+ * Empty clears it: form notifications then go to the login email.
+ * The address is NOT verified (no confirmation email): prompt 12 must verify
+ * it, or send only to the login email, before mailing submissions to it.
+ */
 export async function updateNotificationEmail(input: {
   email: string;
 }): Promise<AccountResult> {

@@ -20,7 +20,7 @@ export default async function SitesPage() {
         action={
           // Prompt 04 wires New site.
           <Button
-            size="desktop"
+            size="sm"
             icon={<Icon name="plus" size={16} />}
             aria-disabled="true"
             title={HOME_COPY.availableSoon}

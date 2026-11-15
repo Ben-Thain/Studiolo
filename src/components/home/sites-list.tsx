@@ -29,29 +29,38 @@ function StatusText({ site }: { site: SiteListItem }) {
   );
 }
 
+/** Column widths and the 40px header row, shared with the loading state. */
+export function SitesTableHead() {
+  return (
+    <>
+      <colgroup>
+        <col className="w-[312px]" />
+        <col className="w-[185px]" />
+        <col className="w-[263px]" />
+        <col />
+        <col className="w-10" />
+      </colgroup>
+      <TableHeader>
+        <TableRow header>
+          <TableHead>{HOME_COPY.columns.site}</TableHead>
+          <TableHead>{HOME_COPY.columns.status}</TableHead>
+          <TableHead>{HOME_COPY.columns.domain}</TableHead>
+          <TableHead>{HOME_COPY.columns.lastEdited}</TableHead>
+          <TableHead>
+            <span className="sr-only">{HOME_COPY.columns.actions}</span>
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+    </>
+  );
+}
+
 /** Sites list: a table from 900px (d-sites.png), rows below (m-sites.png). */
 export function SitesList({ sites }: { sites: SiteListItem[] }) {
   return (
     <>
       <Table className="hidden max-w-[944px] table-fixed min-[900px]:table">
-        <colgroup>
-          <col className="w-[312px]" />
-          <col className="w-[185px]" />
-          <col className="w-[263px]" />
-          <col />
-          <col className="w-10" />
-        </colgroup>
-        <TableHeader>
-          <TableRow header>
-            <TableHead>{HOME_COPY.columns.site}</TableHead>
-            <TableHead>{HOME_COPY.columns.status}</TableHead>
-            <TableHead>{HOME_COPY.columns.domain}</TableHead>
-            <TableHead>{HOME_COPY.columns.lastEdited}</TableHead>
-            <TableHead>
-              <span className="sr-only">{HOME_COPY.columns.actions}</span>
-            </TableHead>
-          </TableRow>
-        </TableHeader>
+        <SitesTableHead />
         <TableBody>
           {sites.map((site) => (
             <TableRow key={site.id} interactive>

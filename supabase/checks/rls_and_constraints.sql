@@ -52,6 +52,63 @@ $$;
 
 \echo ok: auth trigger creates a profile
 
+do $$
+declare
+  bad text;
+begin
+  foreach bad in array array['   ', repeat('n', 81), ' ' || repeat('n', 81) || ' '] loop
+    begin
+      update public.profiles set display_name = bad
+      where id = '10000000-0000-4000-8000-000000000001';
+      raise exception 'display_name % was accepted', quote_literal(bad);
+    exception
+      when check_violation then
+        null;
+    end;
+  end loop;
+  update public.profiles set display_name = repeat('n', 80)
+  where id = '10000000-0000-4000-8000-000000000001';
+  update public.profiles set display_name = 'Sam Carter'
+  where id = '10000000-0000-4000-8000-000000000001';
+  update public.profiles set display_name = ''
+  where id = '10000000-0000-4000-8000-000000000001';
+end
+$$;
+
+\echo ok: display_name is empty or 1 to 80 characters after trim
+
+do $$
+declare
+  bad text;
+begin
+  foreach bad in array array[
+    'not-an-email',
+    'a@b',
+    'two@@example.com',
+    'sp ace@example.com',
+    '',
+    repeat('a', 243) || '@example.com'
+  ] loop
+    begin
+      update public.profiles set notification_email = bad
+      where id = '10000000-0000-4000-8000-000000000001';
+      raise exception 'notification_email % was accepted', quote_literal(bad);
+    exception
+      when check_violation then
+        null;
+    end;
+  end loop;
+  update public.profiles set notification_email = repeat('a', 242) || '@example.com'
+  where id = '10000000-0000-4000-8000-000000000001';
+  update public.profiles set notification_email = 'studio@example.com'
+  where id = '10000000-0000-4000-8000-000000000001';
+  update public.profiles set notification_email = null
+  where id = '10000000-0000-4000-8000-000000000001';
+end
+$$;
+
+\echo ok: notification_email is null or a 254-character address
+
 -- check constraints ---------------------------------------------------------
 
 do $$

@@ -22,14 +22,14 @@ export function MobileNavBar({
   /** "home" only: shown on the left (the wordmark). */
   leading?: ReactNode;
   /**
-   * "home": the home tab screens (m-sites.png). 56px, no hairline, `leading`
+   * "home": the home tab screens (m-sites.png). 44px, no hairline, `leading`
    * left and `action` right; the screen title sits in the content below.
    */
   variant?: "default" | "detail" | "home";
 }) {
   if (variant === "home") {
     return (
-      <header className="flex h-14 items-center justify-between gap-2 bg-bg pr-5 pl-6">
+      <header className="flex h-11 items-center justify-between gap-2 bg-bg pr-5 pl-6">
         <div className="flex min-w-0 items-center">{leading}</div>
         {action ? <div className="flex items-center">{action}</div> : null}
       </header>

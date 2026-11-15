@@ -14,7 +14,7 @@ export default async function SitePage({
   params: Promise<{ siteId: string }>;
 }) {
   const { siteId } = await params;
-  const site = await requireOwnSite(siteId, `/sites/${siteId}`);
+  const site = await requireOwnSite(siteId);
   return (
     <main className="px-6 pt-4 min-[900px]:px-12">
       <Link

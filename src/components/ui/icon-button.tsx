@@ -35,7 +35,9 @@ export function IconButton({
       disabled={isDisabled}
       className={cn(
         "inline-flex shrink-0 items-center justify-center rounded-control text-ink-2",
-        "enabled:hover:bg-fill-hover enabled:active:bg-fill-selected",
+        props["aria-disabled"] === true || props["aria-disabled"] === "true"
+          ? "cursor-not-allowed"
+          : "enabled:hover:bg-fill-hover enabled:active:bg-fill-selected",
         "disabled:cursor-not-allowed disabled:bg-transparent disabled:text-ink-4",
         size ? sizes[size] : "size-11 sm:size-10",
         className,

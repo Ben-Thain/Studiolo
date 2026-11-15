@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Account · Studiolo" };
 
 export default async function AccountPage() {
   const [{ email, newEmail, profile }, siteCount] = await Promise.all([
-    getHomeContext("/account"),
+    getHomeContext(),
     countSites(),
   ]);
   return (

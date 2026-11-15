@@ -20,6 +20,18 @@ if parsed.path.lstrip("/") != "studiolo_e2e":
     sys.exit("e2e-db only resets the local database named studiolo_e2e")
 PY
 
+# libpq also reads PGHOST / PGHOSTADDR: they must be local too (a socket
+# directory or a loopback address).
+for value in "${PGHOST:-}" "${PGHOSTADDR:-}"; do
+  case "$value" in
+    "" | /* | localhost | 127.0.0.1 | ::1) ;;
+    *)
+      echo "e2e-db refuses non-local PGHOST/PGHOSTADDR $value" >&2
+      exit 1
+      ;;
+  esac
+done
+
 admin_url="${url%/studiolo_e2e*}/postgres"
 if ! psql "$admin_url" -At -c "select 1" >/dev/null; then
   echo "Cannot connect to local Postgres ($admin_url)." >&2
@@ -30,7 +42,7 @@ if [ "$(psql "$admin_url" -At -c "select 1 from pg_database where datname = 'stu
 fi
 
 psql "$url" -q -v ON_ERROR_STOP=1 -f "$root/scripts/local-stub.sql"
-for file in "$root"/supabase/migrations/000[1-4]_*.sql; do
+for file in "$root"/supabase/migrations/[0-9][0-9][0-9][0-9]_*.sql; do
   psql "$url" -q -v ON_ERROR_STOP=1 -f "$file"
 done
 psql "$url" -q -v ON_ERROR_STOP=1 -f "$root/supabase/seed.sql"

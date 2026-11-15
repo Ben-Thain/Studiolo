@@ -19,7 +19,7 @@ export default async function HomeLayout({
 }: {
   children: ReactNode;
 }) {
-  const { email, profile } = await getHomeContext("/sites");
+  const { email, profile } = await getHomeContext();
   const name = profile.display_name.trim() || email;
   return (
     <HomeShell

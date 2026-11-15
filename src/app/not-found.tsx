@@ -23,7 +23,7 @@ export default function NotFound() {
           This page doesn&apos;t exist, or you&apos;re signed in to a different
           account.
         </p>
-        <Button href="/sites" size="lg" className="mt-6">
+        <Button href="/sites" size="block" className="mt-6">
           Go to Sites
         </Button>
       </main>
