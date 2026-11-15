@@ -10,16 +10,31 @@ export function MobileNavBar({
   onTitle,
   backLabel = "Back",
   action,
+  leading,
   variant = "default",
 }: {
-  title: string;
+  title?: string;
   subtitle?: string;
   onBack?: () => void;
   onTitle?: () => void;
   backLabel?: string;
   action?: ReactNode;
-  variant?: "default" | "detail";
+  /** "home" only: shown on the left (the wordmark). */
+  leading?: ReactNode;
+  /**
+   * "home": the home tab screens (m-sites.png). 56px, no hairline, `leading`
+   * left and `action` right; the screen title sits in the content below.
+   */
+  variant?: "default" | "detail" | "home";
 }) {
+  if (variant === "home") {
+    return (
+      <header className="flex h-14 items-center justify-between gap-2 bg-bg pr-5 pl-6">
+        <div className="flex min-w-0 items-center">{leading}</div>
+        {action ? <div className="flex items-center">{action}</div> : null}
+      </header>
+    );
+  }
   const titled = (
     <span
       className={cn(
@@ -175,19 +190,28 @@ export function MobileListRow({
   name,
   meta,
   trailing,
+  leading,
+  href,
   onClick,
 }: {
   name: string;
   meta?: string;
   trailing?: ReactNode;
+  /** A 16px slot before the text, e.g. a status dot. */
+  leading?: ReactNode;
+  /** Renders a next/link (an internal path) instead of a button. */
+  href?: string;
   onClick?: () => void;
 }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex min-h-14 w-full items-center gap-3 border-b border-line py-2 text-left"
-    >
+  const className = cn(
+    "flex w-full items-center border-b border-line py-2 text-left",
+    leading ? "min-h-16 gap-4" : "min-h-14 gap-3",
+  );
+  const content = (
+    <>
+      {leading ? (
+        <span className="flex w-4 shrink-0 justify-center">{leading}</span>
+      ) : null}
       <span className="min-w-0 flex-1">
         <span className="block truncate text-base leading-6 font-medium text-ink">
           {name}
@@ -199,7 +223,19 @@ export function MobileListRow({
         ) : null}
       </span>
       {trailing}
-      <Icon name="chevron-right" size={16} className="text-ink-3" />
+      <Icon name="chevron-right" size={16} className="shrink-0 text-ink-3" />
+    </>
+  );
+  if (href) {
+    return (
+      <Link href={href} onClick={onClick} className={className}>
+        {content}
+      </Link>
+    );
+  }
+  return (
+    <button type="button" onClick={onClick} className={className}>
+      {content}
     </button>
   );
 }

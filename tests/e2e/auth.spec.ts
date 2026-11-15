@@ -94,7 +94,7 @@ test.describe("magic link", () => {
     const email = uniqueEmail("login");
     await signIn(page, email, "/account");
     await expect(page).toHaveURL("/account");
-    await expect(page.getByText(`Signed in as ${email}.`)).toBeVisible();
+    await expect(page.locator("main").getByText(email).first()).toBeVisible();
     await page.goto("/");
     await expect(page).toHaveURL("/sites");
     await page.goto("/login");
@@ -122,6 +122,11 @@ test.describe("magic link", () => {
     link.searchParams.set("code", codeFor(email));
     await page.goto(link.toString());
     await expect(page).toHaveURL("/sites");
+    // A new account: an empty Sites page and a full trial, no onboarding.
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Sites" }),
+    ).toBeVisible();
+    await expect(page.getByText("No sites yet")).toBeVisible();
   });
 
   test("the link carries a safe next and drops an unsafe one", async ({
@@ -283,7 +288,7 @@ test.describe("google", () => {
     await page.getByRole("button", { name: "Continue with Google" }).click();
     await expect(page).toHaveURL("/plan");
     await expect(
-      page.getByText("Signed in as google.user@example.com."),
+      page.getByRole("heading", { name: "Pro trial" }),
     ).toBeVisible();
   });
 });

@@ -1,25 +1,74 @@
-// A tiny stand-in for Supabase Auth (GoTrue), used only by the e2e suite.
-// It implements just the endpoints @supabase/ssr calls in prompt 03: the
-// email OTP request, PKCE code exchange, refresh, user lookup and logout,
-// plus /authorize for the Google redirect. It sends no email and talks to
-// no third party. Test helpers: GET /__otp?email=… (latest request for that
-// address) and GET /__otp-count?email=…. Tests run in parallel, so failures
-// are keyed by address: fail-server.* answers 500, fail-rate.* answers 429,
-// slow.* waits 4s (for loading-state screenshots). POST /__google?enabled=false
-// switches the Google provider off in /auth/v1/settings.
-import { createServer } from "node:http";
+// A tiny stand-in for Supabase Auth (GoTrue) and the API gateway, used only
+// by the e2e suite. It implements the auth endpoints @supabase/ssr calls in
+// prompt 03 (email OTP request, PKCE code exchange, refresh, user lookup and
+// update, logout, /authorize for the Google redirect) and proxies /rest/v1 to
+// a local PostgREST on the throwaway studiolo_e2e database
+// (scripts/e2e-stack.sh). Users live in that database's auth.users, so the
+// seeded sam@example.com signs in to the seeded sites and any other address
+// signs up (the profile trigger runs as on hosted Supabase). Tokens are real
+// HS256 JWTs signed with a test-only key that PostgREST verifies.
+// It sends no email and talks to no third party. Test helpers:
+//   GET /__otp?email=…        latest OTP request for that address
+//   GET /__otp-count?email=…  number of OTP requests for that address
+//   GET /__email-change?email=… latest login-email change for that address
+//   POST /__google?enabled=false  switch the Google provider off
+// Tests run in parallel, so behaviour is keyed by address prefix:
+//   fail-server.*  OTP answers 500        fail-rate.*  OTP answers 429
+//   slow.*         OTP and data wait 3-4s fail-data.*  data answers 500
+//   fail-sites.*   only /rest/v1/sites answers 500
+//   trial-1.*      trial started 6 days ago (1 day left)
+//   trial-ended.*  trial started 8 days ago (ended)
+import { createHash, createHmac } from "node:crypto";
+import { createServer, request as httpRequest } from "node:http";
+import pg from "pg";
 
 const PORT = Number(process.env.MOCK_AUTH_PORT ?? 54399);
+const REST_PORT = Number(process.env.POSTGREST_PORT ?? 54398);
+const DB_URL = process.env.E2E_DB_URL ?? "postgresql:///studiolo_e2e";
+// Test-only key shared with scripts/e2e-stack.sh. Not a secret.
+const JWT_KEY = "studiolo-local-e2e-only-jwt-signing-key-0001";
+const pool = new pg.Pool({ connectionString: DB_URL, max: 4 });
+
 let otpRequests = [];
+let emailChanges = [];
 let googleEnabled = true;
 
 const b64 = (value) => Buffer.from(value).toString("base64url");
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function userFor(email) {
-  const id = `00000000-0000-4000-8000-${Buffer.from(email)
-    .toString("hex")
-    .padEnd(12, "0")
-    .slice(0, 12)}`;
+function idFor(email) {
+  const hex = createHash("sha256").update(email).digest("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+// Find the user by email, or sign them up (insert into auth.users; the
+// handle_new_user trigger creates the profile).
+async function findOrCreateUser(email) {
+  const found = await pool.query(
+    "select id::text from auth.users where email = $1",
+    [email],
+  );
+  if (found.rows[0]) return found.rows[0].id;
+  const id = idFor(email);
+  await pool.query(
+    "insert into auth.users (id, email) values ($1, $2) on conflict (id) do nothing",
+    [id, email],
+  );
+  const daysAgo = email.startsWith("trial-ended.")
+    ? 8
+    : email.startsWith("trial-1.")
+      ? 6
+      : 0;
+  if (daysAgo) {
+    await pool.query(
+      "update public.profiles set trial_started_at = now() - make_interval(days => $2) where id = $1",
+      [id, daysAgo],
+    );
+  }
+  return id;
+}
+
+function userJson(id, email, extra = {}) {
   return {
     id,
     aud: "authenticated",
@@ -30,49 +79,90 @@ function userFor(email) {
     user_metadata: {},
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
+    ...extra,
   };
 }
 
-function accessToken(email) {
-  const now = Math.floor(Date.now() / 1000);
-  const user = userFor(email);
-  return [
-    b64(JSON.stringify({ alg: "HS256", typ: "JWT" })),
-    b64(
-      JSON.stringify({
-        sub: user.id,
-        email,
-        aud: "authenticated",
-        role: "authenticated",
-        iat: now,
-        exp: now + 3600,
-      }),
-    ),
-    b64("mock-signature"),
-  ].join(".");
+function sign(payload) {
+  const head = b64(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const body = b64(JSON.stringify(payload));
+  const sig = createHmac("sha256", JWT_KEY)
+    .update(`${head}.${body}`)
+    .digest("base64url");
+  return `${head}.${body}.${sig}`;
 }
 
-function session(email) {
+function verify(token) {
+  const [head, body, sig] = String(token).split(".");
+  if (!head || !body || !sig) return null;
+  const expected = createHmac("sha256", JWT_KEY)
+    .update(`${head}.${body}`)
+    .digest("base64url");
+  if (expected !== sig) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(body, "base64url").toString());
+    if (payload.exp < Date.now() / 1000) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+async function session(email) {
+  const id = await findOrCreateUser(email);
   const now = Math.floor(Date.now() / 1000);
   return {
-    access_token: accessToken(email),
+    access_token: sign({
+      sub: id,
+      email,
+      aud: "authenticated",
+      role: "authenticated",
+      iat: now,
+      exp: now + 3600,
+    }),
     token_type: "bearer",
     expires_in: 3600,
     expires_at: now + 3600,
     refresh_token: `refresh.${b64(email)}`,
-    user: userFor(email),
+    user: userJson(id, email),
   };
 }
 
-function emailFromToken(token) {
-  try {
-    const payload = JSON.parse(
-      Buffer.from(token.split(".")[1], "base64url").toString(),
-    );
-    return typeof payload.email === "string" ? payload.email : null;
-  } catch {
-    return null;
+const bearer = (req) =>
+  verify((req.headers.authorization ?? "").replace(/^Bearer\s+/i, ""));
+
+// Forward /rest/v1/* to the local PostgREST, as the Supabase gateway does.
+async function proxyRest(req, res, path, search) {
+  const claims = bearer(req);
+  const email = claims?.email ?? "";
+  if (email.startsWith("slow.")) await sleep(3000);
+  if (
+    email.startsWith("fail-data.") ||
+    (email.startsWith("fail-sites.") && path.startsWith("/rest/v1/sites"))
+  ) {
+    return send(res, 500, { code: "XX000", message: "mock data failure" });
   }
+  const headers = { ...req.headers, host: `127.0.0.1:${REST_PORT}` };
+  // The anon key is not a JWT here; PostgREST then uses the anon role.
+  if (!claims) delete headers.authorization;
+  delete headers.apikey;
+  const upstream = httpRequest(
+    {
+      host: "127.0.0.1",
+      port: REST_PORT,
+      method: req.method,
+      path: path.slice("/rest/v1".length) + search,
+      headers,
+    },
+    (answer) => {
+      res.writeHead(answer.statusCode ?? 502, answer.headers);
+      answer.pipe(res);
+    },
+  );
+  upstream.on("error", () =>
+    send(res, 502, { message: "PostgREST is not running" }),
+  );
+  req.pipe(upstream);
 }
 
 function send(res, status, body, headers = {}) {
@@ -119,6 +209,17 @@ createServer(async (req, res) => {
     });
   }
 
+  if (path === "/__email-change") {
+    const email = url.searchParams.get("email");
+    return send(
+      res,
+      200,
+      emailChanges.filter((r) => r.email === email).at(-1) ?? null,
+    );
+  }
+  if (path.startsWith("/rest/v1/"))
+    return proxyRest(req, res, path, url.search);
+
   if (path === "/__google" && req.method === "POST") {
     googleEnabled = url.searchParams.get("enabled") !== "false";
     return send(res, 200, { google: googleEnabled });
@@ -142,7 +243,7 @@ createServer(async (req, res) => {
       );
     }
     if (email.startsWith("slow.")) {
-      await new Promise((resolve) => setTimeout(resolve, 4000));
+      await sleep(4000);
     }
     if (email.startsWith("fail-server.")) {
       return authError(res, 500, "unexpected_failure", "Internal mock failure");
@@ -181,7 +282,7 @@ createServer(async (req, res) => {
         );
       }
       const email = Buffer.from(code.slice(3), "base64url").toString();
-      return send(res, 200, session(email));
+      return send(res, 200, await session(email));
     }
     if (grant === "refresh_token") {
       const token = String(body.refresh_token ?? "");
@@ -196,7 +297,7 @@ createServer(async (req, res) => {
       return send(
         res,
         200,
-        session(Buffer.from(token.slice(8), "base64url").toString()),
+        await session(Buffer.from(token.slice(8), "base64url").toString()),
       );
     }
     return authError(res, 400, "unsupported_grant_type", "unsupported grant");
@@ -216,15 +317,45 @@ createServer(async (req, res) => {
     return send(
       res,
       200,
-      session(Buffer.from(token.slice(3), "base64url").toString()),
+      await session(Buffer.from(token.slice(3), "base64url").toString()),
     );
   }
 
   if (path === "/auth/v1/user" && req.method === "GET") {
-    const token = (req.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
-    const email = emailFromToken(token);
-    if (!email) return authError(res, 403, "bad_jwt", "invalid JWT");
-    return send(res, 200, userFor(email));
+    const claims = bearer(req);
+    if (!claims) return authError(res, 403, "bad_jwt", "invalid JWT");
+    return send(res, 200, userJson(claims.sub, claims.email));
+  }
+
+  // Login email change: GoTrue keeps the old address until both the old and
+  // the new inbox confirm (secure email change), and returns new_email.
+  if (path === "/auth/v1/user" && req.method === "PUT") {
+    const claims = bearer(req);
+    if (!claims) return authError(res, 403, "bad_jwt", "invalid JWT");
+    const body = await readJson(req);
+    const next = String(body.email ?? "");
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(next)) {
+      return authError(
+        res,
+        400,
+        "validation_failed",
+        "Unable to validate email address",
+      );
+    }
+    emailChanges.push({
+      email: claims.email,
+      new_email: next,
+      redirect_to: url.searchParams.get("redirect_to"),
+      at: Date.now(),
+    });
+    return send(
+      res,
+      200,
+      userJson(claims.sub, claims.email, {
+        new_email: next,
+        email_change_sent_at: new Date().toISOString(),
+      }),
+    );
   }
 
   if (path === "/auth/v1/logout" && req.method === "POST")

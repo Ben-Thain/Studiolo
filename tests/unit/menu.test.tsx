@@ -18,6 +18,26 @@ const items = [
 ];
 
 describe("Menu", () => {
+  it("with every item disabled, focuses the menu so Escape still closes it", async () => {
+    const user = userEvent.setup();
+    render(
+      <Menu
+        trigger={<button type="button">Actions</button>}
+        items={[
+          { id: "duplicate", label: "Duplicate", disabled: true },
+          { id: "delete", label: "Delete", disabled: true },
+        ]}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: "Actions" });
+    await user.click(trigger);
+    const menu = await screen.findByRole("menu");
+    await vi.waitFor(() => expect(document.activeElement).toBe(menu));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
   it("moves with the keyboard, selects, and restores focus", async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();

@@ -200,7 +200,10 @@ export function Menu({
       return;
     }
     const first = enabled[0];
-    document.getElementById(first ? `${menuId}-${first.id}` : "")?.focus();
+    // With every item disabled, focus the menu itself so Escape and Tab
+    // still work from the keyboard.
+    if (first) document.getElementById(`${menuId}-${first.id}`)?.focus();
+    else menuRef.current?.focus();
   }, [open, box, inline, menuId, enabled]);
 
   useEffect(() => {
@@ -243,6 +246,7 @@ export function Menu({
       data-inline={inline ? "menu" : undefined}
       aria-orientation="vertical"
       aria-labelledby={triggerId}
+      tabIndex={-1}
       onKeyDown={onMenuKey}
       style={
         inline

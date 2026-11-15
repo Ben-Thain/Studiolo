@@ -22,7 +22,10 @@ export type IconName =
   | "duplicate"
   | "external"
   | "sites"
-  | "retry";
+  | "retry"
+  | "card"
+  | "mail"
+  | "sign-out";
 
 type IconProps = {
   name: IconName;
@@ -229,6 +232,40 @@ const glyphs: Record<IconName, ReactNode> = {
     </>
   ),
   retry: <Stroke d="M13 8a5 5 0 1 1-1.4-3.45M13 2.75V5.5H10.25" />,
+  card: (
+    <>
+      <rect
+        x="2.5"
+        y="3.75"
+        width="11"
+        height="8.5"
+        rx="1.25"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <Stroke d="M2.5 6.75h11M5 9.75h2.5" />
+    </>
+  ),
+  mail: (
+    <>
+      <rect
+        x="2.5"
+        y="3.75"
+        width="11"
+        height="8.5"
+        rx="1.25"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <Stroke d="M3 4.5 8 8.5l5-4" />
+    </>
+  ),
+  "sign-out": (
+    <>
+      <Stroke d="M7 2.75H4a1.25 1.25 0 0 0-1.25 1.25v8c0 .69.56 1.25 1.25 1.25h3" />
+      <Stroke d="M6.5 8h6.75M10.5 5.25 13.25 8l-2.75 2.75" />
+    </>
+  ),
 };
 
 export function Icon({ name, size = 16, className }: IconProps) {

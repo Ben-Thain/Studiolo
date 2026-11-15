@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ComponentPropsWithRef, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Icon } from "./icons";
 
@@ -60,7 +60,7 @@ const sizes: Record<Exclude<ButtonSize, "nav">, string> = {
 const responsiveSize =
   "h-12 gap-2 px-4 text-base sm:h-8 sm:gap-2 sm:px-3 sm:text-sm";
 
-type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+type ButtonProps = ComponentPropsWithRef<"button"> & {
   variant?: ButtonVariant;
   size?: ButtonSize;
   icon?: ReactNode;

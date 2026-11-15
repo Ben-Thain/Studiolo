@@ -2,7 +2,7 @@
 
 Freeform personal-site editor. One account owns many sites; each site has its own pages, slug, settings, password, domain, submissions, and stats. Desktop and Mobile layouts share content and store position, size, and hidden per layout.
 
-This repository is the Next.js app for the existing Vercel project `studiolo` in team `ben-thain-s-projects`. Prompt 00 is the scaffold. Prompts 02a–02c add the database schema, functions, row level security, column grants, the private `site-assets` storage bucket and the local seed. Prompt 03a adds sign-in (email magic link and Google), the auth guards and the public landing page. There is no editor UI yet.
+This repository is the Next.js app for the existing Vercel project `studiolo` in team `ben-thain-s-projects`. Prompt 00 is the scaffold. Prompts 02a–02c add the database schema, functions, row level security, column grants, the private `site-assets` storage bucket and the local seed. Prompt 03a adds sign-in (email magic link and Google), the auth guards and the public landing page. Prompt 03b adds the home shell (Sites, Account, Plan) and the app 404. There is no editor UI yet.
 
 ## Scripts
 
@@ -52,7 +52,6 @@ psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/checks/rls_and_constraints.sql
 - Routes: `/` (public landing; signed-in visitors go to `/sites`; `?ref=<slug>` is accepted and ignored), `/login`, `/signup`, `/auth/callback`, `/auth/expired` are public. `/sites`, `/account`, `/plan` and everything under them need a session; signed-out requests go to `/login?next=<path>`. `next` is only honoured when it is a same-origin relative path (starts with `/`, not `//` or `/\`).
 - `src/middleware.ts` refreshes the Supabase session on app hosts and app routes only (anon key, no UI, no service role). It must live in `src/` because the app uses `src/app`; a root `middleware.ts` is ignored. Pages also check the session on the server (`requireUser`).
 - Email sign-in is a magic link (`signInWithOtp`, new addresses get an account). `/auth/callback` exchanges the PKCE code (or verifies a `token_hash`) and redirects to `next` or `/sites`; any failure lands on `/auth/expired`. Raw auth errors are never shown.
-- `/sites`, `/account` and `/plan` are placeholders until prompt 03b builds the home shell.
 - `next` is checked again after URL normalisation and after each further percent-decoding, so dot-segment tricks (`/.//evil.com`, `/%2e%2e//evil.com`, `/%252e%252e//evil.com`) are refused, and the callback only redirects to a URL on its own origin.
 - The callback redirects on `NEXT_PUBLIC_APP_URL` in production. It uses the request's host only when that host is this deployment's `VERCEL_URL` or `VERCEL_BRANCH_URL` (or, in development, the app host or its loopback alias on the same port). `Host` / `X-Forwarded-Host` cannot move it anywhere else.
 - Google: the sign-in pages read `/auth/v1/settings` (anon key, cached for a minute in production). With the provider off the button is disabled and reads "Google sign-in isn't set up yet" instead of sending people to Supabase's raw error.
@@ -65,7 +64,24 @@ Supabase settings (Ben, in the dashboard; nothing here changes them):
 - Authentication → Providers → Google: enable with a Google OAuth client whose authorised redirect URI is `https://<project>.supabase.co/auth/v1/callback`.
 - The default magic-link email template works with the PKCE flow.
 
-e2e runs against `tests/e2e/mock-auth-server.mjs`, a local stand-in for Supabase Auth that sends no email and calls no third party. Not covered by tests: real Supabase Auth (GoTrue), real email delivery, real Google OAuth, cookies on the production domain, and Supabase's own rate limits.
+## Home shell (03b)
+
+- `src/app/(app)/(home)/layout.tsx`: the account-level home sidebar (Sites, Account, Plan; trial line and account row at the bottom; no site list) from 900px, and the home nav bar plus tab bar below it. Every read and write runs as the signed-in user through RLS; nothing uses the service role.
+- `/sites` lists the user's sites where `deleted_at is null`, selected with `SITE_OWNER_SELECT`, most recently edited first. Rows are real links to `/sites/[id]`. `New site` and the row menu (Duplicate, View live, Delete) are shown and wired in prompt 04; until then they do nothing (`aria-disabled`, "Available soon" / disabled items).
+- `/sites/[id]` only checks ownership for now (prompt 04 builds it): another user's, a deleted or an unknown id renders the app 404 (`src/app/not-found.tsx`, HTTP 404, `noindex`).
+- `/account`: name and form-notification email save to `profiles`; the login email change goes through Supabase's confirm flow (`auth.updateUser`, "Check both inboxes to confirm the change"). Delete account is shown but disabled until prompt 15.
+- `/plan`: copy lives in `src/content/plan.ts` (unconfirmed by Ben). The 7-day trial is display only (`src/lib/trial.ts`): no prices, no payment, nothing locks when it ends, and `profiles.plan` stays unread.
+- Dates are en-GB in the viewer's time zone (`Today, 09:42`, `6 Nov`).
+
+## e2e
+
+e2e needs local Postgres (as for `db:check`, with `PGHOST`/`PGUSER` set) and the [PostgREST](https://postgrest.org) binary on `PATH` or in `POSTGREST_BIN`. Playwright starts three local servers:
+
+- `scripts/e2e-stack.sh` resets the local database `studiolo_e2e` (the `db:check` stub in `scripts/local-stub.sql`, the migrations and the seed; it refuses any other database or a non-local host) and runs PostgREST on 127.0.0.1:54398.
+- `tests/e2e/mock-auth-server.mjs` stands in for Supabase Auth and the API gateway: it signs real HS256 JWTs with a test-only key that the local PostgREST verifies, keeps users in the database's `auth.users` (so `sam@example.com` signs in to the seeded sites and new addresses sign up), and proxies `/rest/v1` to PostgREST. It sends no email and calls no third party.
+- `npm run dev` on 127.0.0.1:3000, pointed at the mock.
+
+Not covered by tests: real Supabase Auth (GoTrue) and its email-change emails, real email delivery, real Google OAuth, the Supabase API gateway, cookies on the production domain, and Supabase's own rate limits.
 
 ## Manual steps
 

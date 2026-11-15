@@ -1,8 +1,11 @@
 import { defineConfig } from "@playwright/test";
 
-// e2e runs against a local mock of Supabase Auth (tests/e2e/mock-auth-server.mjs)
-// so sign-in flows are testable with no hosted project, email or Google.
+// e2e runs against local stand-ins only: a mock of Supabase Auth and the API
+// gateway (tests/e2e/mock-auth-server.mjs) in front of a local PostgREST on a
+// throwaway local database (scripts/e2e-stack.sh resets studiolo_e2e with the
+// migrations and the seed). No hosted project, email or Google.
 const MOCK_AUTH_PORT = 54399;
+const POSTGREST_PORT = 54398;
 const APP_URL = "http://127.0.0.1:3000";
 
 export default defineConfig({
@@ -24,11 +27,21 @@ export default defineConfig({
   ],
   webServer: [
     {
+      command: "bash scripts/e2e-stack.sh",
+      url: `http://127.0.0.1:${POSTGREST_PORT}/`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 60_000,
+      env: { POSTGREST_PORT: String(POSTGREST_PORT) },
+    },
+    {
       command: "node tests/e2e/mock-auth-server.mjs",
       url: `http://127.0.0.1:${MOCK_AUTH_PORT}/health`,
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
-      env: { MOCK_AUTH_PORT: String(MOCK_AUTH_PORT) },
+      env: {
+        MOCK_AUTH_PORT: String(MOCK_AUTH_PORT),
+        POSTGREST_PORT: String(POSTGREST_PORT),
+      },
     },
     {
       command: "npm run dev -- --hostname 127.0.0.1 --port 3000",

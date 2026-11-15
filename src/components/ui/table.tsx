@@ -4,6 +4,7 @@ import type {
   TdHTMLAttributes,
   ThHTMLAttributes,
 } from "react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 export function Table({
@@ -32,17 +33,21 @@ export function TableRow({
   children,
   highlight = false,
   header = false,
+  interactive = false,
   className,
   ...props
 }: HTMLAttributes<HTMLTableRowElement> & {
   highlight?: boolean;
   header?: boolean;
+  /** The whole row opens something: pair with a `TableRowLink` in a cell. */
+  interactive?: boolean;
 }) {
   return (
     <tr
       className={cn(
         "border-b border-line",
         header ? "h-10" : "h-14",
+        interactive && "relative hover:bg-fill-hover",
         highlight && "bg-fill-hover",
         className,
       )}
@@ -83,5 +88,33 @@ export function TableCell({
     >
       {children}
     </td>
+  );
+}
+
+/**
+ * A real link whose hit area covers its `interactive` row, so a click
+ * anywhere on the row (or Enter on the focused link) opens it. Controls in
+ * other cells stay clickable above it with `relative z-10`.
+ */
+export function TableRowLink({
+  href,
+  children,
+  className,
+}: {
+  href: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "outline-none after:absolute after:inset-0 after:content-['']",
+        "focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-[rgba(10,10,10,0.4)] focus-visible:after:outline-solid",
+        className,
+      )}
+    >
+      {children}
+    </Link>
   );
 }

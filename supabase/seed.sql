@@ -223,4 +223,19 @@ select
 from generate_series(0, 6) as n
 on conflict (site_id, day) do nothing;
 
+-- Home screens: Sam is two days into the 7-day trial (5 days left), and the
+-- sites were last edited at different times, as in the sample screens.
+-- Relative to now() so a fresh local reset always reads the same way.
+update public.profiles
+set trial_started_at = now() - interval '2 days'
+where id = '5a000000-0000-4000-8000-000000000001';
+
+update public.sites
+set draft_updated_at = now() - interval '9 days'
+where id = '5a000000-0000-4000-8000-000000000012';
+
+update public.sites
+set draft_updated_at = now() - interval '13 days'
+where id = '5a000000-0000-4000-8000-000000000013';
+
 commit;
