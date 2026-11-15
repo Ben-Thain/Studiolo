@@ -52,7 +52,6 @@ export const HOME_COPY = {
   sitesTitle: "Sites",
   sitesLead: "Open a site to edit it.",
   newSite: "New site",
-  noSites: "No sites yet",
   availableSoon: "Available soon",
   loadFailed: "We couldn't load this page.",
   columns: {

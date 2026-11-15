@@ -4,9 +4,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { Wordmark } from "@/components/auth/wordmark";
-import { IconButton } from "@/components/ui/icon-button";
 import { Icon, type IconName } from "@/components/ui/icons";
 import { MobileNavBar, MobileTabBar } from "@/components/ui/mobile";
+import { ToastRegion } from "@/components/ui/toast";
 import {
   AccountRow,
   SidebarRow,
@@ -93,23 +93,23 @@ export function HomeShell({
           leading={<Wordmark />}
           action={
             selected === "sites" ? (
-              <IconButton
-                label={HOME_COPY.newSite}
-                size="touch"
-                aria-disabled="true"
-                title={HOME_COPY.availableSoon}
-                className="text-ink"
+              <Link
+                href="/sites?new=1"
+                aria-label={HOME_COPY.newSite}
+                className="inline-flex size-11 items-center justify-center rounded-control text-ink"
               >
                 <Icon name="plus" size={20} />
-              </IconButton>
+              </Link>
             ) : null
           }
         />
       </div>
 
-      <main className="min-w-0 flex-1 px-6 pb-10 min-[900px]:px-12 min-[900px]:pt-10">
-        {children}
-      </main>
+      <ToastRegion id="home" offset={56} className="flex min-w-0 flex-1">
+        <main className="min-w-0 flex-1 px-6 pb-10 min-[900px]:px-12 min-[900px]:pt-10">
+          {children}
+        </main>
+      </ToastRegion>
 
       <div className="sticky bottom-0 z-20 min-[900px]:hidden">
         <MobileTabBar

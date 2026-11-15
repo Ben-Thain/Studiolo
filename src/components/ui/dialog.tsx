@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, type ReactNode, type Ref } from "react";
 import { createPortal } from "react-dom";
 import { focusableElements, trapTab } from "./focus";
+import { useClient } from "./use-client";
 
 type DialogProps = {
   open?: boolean;
@@ -40,7 +41,7 @@ function DialogPanel({
       aria-labelledby={labelledBy}
       aria-describedby={lead ? descriptionId : undefined}
       data-inline={inline ? "dialog" : undefined}
-      className="w-[440px] max-w-full rounded-dialog bg-bg p-6 shadow-dialog max-[479px]:w-[calc(100vw-32px)]"
+      className="relative w-[440px] max-w-full rounded-dialog bg-bg p-6 shadow-dialog max-[479px]:w-[calc(100vw-32px)]"
     >
       <h2 id={labelledBy} className="text-lg leading-6 font-medium text-ink">
         {title}
@@ -72,13 +73,17 @@ export function Dialog({
   const panelRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   const titleId = useId();
+  // Portals only exist in the browser; opening on first render (/sites?new=1)
+  // must hydrate as "closed" and then open, or React reports a mismatch.
+  const client = useClient();
+  const shown = open && client;
 
   useEffect(() => {
     onCloseRef.current = onClose;
   });
 
   useEffect(() => {
-    if (!open || inline) return;
+    if (!shown || inline) return;
     const panel = panelRef.current;
     const root = document.getElementById("app-root");
     const previously = document.activeElement as HTMLElement | null;
@@ -107,7 +112,7 @@ export function Dialog({
       root?.removeAttribute("inert");
       previously?.focus();
     };
-  }, [open, inline]);
+  }, [shown, inline]);
 
   if (inline) {
     return (
@@ -123,10 +128,12 @@ export function Dialog({
     );
   }
 
-  if (!open || typeof document === "undefined") return null;
+  if (!shown) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
+    // Centred; on desktop-sized screens the panel's top sits 200px down
+    // (d-new-site.png, d-delete-site.png), so it doesn't jump as it grows.
+    <div className="fixed inset-0 z-40 flex items-center justify-center p-4 [@media(min-width:900px)_and_(min-height:720px)]:items-start [@media(min-width:900px)_and_(min-height:720px)]:pt-[200px]">
       <div
         className="absolute inset-0 bg-[var(--scrim)]"
         onMouseDown={() => onClose?.()}

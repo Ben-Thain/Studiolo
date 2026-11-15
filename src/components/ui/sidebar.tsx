@@ -57,18 +57,22 @@ export function SidebarWordmark({ children }: { children: ReactNode }) {
 export function SidebarBack({
   children,
   href = "#sites",
+  as,
 }: {
   children: ReactNode;
   href?: string;
+  /** e.g. next/link for an app route (a real link, not history.back()). */
+  as?: ElementType;
 }) {
+  const Component = as ?? "a";
   return (
-    <a
+    <Component
       href={href}
-      className="inline-flex h-10 items-center gap-2 text-sm leading-5 font-normal text-ink-2"
+      className="inline-flex h-10 items-center gap-2 rounded-control text-sm leading-5 font-normal text-ink-2"
     >
       <Icon name="chevron-left" size={16} />
       {children}
-    </a>
+    </Component>
   );
 }
 

@@ -48,6 +48,8 @@ export function TableRow({
         "border-b border-line",
         header ? "h-10" : "h-14",
         interactive && "relative hover:bg-fill-hover",
+        // Highlight (#FAFAFA) fades out when it is turned off.
+        "transition-colors duration-700 motion-reduce:transition-none",
         highlight && "bg-fill-hover",
         className,
       )}
@@ -100,13 +102,16 @@ export function TableRowLink({
   href,
   children,
   className,
+  id,
 }: {
   href: string;
   children: ReactNode;
   className?: string;
+  id?: string;
 }) {
   return (
     <Link
+      id={id}
       href={href}
       className={cn(
         "outline-none after:absolute after:inset-0 after:content-['']",

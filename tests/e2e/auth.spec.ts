@@ -122,11 +122,10 @@ test.describe("magic link", () => {
     link.searchParams.set("code", codeFor(email));
     await page.goto(link.toString());
     await expect(page).toHaveURL("/sites");
-    // A new account: an empty Sites page and a full trial, no onboarding.
+    // A new account: the first-site empty state (prompt 04a), no onboarding.
     await expect(
-      page.getByRole("heading", { level: 1, name: "Sites" }),
+      page.getByRole("heading", { level: 1, name: "Create your first site" }),
     ).toBeVisible();
-    await expect(page.getByText("No sites yet")).toBeVisible();
   });
 
   test("the link carries a safe next and drops an unsafe one", async ({

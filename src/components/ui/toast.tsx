@@ -167,6 +167,9 @@ function ToastCard({
           "min-h-12 w-auto max-w-[560px] py-2 text-[13px] leading-5",
         size === "auto" &&
           "min-h-[52px] w-full max-w-[560px] py-2.5 text-sm leading-5 sm:min-h-12 sm:w-auto sm:py-2 sm:text-[13px] sm:leading-5",
+        // The action's own 12px padding makes the 16px edge
+        // (d-sites-duplicated.png).
+        item.action && "pr-1",
       )}
     >
       <span className="min-w-0 flex-1">{item.message}</span>

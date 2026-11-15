@@ -57,6 +57,6 @@ begin
   end if;
 end
 $$;
-grant anon, authenticated to authenticator;
+grant anon, authenticated, service_role to authenticator;
 SQL
 echo "e2e database ready: studiolo_e2e"

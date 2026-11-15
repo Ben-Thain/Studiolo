@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { defineConfig } from "@playwright/test";
 
 // e2e runs against local stand-ins only: a mock of Supabase Auth and the API
@@ -7,6 +8,22 @@ import { defineConfig } from "@playwright/test";
 const MOCK_AUTH_PORT = 54399;
 const POSTGREST_PORT = 54398;
 const APP_URL = "http://127.0.0.1:3000";
+
+// A service-role token for the local stack only, signed with the test-only
+// key shared with scripts/e2e-stack.sh and the mock. Not a secret: it opens
+// nothing but the throwaway studiolo_e2e database.
+function localServiceRoleKey() {
+  const part = (value: object) =>
+    Buffer.from(JSON.stringify(value)).toString("base64url");
+  const unsigned = `${part({ alg: "HS256", typ: "JWT" })}.${part({ role: "service_role", iss: "studiolo-e2e" })}`;
+  const signature = createHmac(
+    "sha256",
+    "studiolo-local-e2e-only-jwt-signing-key-0001",
+  )
+    .update(unsigned)
+    .digest("base64url");
+  return `${unsigned}.${signature}`;
+}
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -53,6 +70,7 @@ export default defineConfig({
         NEXT_PUBLIC_SUPABASE_ANON_KEY: "mock-anon-key",
         NEXT_PUBLIC_APP_URL: APP_URL,
         NEXT_PUBLIC_ROOT_DOMAIN: "127.0.0.1:3000",
+        SUPABASE_SERVICE_ROLE_KEY: localServiceRoleKey(),
       },
     },
   ],

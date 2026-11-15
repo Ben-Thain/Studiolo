@@ -34,3 +34,30 @@ export function canonicalAddress(
   if (domain && domain.status === "connected") return domain.hostname;
   return studioloAddress(site.slug, env);
 }
+
+/**
+ * A full URL for an address from studioloAddress or canonicalAddress: the app
+ * host path keeps the app's scheme (http locally), anything else is https.
+ */
+export function addressUrl(
+  address: string,
+  env: Pick<AddressEnv, "NEXT_PUBLIC_APP_URL"> = getPublicEnv(),
+): string {
+  const app = new URL(env.NEXT_PUBLIC_APP_URL);
+  const scheme = address.startsWith(`${app.host}/`) ? app.protocol : "https:";
+  return `${scheme}//${address}`;
+}
+
+export type AddressParts = { before: string; after: string };
+
+/**
+ * The text around the slug in studioloAddress, for slug previews and inputs:
+ * { before: "", after: ".studiolo.page" } or { before: "host/s/", after: "" }.
+ */
+export function studioloAddressParts(
+  env: AddressEnv = getPublicEnv(),
+): AddressParts {
+  const marker = "\u0000";
+  const [before, after] = studioloAddress(marker, env).split(marker);
+  return { before, after };
+}

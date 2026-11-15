@@ -3355,6 +3355,245 @@ $$;
 
 \echo ok: col_span 13 rejected
 
+-- 04a: duplicate_site deep-copies a site in one transaction.
+begin;
+
+insert into auth.users (id, email)
+values
+  ('d4000000-0000-4000-8000-000000000001', 'dup-owner@example.com'),
+  ('d4000000-0000-4000-8000-000000000002', 'dup-other@example.com');
+
+insert into public.sites (id, owner_id, name, slug, seo_title, seo_description)
+values
+  ('d4000000-0000-4000-8000-000000000011', 'd4000000-0000-4000-8000-000000000001',
+   'Dup Source', 'dup-src-a', 'Dup title', 'Dup description'),
+  ('d4000000-0000-4000-8000-000000000012', 'd4000000-0000-4000-8000-000000000002',
+   'Held', 'copy-of-dup-src-a', null, null);
+
+-- Another owner's soft-deleted site holds "copy-of-dup-src-a".
+update public.sites
+set deleted_at = now(), purge_after = now() + interval '30 days'
+where id = 'd4000000-0000-4000-8000-000000000012';
+
+insert into public.pages (id, site_id, title, slug, sort_order, in_nav, is_home)
+values
+  ('d4000000-0000-4000-8000-000000000021', 'd4000000-0000-4000-8000-000000000011', 'Home', 'home', 0, true, true),
+  ('d4000000-0000-4000-8000-000000000022', 'd4000000-0000-4000-8000-000000000011', 'Contact', 'contact', 1, true, false);
+
+insert into public.assets (id, site_id, path, width, height, mime, bytes)
+values (
+  'd4000000-0000-4000-8000-000000000031',
+  'd4000000-0000-4000-8000-000000000011',
+  'd4000000-0000-4000-8000-000000000011/draft/d4000000-0000-4000-8000-000000000031.webp',
+  1600, 1200, 'image/webp', 2048
+);
+
+insert into public.sections (id, site_id, page_id, name, sort_order)
+values
+  ('d4000000-0000-4000-8000-000000000041', 'd4000000-0000-4000-8000-000000000011', null, 'Header', 0),
+  ('d4000000-0000-4000-8000-000000000042', 'd4000000-0000-4000-8000-000000000011', 'd4000000-0000-4000-8000-000000000021', 'Intro', 1);
+
+insert into public.elements (id, site_id, page_id, section_id, type, name, content, sort_order)
+values
+  ('d4000000-0000-4000-8000-000000000051', 'd4000000-0000-4000-8000-000000000011', null,
+   'd4000000-0000-4000-8000-000000000041', 'text', 'Site name',
+   '{"text":"Dup Source","link":{"kind":"page","value":"d4000000-0000-4000-8000-000000000022"}}', 0),
+  ('d4000000-0000-4000-8000-000000000052', 'd4000000-0000-4000-8000-000000000011',
+   'd4000000-0000-4000-8000-000000000021', 'd4000000-0000-4000-8000-000000000042', 'image', 'Hero image',
+   '{"assetId":"d4000000-0000-4000-8000-000000000031","alt":"A room","aspectLocked":true}', 0);
+
+insert into public.element_layouts (element_id, breakpoint, col_start, col_span, row_start, row_span, placement_source)
+values
+  ('d4000000-0000-4000-8000-000000000051', 'desktop', 1, 6, 1, 4, 'manual'),
+  ('d4000000-0000-4000-8000-000000000051', 'mobile', 1, 12, 1, 4, 'auto'),
+  ('d4000000-0000-4000-8000-000000000052', 'desktop', 7, 6, 1, 40, 'manual'),
+  ('d4000000-0000-4000-8000-000000000052', 'mobile', 1, 12, 1, 40, 'manual');
+
+insert into public.site_publishes (id, site_id, snapshot)
+values ('d4000000-0000-4000-8000-000000000061', 'd4000000-0000-4000-8000-000000000011', '{}');
+
+update public.sites
+set
+  og_asset_id = 'd4000000-0000-4000-8000-000000000031',
+  favicon_asset_id = 'd4000000-0000-4000-8000-000000000031',
+  live_publish_id = 'd4000000-0000-4000-8000-000000000061',
+  slug_locked_at = now(),
+  password_enabled = true,
+  password_hash = 'not-a-hash'
+where id = 'd4000000-0000-4000-8000-000000000011';
+
+insert into public.domains (site_id, hostname, status)
+values ('d4000000-0000-4000-8000-000000000011', 'dup.example.com', 'connected');
+
+insert into public.submissions (site_id, name, email, message)
+values ('d4000000-0000-4000-8000-000000000011', 'A', 'a@example.com', 'Hi');
+
+do $$
+declare
+  copy record;
+  again record;
+  copy_home uuid;
+  copy_contact uuid;
+  copy_asset uuid;
+begin
+  select * into copy
+  from public.duplicate_site(
+    'd4000000-0000-4000-8000-000000000011',
+    'd4000000-0000-4000-8000-000000000001'
+  );
+
+  if copy.name <> 'Copy of Dup Source' or copy.slug <> 'copy-of-dup-src-a-2' then
+    raise exception 'duplicate name or slug mismatch: % %', copy.name, copy.slug;
+  end if;
+
+  if not exists (
+    select 1 from public.sites
+    where id = copy.id
+      and owner_id = 'd4000000-0000-4000-8000-000000000001'
+      and live_publish_id is null
+      and slug_locked_at is null
+      and first_published_at is null
+      and password_enabled = false
+      and password_hash is null
+      and deleted_at is null
+      and seo_title = 'Dup title'
+      and seo_description = 'Dup description'
+  ) then
+    raise exception 'duplicate is not a fresh draft';
+  end if;
+
+  if exists (select 1 from public.domains where site_id = copy.id)
+    or exists (select 1 from public.submissions where site_id = copy.id)
+    or exists (select 1 from public.site_publishes where site_id = copy.id)
+    or exists (select 1 from public.page_views_daily where site_id = copy.id)
+  then
+    raise exception 'duplicate copied a domain, submission, publish or views';
+  end if;
+
+  select id into copy_home from public.pages where site_id = copy.id and is_home;
+  select id into copy_contact from public.pages where site_id = copy.id and slug = 'contact';
+  select id into copy_asset from public.assets where site_id = copy.id;
+
+  if copy_home is null or copy_contact is null or copy_asset is null
+    or copy_home = 'd4000000-0000-4000-8000-000000000021'
+    or copy_asset = 'd4000000-0000-4000-8000-000000000031'
+    or (select count(*) from public.pages where site_id = copy.id) <> 2
+    or (select count(*) from public.sections where site_id = copy.id) <> 2
+    or (select count(*) from public.elements where site_id = copy.id) <> 2
+    or (
+      select count(*) from public.element_layouts l
+      join public.elements e on e.id = l.element_id
+      where e.site_id = copy.id
+    ) <> 4
+  then
+    raise exception 'duplicate did not deep-copy with new ids';
+  end if;
+
+  if not exists (
+    select 1 from public.sites
+    where id = copy.id and og_asset_id = copy_asset and favicon_asset_id = copy_asset
+  ) then
+    raise exception 'duplicate did not remap og and favicon assets';
+  end if;
+
+  if (
+    select content->>'assetId' from public.elements
+    where site_id = copy.id and type = 'image'
+  ) <> copy_asset::text then
+    raise exception 'duplicate did not remap content.assetId';
+  end if;
+
+  if (
+    select content->'link'->>'value' from public.elements
+    where site_id = copy.id and type = 'text'
+  ) <> copy_contact::text then
+    raise exception 'duplicate did not remap a page link';
+  end if;
+
+  if not exists (
+    select 1 from public.sections s
+    join public.elements e on e.section_id = s.id
+    where s.site_id = copy.id and s.page_id = copy_home and e.page_id = copy_home
+  ) then
+    raise exception 'duplicate did not remap section and element pages';
+  end if;
+
+  if not exists (
+    select 1 from public.element_layouts l
+    join public.elements e on e.id = l.element_id
+    where e.site_id = copy.id and e.type = 'image'
+      and l.breakpoint = 'mobile' and l.placement_source = 'manual'
+      and l.row_span = 40
+  ) then
+    raise exception 'duplicate did not copy layouts';
+  end if;
+
+  if copy.asset_paths <> jsonb_build_array(jsonb_build_object(
+    'from', 'd4000000-0000-4000-8000-000000000011/draft/d4000000-0000-4000-8000-000000000031.webp',
+    'to', copy.id::text || '/draft/' || copy_asset::text || '.webp'
+  )) then
+    raise exception 'duplicate asset paths mismatch: %', copy.asset_paths;
+  end if;
+
+  select * into again
+  from public.duplicate_site(
+    'd4000000-0000-4000-8000-000000000011',
+    'd4000000-0000-4000-8000-000000000001'
+  );
+  if again.slug <> 'copy-of-dup-src-a-3' then
+    raise exception 'second duplicate slug mismatch: %', again.slug;
+  end if;
+
+  begin
+    perform public.duplicate_site(
+      'd4000000-0000-4000-8000-000000000011',
+      'd4000000-0000-4000-8000-000000000002'
+    );
+    raise exception 'duplicate_site accepted another owner';
+  exception
+    when sqlstate 'ST404' then
+      null;
+  end;
+
+  begin
+    perform public.duplicate_site(
+      'd4000000-0000-4000-8000-000000000012',
+      'd4000000-0000-4000-8000-000000000002'
+    );
+    raise exception 'duplicate_site accepted a deleted site';
+  exception
+    when sqlstate 'ST404' then
+      null;
+  end;
+
+  if has_function_privilege('anon', 'public.duplicate_site(uuid, uuid)', 'execute')
+    or has_function_privilege('authenticated', 'public.duplicate_site(uuid, uuid)', 'execute')
+    or has_function_privilege('service_role', 'public.duplicate_site(uuid, uuid)', 'execute') is not true
+    or has_function_privilege('authenticated', 'public.duplicate_site_content(jsonb, jsonb, jsonb)', 'execute')
+  then
+    raise exception 'duplicate_site privileges mismatch';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    join pg_roles r on r.oid = p.proowner
+    where n.nspname = 'public'
+      and p.proname = 'duplicate_site'
+      and p.prosecdef
+      and r.rolname = 'postgres'
+      and 'search_path=public' = any (p.proconfig)
+  ) then
+    raise exception 'duplicate_site is not a postgres-owned security definer';
+  end if;
+end
+$$;
+
+rollback;
+
+\echo ok: duplicate_site deep-copies a site as a draft with remapped ids
+
 delete from auth.users
 where id in (
   'c2000000-0000-4000-8000-000000000001',

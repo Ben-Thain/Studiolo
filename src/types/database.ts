@@ -655,6 +655,18 @@ export type Database = {
           slug_changed: boolean;
         }[];
       };
+      duplicate_site: {
+        Args: {
+          p_site: string;
+          p_owner: string;
+        };
+        Returns: {
+          id: string;
+          name: string;
+          slug: string;
+          asset_paths: Json;
+        }[];
+      };
       save_draft: {
         Args: {
           site: string;

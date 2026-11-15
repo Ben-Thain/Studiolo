@@ -1,39 +1,31 @@
 import type { Metadata } from "next";
 import { SitesList } from "@/components/home/sites-list";
-import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/feedback";
-import { Icon } from "@/components/ui/icons";
+import { FirstSite } from "@/components/sites/first-site";
+import { NewSiteButton } from "@/components/sites/new-site-dialog";
 import { PageHead } from "@/components/ui/page-head";
+import { studioloAddressParts } from "@/lib/addresses";
 import { HOME_COPY } from "@/lib/home/copy";
 import { listSites } from "@/lib/home/data";
 
 export const metadata: Metadata = { title: "Sites · Studiolo" };
 
-export default async function SitesPage() {
-  const sites = await listSites();
+export default async function SitesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ new?: string; highlight?: string }>;
+}) {
+  const [sites, params] = await Promise.all([listSites(), searchParams]);
+  const parts = studioloAddressParts();
+  if (sites.length === 0) return <FirstSite parts={parts} />;
   return (
     <>
       <PageHead
         size="responsive"
         title={HOME_COPY.sitesTitle}
         lead={HOME_COPY.sitesLead}
-        action={
-          // Prompt 04 wires New site.
-          <Button
-            size="sm"
-            icon={<Icon name="plus" size={16} />}
-            aria-disabled="true"
-            title={HOME_COPY.availableSoon}
-          >
-            {HOME_COPY.newSite}
-          </Button>
-        }
+        action={<NewSiteButton parts={parts} requested={params.new === "1"} />}
       />
-      {sites.length === 0 ? (
-        <EmptyState title={HOME_COPY.noSites} />
-      ) : (
-        <SitesList sites={sites} />
-      )}
+      <SitesList sites={sites} highlightId={params.highlight} />
     </>
   );
 }

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { canonicalAddress, studioloAddress } from "@/lib/addresses";
+import {
+  addressUrl,
+  canonicalAddress,
+  studioloAddress,
+  studioloAddressParts,
+} from "@/lib/addresses";
 
 const env = {
   NEXT_PUBLIC_APP_URL: "https://studiolo.page",
@@ -42,5 +47,26 @@ describe("addresses", () => {
     expect(canonicalAddress(site, null, env)).toBe(
       "studiolo.page/s/riverton-house",
     );
+  });
+
+  it("splits the address around the slug for previews", () => {
+    expect(studioloAddressParts(env)).toEqual({
+      before: "studiolo.page/s/",
+      after: "",
+    });
+    expect(
+      studioloAddressParts({ ...env, NEXT_PUBLIC_WILDCARD_READY: "1" }),
+    ).toEqual({ before: "", after: ".studiolo.page" });
+  });
+
+  it("turns an address into a URL with the right scheme", () => {
+    expect(addressUrl("rivertonhouse.co.uk", env)).toBe(
+      "https://rivertonhouse.co.uk",
+    );
+    expect(
+      addressUrl("127.0.0.1:3000/s/north-light", {
+        NEXT_PUBLIC_APP_URL: "http://127.0.0.1:3000",
+      }),
+    ).toBe("http://127.0.0.1:3000/s/north-light");
   });
 });

@@ -1,3 +1,7 @@
+"use client";
+
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { Icon } from "@/components/ui/icons";
 import { MobileListRow } from "@/components/ui/mobile";
 import {
@@ -11,6 +15,7 @@ import {
 } from "@/components/ui/table";
 import { StatusDot } from "@/components/ui/top-bar";
 import { HOME_COPY } from "@/lib/home/copy";
+import { cn } from "@/lib/utils";
 import type { SiteListItem } from "@/lib/home/data";
 import { LocalDate } from "./local-date";
 import { SiteRowMenu } from "./site-row-menu";
@@ -55,17 +60,59 @@ export function SitesTableHead() {
   );
 }
 
-/** Sites list: a table from 900px (d-sites.png), rows below (m-sites.png). */
-export function SitesList({ sites }: { sites: SiteListItem[] }) {
+/** How long a new or restored row keeps its highlight. */
+const HIGHLIGHT_MS = 4000;
+
+/**
+ * Sites list: a table from 900px (d-sites.png), rows below (m-sites.png).
+ * `highlightId` (from /sites?highlight=…, after Duplicate) gives that row the
+ * #FAFAFA highlight for ~4s, then it fades, and moves focus to its link.
+ */
+export function SitesList({
+  sites,
+  highlightId,
+}: {
+  sites: SiteListItem[];
+  highlightId?: string;
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [faded, setFaded] = useState<string | null>(null);
+  const highlighted =
+    highlightId &&
+    highlightId !== faded &&
+    sites.some((site) => site.id === highlightId)
+      ? highlightId
+      : null;
+
+  useEffect(() => {
+    if (!highlighted) return;
+    const wide = window.matchMedia("(min-width: 900px)").matches;
+    document
+      .getElementById(`${wide ? "site-link" : "site-row"}-${highlighted}`)
+      ?.focus();
+    const timer = window.setTimeout(() => {
+      setFaded(highlighted);
+      router.replace(pathname, { scroll: false });
+    }, HIGHLIGHT_MS);
+    return () => window.clearTimeout(timer);
+  }, [highlighted, router, pathname]);
+
   return (
     <>
       <Table className="hidden max-w-[944px] table-fixed min-[900px]:table">
         <SitesTableHead />
         <TableBody>
           {sites.map((site) => (
-            <TableRow key={site.id} interactive>
+            <TableRow
+              key={site.id}
+              interactive
+              highlight={site.id === highlighted}
+              data-highlighted={site.id === highlighted ? "" : undefined}
+            >
               <TableCell>
                 <TableRowLink
+                  id={`site-link-${site.id}`}
                   href={`/sites/${site.id}`}
                   className="block truncate text-sm leading-5 font-medium text-ink"
                 >
@@ -87,7 +134,12 @@ export function SitesList({ sites }: { sites: SiteListItem[] }) {
                 <LocalDate iso={site.lastEditedAt} format="last-edited" />
               </TableCell>
               <TableCell className="relative z-10 text-center">
-                <SiteRowMenu name={site.name} live={site.status === "live"} />
+                <SiteRowMenu
+                  siteId={site.id}
+                  name={site.name}
+                  live={site.status === "live"}
+                  url={site.url}
+                />
               </TableCell>
             </TableRow>
           ))}
@@ -96,8 +148,15 @@ export function SitesList({ sites }: { sites: SiteListItem[] }) {
 
       <ul className="min-[900px]:hidden">
         {sites.map((site) => (
-          <li key={site.id}>
+          <li
+            key={site.id}
+            className={cn(
+              "transition-colors duration-700 motion-reduce:transition-none",
+              site.id === highlighted && "bg-fill-hover",
+            )}
+          >
             <MobileListRow
+              id={`site-row-${site.id}`}
               href={`/sites/${site.id}`}
               name={site.name}
               meta={site.address}

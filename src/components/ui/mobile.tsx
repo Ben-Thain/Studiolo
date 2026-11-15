@@ -7,6 +7,7 @@ export function MobileNavBar({
   title,
   subtitle,
   onBack,
+  backHref,
   onTitle,
   backLabel = "Back",
   action,
@@ -14,8 +15,10 @@ export function MobileNavBar({
   variant = "default",
 }: {
   title?: string;
-  subtitle?: string;
+  subtitle?: ReactNode;
   onBack?: () => void;
+  /** A real link back (e.g. /sites) instead of an onBack callback. */
+  backHref?: string;
   onTitle?: () => void;
   backLabel?: string;
   action?: ReactNode;
@@ -60,7 +63,15 @@ export function MobileNavBar({
         subtitle ? "min-h-14" : "h-11",
       )}
     >
-      {onBack ? (
+      {backHref ? (
+        <Link
+          href={backHref}
+          className="inline-flex size-11 items-center justify-center rounded-control text-ink"
+        >
+          <Icon name="chevron-left" size={20} />
+          <span className="sr-only">{backLabel}</span>
+        </Link>
+      ) : onBack ? (
         variant === "detail" ? (
           <button
             type="button"
@@ -88,11 +99,12 @@ export function MobileNavBar({
           <button
             type="button"
             onClick={onTitle}
-            className="pointer-events-auto inline-flex min-h-11 max-w-full flex-col items-center justify-center"
+            aria-haspopup="dialog"
+            className="pointer-events-auto inline-flex min-h-11 max-w-full flex-col items-center justify-center rounded-control"
           >
             {titled}
             {subtitle ? (
-              <span className="block truncate text-xs leading-4 text-ink-3">
+              <span className="flex max-w-full items-center justify-center truncate text-xs leading-4 text-ink-3">
                 {subtitle}
               </span>
             ) : null}
@@ -193,7 +205,9 @@ export function MobileListRow({
   leading,
   href,
   onClick,
+  id,
 }: {
+  id?: string;
   name: string;
   meta?: string;
   trailing?: ReactNode;
@@ -228,13 +242,13 @@ export function MobileListRow({
   );
   if (href) {
     return (
-      <Link href={href} onClick={onClick} className={className}>
+      <Link id={id} href={href} onClick={onClick} className={className}>
         {content}
       </Link>
     );
   }
   return (
-    <button type="button" onClick={onClick} className={className}>
+    <button id={id} type="button" onClick={onClick} className={className}>
       {content}
     </button>
   );

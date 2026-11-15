@@ -2,7 +2,7 @@
 
 Freeform personal-site editor. One account owns many sites; each site has its own pages, slug, settings, password, domain, submissions, and stats. Desktop and Mobile layouts share content and store position, size, and hidden per layout.
 
-This repository is the Next.js app for the existing Vercel project `studiolo` in team `ben-thain-s-projects`. Prompt 00 is the scaffold. Prompts 02a–02c add the database schema, functions, row level security, column grants, the private `site-assets` storage bucket and the local seed. Prompt 03a adds sign-in (email magic link and Google), the auth guards and the public landing page. Prompt 03b adds the home shell (Sites, Account, Plan) and the app 404. There is no editor UI yet.
+This repository is the Next.js app for the existing Vercel project `studiolo` in team `ben-thain-s-projects`. Prompt 00 is the scaffold. Prompts 02a–02c add the database schema, functions, row level security, column grants, the private `site-assets` storage bucket and the local seed. Prompt 03a adds sign-in (email magic link and Google), the auth guards and the public landing page. Prompt 03b adds the home shell (Sites, Account, Plan) and the app 404. Prompt 04a adds creating and duplicating sites and the site shell with read-only placeholders for each area. There is no editor UI yet (prompt 06).
 
 ## Scripts
 
@@ -67,11 +67,19 @@ Supabase settings (Ben, in the dashboard; nothing here changes them):
 ## Home shell (03b)
 
 - `src/app/(app)/(home)/layout.tsx`: the account-level home sidebar (Sites, Account, Plan; trial line and account row at the bottom; no site list) from 900px, and the home nav bar plus tab bar below it. Every read and write runs as the signed-in user through RLS; nothing uses the service role.
-- `/sites` lists the user's sites where `deleted_at is null`, selected with `SITE_OWNER_SELECT`, most recently edited first. Rows are real links to `/sites/[id]`. `New site` and the row menu (Duplicate, View live, Delete) are shown and wired in prompt 04; until then they do nothing (`aria-disabled`, "Available soon" / disabled items).
-- `/sites/[id]` only checks ownership for now (prompt 04 builds it): another user's, a deleted or an unknown id renders the app 404 (`src/app/not-found.tsx`, HTTP 404, `noindex`).
+- `/sites` lists the user's sites where `deleted_at is null`, selected with `SITE_OWNER_SELECT`, most recently edited first. Rows are real links to `/sites/[id]`. New site and the row menu are wired in prompt 04a (below); Delete stays disabled until prompt 04b.
+- Another user's, a deleted or an unknown site id renders the app 404 (`src/app/not-found.tsx`, HTTP 404, `noindex`), never a 403.
 - `/account`: name and form-notification email save to `profiles` (the database also enforces them: `0005_profile_checks.sql`, a name of 1–80 characters after trimming or `''` for "not set", and a notification address of at most 254 characters or null). **The notification address is not verified**: the owner can enter any address. Prompt 12 must verify it (or mail only the login email) before sending submissions to it. The login email change goes through Supabase's confirm flow (`auth.updateUser`, "Check both inboxes to confirm the change"). Delete account is shown but disabled until prompt 15.
 - `/plan`: copy lives in `src/content/plan.ts` (unconfirmed by Ben). The 7-day trial is display only (`src/lib/trial.ts`): no prices, no payment, nothing locks when it ends, and `profiles.plan` stays unread.
 - Dates are en-GB in the viewer's time zone (`Today, 09:42`, `6 Nov`).
+
+## Sites (04a)
+
+- **Create.** With no sites, `/sites` is the "Create your first site" form; otherwise New site (or `/sites?new=1`, the mobile +) opens the dialog. The address is derived from the name (`src/lib/sites/slug.ts`) and checked as you type (`checkSlug` in `src/app/(app)/sites/actions.ts`: format, `reserved_slugs`, then the `slug_is_free` RPC, with a "Use …-2" suggestion). It is never changed silently. `createSite` inserts the site as the signed-in user (RLS) and writes the starter content (`src/lib/sites/starter.ts`: Home and Contact pages, a site-wide Header, an Intro with heading, text and an empty hero image, and a contact form) through `save_draft` at revision 0. If that fails, the site row is removed. Then it opens the editor on the home page.
+- **Duplicate.** `duplicateSite` checks ownership as the user, then calls `duplicate_site(p_site, p_owner)` (`0006_duplicate_site.sql`, `security definer`, executable by `service_role` only) with the service role. In one transaction it copies the site as a draft ("Copy of …", a free `copy-of-…` address), with its pages, sections, elements, layouts and asset rows under new ids, and remaps image `assetId`s, page links and the social image and favicon. The server then copies each `{old}/draft/*` storage object to its new path. If any copy fails, it removes the copies and the new site. The row is highlighted (`#FAFAFA`) for about 4 seconds, with the toast "Duplicated {name}. The copy is a draft." and an Open editor action.
+- **Site shell** (`src/components/sites/site-shell.tsx`): ‹ Sites, then Editor, Pages, Submissions, Stats and Settings, plus a Layers slot in the Editor only. The top bar shows the name and status, Open editor (the last page opened in this browser, otherwise Home) and Publish, which is shown but disabled until prompt 09. Below 900px, a nav bar whose title opens the site menu sheet. `/sites/[id]` redirects to the editor on the home page. Unknown page and submission ids are 404s.
+- The editor and the Pages, Submissions, Stats, Settings and Custom domain areas are read-only placeholders that show the site's real data until their prompts (06, 07, 08, 11, 12, 13). `src/lib/sites/hooks.ts` holds no-op `invalidateSiteCaches` and `detachSiteDomain` for 04b, 09 and 11.
+- `src/lib/addresses.ts` is the one place addresses are built (`{slug}.studiolo.page` once `NEXT_PUBLIC_WILDCARD_READY` is set, otherwise `{app}/s/{slug}`).
 
 ## e2e
 
@@ -79,9 +87,9 @@ e2e needs local Postgres (as for `db:check`, with `PGHOST`/`PGUSER` set) and the
 
 - `scripts/e2e-stack.sh` resets the local database `studiolo_e2e` (the `db:check` stub in `scripts/local-stub.sql`, the migrations and the seed; it refuses any other database or a non-local host) and runs PostgREST on 127.0.0.1:54398.
 - `tests/e2e/mock-auth-server.mjs` stands in for Supabase Auth and the API gateway: it signs real HS256 JWTs with a test-only key that the local PostgREST verifies, keeps users in the database's `auth.users` (so `sam@example.com` signs in to the seeded sites and new addresses sign up), and proxies `/rest/v1` to PostgREST. It sends no email and calls no third party.
-- `npm run dev` on 127.0.0.1:3000, pointed at the mock.
+- `npm run dev` on 127.0.0.1:3000, pointed at the mock. `playwright.config.ts` gives it a local-only `SUPABASE_SERVICE_ROLE_KEY` (an HS256 `service_role` JWT signed with the test key) so Duplicate runs for real against the local database. The mock also stands in for the parts of Supabase Storage that Duplicate uses (`list`, `copy`, `remove`, backed by `storage.objects`; service role only), plus test-only `/__seed-asset`, `/__fail-copy` and `/__objects` helpers.
 
-Not covered by tests: real Supabase Auth (GoTrue) and its email-change emails, real email delivery, real Google OAuth, the Supabase API gateway, cookies on the production domain, and Supabase's own rate limits.
+Not covered by tests: real Supabase Auth (GoTrue) and its email-change emails, real Supabase Storage (object bytes are not copied by the mock), real email delivery, real Google OAuth, the Supabase API gateway, cookies on the production domain, and Supabase's own rate limits.
 
 ## Manual steps
 

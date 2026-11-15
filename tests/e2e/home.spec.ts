@@ -31,7 +31,9 @@ test.describe("sites (seeded account)", () => {
     await expect(
       page.getByRole("heading", { level: 1, name: "Sites" }),
     ).toBeVisible();
-    await expect(page.getByText("Open a site to edit it.")).toBeVisible();
+    await expect(
+      page.locator("main").getByText("Open a site to edit it."),
+    ).toBeVisible();
     const table = page.getByRole("table");
     await expect(table.getByRole("columnheader")).toHaveText([
       "Site",
@@ -76,15 +78,18 @@ test.describe("sites (seeded account)", () => {
       .getByText("Live")
       .boundingBox();
     await page.mouse.click(status!.x + 4, status!.y + status!.height / 2);
-    await expect(page).toHaveURL(`/sites/${NORTH_LIGHT}`);
+    // /sites/[siteId] opens the editor on the home page (prompt 04a).
+    await expect(page).toHaveURL(
+      `/sites/${NORTH_LIGHT}/editor/5a000000-0000-4000-8000-000000000026`,
+    );
     await expect(
-      page.getByRole("heading", { name: "North Light" }),
-    ).toBeVisible();
+      page.getByRole("heading", { name: "North Light: Home" }),
+    ).toBeAttached();
     await page.goto("/sites");
     await page.getByRole("link", { name: "Mara Lind" }).focus();
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(
-      /\/sites\/5a000000-0000-4000-8000-000000000013$/,
+      /\/sites\/5a000000-0000-4000-8000-000000000013\/editor\//,
     );
   });
 
@@ -105,16 +110,6 @@ test.describe("sites (seeded account)", () => {
     await page.keyboard.press("Escape");
     await expect(menu).toBeHidden();
     await expect(trigger).toBeFocused();
-    await expect(page).toHaveURL("/sites");
-  });
-
-  test("New site is shown but not wired yet", async ({ page }) => {
-    await signInAs(page, SAM);
-    const button = page.getByRole("button", { name: "New site" });
-    await expect(button).toHaveAttribute("aria-disabled", "true");
-    await expect(button).toHaveAttribute("title", "Available soon");
-    // aria-disabled keeps it focusable; Playwright treats it as disabled.
-    await button.click({ force: true });
     await expect(page).toHaveURL("/sites");
   });
 
@@ -144,7 +139,10 @@ test.describe("new account", () => {
   test("sees an empty Sites page and a full trial", async ({ page }) => {
     const email = uniqueEmail("fresh");
     await signInAs(page, email);
-    await expect(page.getByText("No sites yet")).toBeVisible();
+    // Zero sites: the empty state leads with creating (prompt 04a).
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Create your first site" }),
+    ).toBeVisible();
     await expect(page.getByRole("table")).toHaveCount(0);
     await expect(page.getByText("Trial · 7 days left")).toBeVisible();
     // No display name yet: the sidebar account row shows the email.
@@ -166,9 +164,9 @@ test.describe("new account", () => {
     const rows = loading.locator("[aria-hidden=true] > div");
     await expect(rows).toHaveCount(3);
     expect((await rows.first().boundingBox())!.height).toBe(56);
-    await expect(page.getByText("No sites yet")).toBeVisible({
-      timeout: 15_000,
-    });
+    await expect(
+      page.getByRole("heading", { name: "Create your first site" }),
+    ).toBeVisible({ timeout: 15_000 });
   });
 
   test("a failed sites read shows an inline error with Retry", async ({
@@ -217,8 +215,12 @@ test.describe("trial", () => {
       ),
     ).toBeVisible();
     await page.getByRole("link", { name: "Sites" }).first().click();
-    await expect(page.getByText("No sites yet")).toBeVisible();
-    await expect(page.getByRole("button", { name: "New site" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Create your first site" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Create site" }),
+    ).toBeEnabled();
   });
 });
 
@@ -528,7 +530,7 @@ test.describe("mobile home", () => {
     const title = page.getByRole("heading", { level: 1, name: "Sites" });
     await expect(title).toHaveCSS("font-size", "32px");
     await expect(title).toHaveCSS("line-height", "40px");
-    const plus = page.getByRole("button", { name: "New site" });
+    const plus = page.getByRole("link", { name: "New site" });
     const plusBox = await plus.boundingBox();
     expect(plusBox!.width).toBeGreaterThanOrEqual(44);
     expect(plusBox!.height).toBeGreaterThanOrEqual(44);
@@ -552,7 +554,7 @@ test.describe("mobile home", () => {
     );
     await tabs.getByRole("link", { name: "Plan" }).click();
     await expect(page).toHaveURL("/plan");
-    await expect(page.getByRole("button", { name: "New site" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "New site" })).toHaveCount(0);
   });
 
   test("every control on the home screens is at least 44px", async ({

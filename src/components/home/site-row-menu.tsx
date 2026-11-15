@@ -1,15 +1,58 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { duplicateSite } from "@/app/(app)/sites/actions";
 import { IconButton } from "@/components/ui/icon-button";
 import { Icon } from "@/components/ui/icons";
 import { Menu } from "@/components/ui/menu";
+import { useToast } from "@/components/ui/toast";
 import { HOME_COPY } from "@/lib/home/copy";
+import { SITES_COPY } from "@/lib/sites/copy";
 
 /**
- * The row ⋯ menu (d-sites.png). Prompt 04 wires Duplicate, View live and
- * Delete; until then the items are shown disabled.
+ * The row ⋯ menu (d-sites.png): Duplicate, View live (only when Live),
+ * divider, Delete. Prompt 04b wires Delete; until then it is shown disabled.
  */
-export function SiteRowMenu({ name, live }: { name: string; live: boolean }) {
+export function SiteRowMenu({
+  siteId,
+  name,
+  live,
+  url,
+}: {
+  siteId: string;
+  name: string;
+  live: boolean;
+  url: string;
+}) {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [busy, setBusy] = useState(false);
+
+  async function duplicate() {
+    if (busy) return;
+    setBusy(true);
+    const result = await duplicateSite(siteId).catch(() => ({
+      ok: false as const,
+      error: SITES_COPY.duplicateFailed(name),
+    }));
+    setBusy(false);
+    if (!result.ok) {
+      toast({ message: result.error, region: "home" });
+      router.refresh();
+      return;
+    }
+    toast({
+      message: result.message,
+      region: "home",
+      action: {
+        label: SITES_COPY.openEditor,
+        onClick: () => router.push(`/sites/${result.siteId}`),
+      },
+    });
+    router.push(`/sites?highlight=${result.siteId}`, { scroll: false });
+  }
+
   return (
     <Menu
       align="end"
@@ -18,6 +61,7 @@ export function SiteRowMenu({ name, live }: { name: string; live: boolean }) {
           label={HOME_COPY.menu.label(name)}
           size="desktop"
           className="size-8"
+          aria-busy={busy || undefined}
         >
           <Icon name="ellipsis" size={16} />
         </IconButton>
@@ -27,7 +71,8 @@ export function SiteRowMenu({ name, live }: { name: string; live: boolean }) {
           id: "duplicate",
           label: HOME_COPY.menu.duplicate,
           icon: <Icon name="duplicate" size={16} />,
-          disabled: true,
+          disabled: busy,
+          onSelect: duplicate,
         },
         ...(live
           ? [
@@ -35,7 +80,9 @@ export function SiteRowMenu({ name, live }: { name: string; live: boolean }) {
                 id: "view-live",
                 label: HOME_COPY.menu.viewLive,
                 icon: <Icon name="external" size={16} />,
-                disabled: true,
+                onSelect: () => {
+                  window.open(url, "_blank", "noopener");
+                },
               },
             ]
           : []),

@@ -96,9 +96,10 @@ type FieldProps = {
   error?: string;
   /**
    * block: the auth forms. 8px between label and control; the label is 14px
-   * below 900px and 12px from 900px. Default: 4px gap, 12px label.
+   * below 900px and 12px from 900px. stacked: 8px gap, 12px label (the New
+   * site form). Default: 4px gap, 12px label.
    */
-  layout?: "default" | "block";
+  layout?: "default" | "block" | "stacked";
   children: ReactElement<FieldChildProps>;
 };
 
@@ -121,7 +122,7 @@ export function Field({
 
   return (
     <div
-      className={cn("flex flex-col", layout === "block" ? "gap-2" : "gap-1")}
+      className={cn("flex flex-col", layout === "default" ? "gap-1" : "gap-2")}
     >
       <label
         htmlFor={id}

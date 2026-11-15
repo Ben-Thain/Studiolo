@@ -13,6 +13,12 @@
 //   GET /__email-change?email=… latest login-email change for that address
 //   GET /__calls?email=…      counts of Auth and /rest/v1 calls for that user
 //   POST /__google?enabled=false  switch the Google provider off
+//   POST /__seed-asset?site=…  add an image asset (row, storage object and an
+//                             image element on the home page) to a site
+//   POST /__fail-copy?site=…   storage copies out of that site answer 500
+//   GET /__objects?prefix=…    storage object names under a prefix
+// Storage: /storage/v1/object/{list,copy} and DELETE /storage/v1/object/:bucket
+// for the service role only, backed by the local storage.objects table.
 // Tests run in parallel, so behaviour is keyed by address prefix:
 //   fail-server.*  OTP answers 500        fail-rate.*  OTP answers 429
 //   slow.*         OTP and data wait 3-4s fail-data.*  data answers 500
@@ -45,6 +51,8 @@ function count(email, key) {
   calls.set(email, entry);
 }
 let googleEnabled = true;
+// Sites whose storage objects fail to copy (POST /__fail-copy).
+const failCopy = new Set();
 
 const b64 = (value) => Buffer.from(value).toString("base64url");
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -179,6 +187,86 @@ async function proxyRest(req, res, path, search) {
   req.pipe(upstream);
 }
 
+// Storage API stand-in (service role only), on the local storage.objects.
+async function storageApi(req, res, path) {
+  const claims = bearer(req);
+  if (claims?.role !== "service_role") {
+    return send(res, 403, { statusCode: "403", error: "Unauthorized" });
+  }
+  const body = await readJson(req);
+  const list = path.match(/^\/storage\/v1\/object\/list\/([^/]+)$/);
+  if (list && req.method === "POST") {
+    const prefix = String(body.prefix ?? "").replace(/\/+$/, "");
+    const { rows } = await pool.query(
+      `select id::text, name, metadata, created_at from storage.objects
+       where bucket_id = $1 and name like $2 order by name`,
+      [list[1], `${prefix}/%`],
+    );
+    return send(
+      res,
+      200,
+      rows
+        .map((row) => ({ ...row, name: row.name.slice(prefix.length + 1) }))
+        .filter((row) => !row.name.includes("/")),
+    );
+  }
+  if (path === "/storage/v1/object/copy" && req.method === "POST") {
+    const site = String(body.sourceKey ?? "").split("/")[0];
+    if (failCopy.has(site)) {
+      return send(res, 500, { statusCode: "500", error: "mock copy failure" });
+    }
+    const result = await pool.query(
+      `insert into storage.objects (bucket_id, name, metadata)
+       select bucket_id, $3, metadata from storage.objects
+       where bucket_id = $1 and name = $2
+       on conflict (bucket_id, name) do nothing
+       returning name`,
+      [body.bucketId, body.sourceKey, body.destinationKey],
+    );
+    if (!result.rows[0]) {
+      return send(res, 404, { statusCode: "404", error: "not_found" });
+    }
+    return send(res, 200, { Key: `${body.bucketId}/${body.destinationKey}` });
+  }
+  const remove = path.match(/^\/storage\/v1\/object\/([^/]+)$/);
+  if (remove && req.method === "DELETE") {
+    const { rows } = await pool.query(
+      `delete from storage.objects where bucket_id = $1 and name = any($2)
+       returning name`,
+      [remove[1], body.prefixes ?? []],
+    );
+    return send(res, 200, rows);
+  }
+  return send(res, 404, { statusCode: "404", error: "not_found" });
+}
+
+// POST /__seed-asset?site=…: an uploaded image, as prompt 06 will create it.
+async function seedAsset(siteId) {
+  const asset = (await pool.query("select gen_random_uuid()::text as id"))
+    .rows[0].id;
+  const name = `${siteId}/draft/${asset}.webp`;
+  await pool.query(
+    `insert into public.assets (id, site_id, path, width, height, mime, bytes)
+     values ($1, $2, $3, 1600, 1200, 'image/webp', 2048)`,
+    [asset, siteId, name],
+  );
+  await pool.query(
+    `insert into storage.objects (bucket_id, name, metadata)
+     values ('site-assets', $1, '{"mimetype":"image/webp"}')`,
+    [name],
+  );
+  await pool.query(
+    `update public.elements set content = jsonb_set(content, '{assetId}', to_jsonb($2::text))
+     where site_id = $1 and type = 'image'`,
+    [siteId, asset],
+  );
+  await pool.query("update public.sites set og_asset_id = $2 where id = $1", [
+    siteId,
+    asset,
+  ]);
+  return { asset, name };
+}
+
 function send(res, status, body, headers = {}) {
   res.writeHead(status, {
     "content-type": "application/json",
@@ -236,6 +324,26 @@ createServer(async (req, res) => {
   }
   if (path.startsWith("/rest/v1/"))
     return proxyRest(req, res, path, url.search);
+
+  if (path.startsWith("/storage/v1/")) return storageApi(req, res, path);
+  if (path === "/__seed-asset" && req.method === "POST") {
+    return send(res, 200, await seedAsset(url.searchParams.get("site")));
+  }
+  if (path === "/__fail-copy" && req.method === "POST") {
+    failCopy.add(url.searchParams.get("site"));
+    return send(res, 200, { ok: true });
+  }
+  if (path === "/__objects") {
+    const { rows } = await pool.query(
+      "select name from storage.objects where name like $1 order by name",
+      [`${url.searchParams.get("prefix")}%`],
+    );
+    return send(
+      res,
+      200,
+      rows.map((row) => row.name),
+    );
+  }
 
   if (path === "/__google" && req.method === "POST") {
     googleEnabled = url.searchParams.get("enabled") !== "false";

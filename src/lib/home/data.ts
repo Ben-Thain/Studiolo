@@ -1,10 +1,10 @@
 import "server-only";
 
 import { cache } from "react";
-import { notFound } from "next/navigation";
-import { canonicalAddress, type SiteDomain } from "@/lib/addresses";
+import { addressUrl, canonicalAddress, type SiteDomain } from "@/lib/addresses";
 import { requireUser } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
+import { trialLineText } from "@/lib/trial";
 import { SITE_OWNER_SELECT } from "@/types/database";
 
 /**
@@ -46,12 +46,37 @@ export const getHomeContext = cache(async (): Promise<HomeContext> => {
   };
 });
 
+function initialsOf(name: string, email: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    return `${words[0][0]}${words[words.length - 1][0]}`.toUpperCase();
+  }
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (email[0] ?? "?").toUpperCase();
+}
+
+/** The sidebar footer of both shells: trial line and account row. */
+export async function getAccountLine(): Promise<{
+  trialText: string;
+  initials: string;
+  name: string;
+}> {
+  const { email, profile } = await getHomeContext();
+  return {
+    trialText: trialLineText(profile),
+    initials: initialsOf(profile.display_name, email),
+    name: profile.display_name.trim() || email,
+  };
+}
+
 export type SiteListItem = {
   id: string;
   name: string;
   status: "live" | "draft";
   passwordOn: boolean;
   address: string;
+  /** The canonical address as a URL, for View live. */
+  url: string;
   lastEditedAt: string;
 };
 
@@ -89,36 +114,18 @@ export async function listSites(): Promise<SiteListItem[]> {
     domains.map((d) => [d.site_id, { hostname: d.hostname, status: d.status }]),
   );
 
-  return sites.map((site) => ({
-    id: site.id,
-    name: site.name,
-    status: site.live_publish_id ? "live" : "draft",
-    passwordOn: site.password_enabled,
-    address: canonicalAddress(site, bySite.get(site.id)),
-    lastEditedAt: site.draft_updated_at,
-  }));
-}
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/**
- * One of the user's own, non-deleted sites, or the app 404 (another user's
- * site, a deleted one, or an id that isn't one).
- */
-export async function requireOwnSite(siteId: string) {
-  await requireUser();
-  if (!UUID.test(siteId)) notFound();
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("sites")
-    .select(SITE_OWNER_SELECT)
-    .eq("id", siteId)
-    .is("deleted_at", null)
-    .returns<{ id: string; name: string }[]>()
-    .maybeSingle();
-  if (error) throw new Error("Could not load this site.");
-  if (!data) notFound();
-  return data;
+  return sites.map((site) => {
+    const address = canonicalAddress(site, bySite.get(site.id));
+    return {
+      id: site.id,
+      name: site.name,
+      status: site.live_publish_id ? "live" : "draft",
+      passwordOn: site.password_enabled,
+      address,
+      url: addressUrl(address),
+      lastEditedAt: site.draft_updated_at,
+    };
+  });
 }
 
 /** How many sites the user has (not deleted), for the Delete account copy. */
