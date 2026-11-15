@@ -21,7 +21,7 @@ npm run db:check
 
 `npm run dev` serves [http://localhost:3000](http://localhost:3000). Public env defaults to that origin when the variables are unset outside production.
 
-`npm run db:check` resets the local database named `studiolo_check`, applies `supabase/migrations`, and runs `supabase/checks/rls_and_constraints.sql`. It refuses any host other than localhost. It does not run in CI and it does not connect to a hosted Supabase project. Create the database once with `createdb studiolo_check`. The default URL is `postgresql:///studiolo_check`; override it with `LOCAL_DB_URL` when the socket needs a host, for example `LOCAL_DB_URL=postgresql://127.0.0.1/studiolo_check`. Without the Supabase CLI, the script creates a stub `auth.users` table and the `anon`, `authenticated`, and `service_role` roles. `supabase/seed.sql` is local sample data (`@example.com` only): Sam Carter (`sam@example.com`) with Riverton House (live, password on, custom domain, five pages, four submissions, a week of views), North Light (live) and Mara Lind (draft). It runs in one transaction and refuses to run when any non-`@example.com` account exists. After the checks, `db:check` loads that seed and runs `delete from auth.users`. `profiles`, `sites`, `site_publishes`, `assets`, `pages`, `sections`, `elements`, `element_layouts`, `submissions`, `page_views_daily`, and `domains` must be empty afterwards.
+`npm run db:check` resets the local database named `studiolo_check`, applies `supabase/migrations`, and runs `supabase/checks/rls_and_constraints.sql`. It refuses any host other than localhost. It does not run in CI and it does not connect to a hosted Supabase project. Create the database once with `createdb studiolo_check`. The default URL is `postgresql:///studiolo_check`; override it with `LOCAL_DB_URL` when the socket needs a host, for example `LOCAL_DB_URL=postgresql://127.0.0.1/studiolo_check`. Without the Supabase CLI, the script creates a stub `auth.users` table and the `anon`, `authenticated`, and `service_role` roles. `supabase/seed.sql` is local sample data (`@example.com` only): Sam Carter (`sam@example.com`) with Riverton House (live, password on, custom domain, five pages, four submissions, a week of views), North Light (live) and Mara Lind (draft). It runs in one transaction and refuses to run when any non-`@example.com` account exists. After the first checks run, `db:check` loads that seed, runs the checks twice more (after seeding, then again to prove they are re-runnable: they clean up every fixture user, slug, storage object and rate-limit bucket they create and never touch the seeded account), and finally runs `delete from auth.users`. `profiles`, `sites`, `site_publishes`, `assets`, `pages`, `sections`, `elements`, `element_layouts`, `submissions`, `page_views_daily`, and `domains` must be empty afterwards.
 
 The stub also mirrors two hosted-Supabase behaviours so the checks are honest: default privileges grant every new public table and function to `anon`, `authenticated` and `service_role` (the migrations revoke what each role must not have), and a minimal `storage` schema (`buckets`, `objects` with RLS on, `foldername()`) stands in for Supabase Storage. The checks then run as the real API roles (`set role anon` / `authenticated` / `service_role` with `request.jwt.claim.sub`) and assert every policy and grant.
 
@@ -31,6 +31,8 @@ The stub also mirrors two hosted-Supabase behaviours so the checks are honest: d
 - The signed-in owner can read every `sites` column except `password_hash`, so `select("*")` on `sites` fails for them. Use `SITE_OWNER_SELECT` from `src/types/database.ts`. Owners may update only `SITE_OWNER_UPDATE_COLUMNS`; draft columns change through `save_draft`; publish, password, lock and delete columns are written by server actions with the service role after an ownership check.
 - A soft-deleted site stays visible to its owner (Recently deleted) but cannot be updated, and its pages, elements, submissions, assets, stats and storage objects are not readable until `restore_site` runs.
 - `site-assets` is private (8 MB, webp/avif/jpeg/png). Owners read and write `{site_id}/…` for their own non-deleted sites; `anon` has no access.
+- `assets` rows: owners can only read and delete them. The server creates and finalises rows with the service role after an ownership check (upload in prompt 06, duplicate in prompt 04a). `assets_path_in_site` pins `path` to `{site_id}/draft/{id}.{webp|avif|jpg|jpeg|png}`, so a row can never point into another site's folder.
+- `save_draft` may name only the new home page (`is_home: true`); it clears the old one. Two homes in one payload is `ST010`.
 
 ### Before prompt 03 (Ben)
 
@@ -41,7 +43,9 @@ supabase db reset
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/checks/rls_and_constraints.sql
 ```
 
-Every line must print `ok:` and the script must exit 0. `$DB_URL` is the local Supabase CLI database URL (`supabase status`), never the hosted project.
+`supabase/config.toml` is the stock `supabase init` file (`project_id = "studiolo"`, `[db.seed]` enabled with `sql_paths = ["./seed.sql"]`), so `supabase db reset` applies the migrations and then the seed; the checks pass after seeding. Every line must print `ok:` and the script must exit 0. `$DB_URL` is the local Supabase CLI database URL (`supabase status`), never the hosted project.
+
+**Never seed the hosted project.** Do not run `supabase db push --include-seed` (or any seed command) against hosted Supabase: `seed.sql` is local `@example.com` sample data only.
 
 ## Manual steps
 

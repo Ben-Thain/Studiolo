@@ -42,7 +42,9 @@ export function Segmented({
   function move(nextIndex: number) {
     const next = options[nextIndex];
     if (!next || next.value === value) {
-      document.getElementById(`${baseId}-${options[nextIndex]?.value ?? value}`)?.focus();
+      document
+        .getElementById(`${baseId}-${options[nextIndex]?.value ?? value}`)
+        ?.focus();
       return;
     }
     pending.current = next.value;

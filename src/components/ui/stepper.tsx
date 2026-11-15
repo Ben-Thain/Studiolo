@@ -27,7 +27,11 @@ export function Stepper({ steps }: { steps: Step[] }) {
                 step.state === "upcoming" && "border border-line text-ink-3",
               )}
             >
-              {step.state === "done" ? <Icon name="check" size={12} /> : index + 1}
+              {step.state === "done" ? (
+                <Icon name="check" size={12} />
+              ) : (
+                index + 1
+              )}
             </span>
             <span
               className={cn(

@@ -29,7 +29,11 @@ export function MobileNavBar({
     >
       {title}
       {onTitle ? (
-        <Icon name="chevron-down" size={14} className="ml-1 inline align-[-2px]" />
+        <Icon
+          name="chevron-down"
+          size={14}
+          className="ml-1 inline align-[-2px]"
+        />
       ) : null}
     </span>
   );

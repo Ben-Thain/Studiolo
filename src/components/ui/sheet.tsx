@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ReactNode, type Ref } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+  type Ref,
+} from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { focusableElements, trapTab } from "./focus";
@@ -52,7 +59,8 @@ function SheetPanel({
       style={{ transform: offset ? `translateY(${offset}px)` : undefined }}
       className={cn(
         "flex max-h-[calc(100dvh-24px)] flex-col overflow-hidden rounded-t-sheet bg-bg shadow-dialog",
-        snapping && "transition-transform duration-200 motion-reduce:transition-none",
+        snapping &&
+          "transition-transform duration-200 motion-reduce:transition-none",
       )}
     >
       <div
@@ -64,7 +72,10 @@ function SheetPanel({
         <div className="flex h-5 items-center justify-center">
           <span className="h-[5px] w-9 rounded-full bg-line" />
         </div>
-        <h2 id={labelledBy} className="mt-1 text-lg leading-6 font-medium text-ink">
+        <h2
+          id={labelledBy}
+          className="mt-1 text-lg leading-6 font-medium text-ink"
+        >
           {title}
         </h2>
         {meta ? (
@@ -93,7 +104,9 @@ export function Sheet({
   const panelRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
-  const drag = useRef<{ y: number; time: number; pointer: number } | null>(null);
+  const drag = useRef<{ y: number; time: number; pointer: number } | null>(
+    null,
+  );
   const [offset, setOffset] = useState(0);
   const [snapping, setSnapping] = useState(false);
   const titleId = useId();
@@ -171,7 +184,11 @@ export function Sheet({
       } catch {
         // jsdom does not implement pointer capture.
       }
-      drag.current = { y: event.clientY, time: event.timeStamp, pointer: event.pointerId };
+      drag.current = {
+        y: event.clientY,
+        time: event.timeStamp,
+        pointer: event.pointerId,
+      };
       setSnapping(false);
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);

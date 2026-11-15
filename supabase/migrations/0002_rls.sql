@@ -114,7 +114,7 @@ grant update (
 ) on table public.sites to authenticated;
 
 grant select on table public.site_publishes to authenticated;
-grant select, insert, update, delete on table public.assets to authenticated;
+grant select, delete on table public.assets to authenticated;
 grant select, insert, update, delete on table public.pages to authenticated;
 grant select, insert, update, delete on table public.sections to authenticated;
 grant select, insert, update, delete on table public.elements to authenticated;
@@ -200,12 +200,21 @@ create policy site_publishes_select_owner
   to authenticated
   using (public.is_site_owner(site_id));
 
-create policy assets_owner_all
+-- 02c-fix: owners read and delete their asset rows. The server creates and
+-- finalises rows with the service role after checking ownership (prompt 06
+-- upload, prompt 04a duplicate), so owners cannot write path, bytes, mime or
+-- dimensions directly.
+create policy assets_owner_select
   on public.assets
-  for all
+  for select
   to authenticated
-  using (public.is_site_owner(site_id))
-  with check (public.is_site_owner(site_id));
+  using (public.is_site_owner(site_id));
+
+create policy assets_owner_delete
+  on public.assets
+  for delete
+  to authenticated
+  using (public.is_site_owner(site_id));
 
 create policy pages_owner_all
   on public.pages

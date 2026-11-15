@@ -44,8 +44,12 @@ export function Toggle({
           "relative h-5 w-8 rounded-full",
           isDisabled && checked && "bg-ink-4",
           isDisabled && !checked && "bg-surface-2",
-          !isDisabled && checked && "bg-ink group-hover:bg-ink-hover group-active:bg-ink-hover",
-          !isDisabled && !checked && "bg-line group-hover:bg-ink-4 group-active:bg-ink-4",
+          !isDisabled &&
+            checked &&
+            "bg-ink group-hover:bg-ink-hover group-active:bg-ink-hover",
+          !isDisabled &&
+            !checked &&
+            "bg-line group-hover:bg-ink-4 group-active:bg-ink-4",
           !isDisabled && forced && checked && "bg-ink-hover",
           !isDisabled && forced && !checked && "bg-ink-4",
         )}

@@ -500,6 +500,7 @@ as $$
 declare
   payload jsonb := coalesce(changes, '{}'::jsonb);
   new_revision integer;
+  home_count integer;
 begin
   -- service_role (and the table owner) may update the draft columns directly.
   -- The signed-in owner goes through bump_draft_revision, which checks
@@ -554,6 +555,30 @@ begin
 
   -- one_home_per_site is a partial unique index and cannot be deferred, so clear
   -- the outgoing home first. Payload order no longer matters.
+  -- 02c-fix: a payload may name only the new home. Two or more homes in one
+  -- payload is ST010; exactly one clears is_home on every other page of the
+  -- site, so the save never surfaces a raw 23505.
+  select count(*)
+  into home_count
+  from jsonb_array_elements(coalesce(payload #> '{pages,upsert}', '[]'::jsonb)) item
+  where coalesce((item->>'is_home')::boolean, false);
+
+  if home_count > 1 then
+    raise exception 'home_page_required' using errcode = 'ST010';
+  end if;
+
+  if home_count = 1 then
+    update public.pages p
+    set is_home = false
+    where p.site_id = site
+      and p.is_home
+      and p.id <> (
+        select (item->>'id')::uuid
+        from jsonb_array_elements(payload #> '{pages,upsert}') item
+        where coalesce((item->>'is_home')::boolean, false)
+      );
+  end if;
+
   update public.pages p
   set is_home = false
   from jsonb_array_elements(coalesce(payload #> '{pages,upsert}', '[]'::jsonb)) item

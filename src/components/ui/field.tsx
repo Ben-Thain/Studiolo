@@ -25,7 +25,10 @@ function heightClass(size?: ControlSize) {
 
 type Sized = { size?: ControlSize; touch?: boolean };
 
-function resolveSize(size?: ControlSize, touch?: boolean): ControlSize | undefined {
+function resolveSize(
+  size?: ControlSize,
+  touch?: boolean,
+): ControlSize | undefined {
   if (size) return size;
   if (touch) return "touch";
   return undefined;
@@ -39,7 +42,11 @@ export function Input({
 }: Omit<InputHTMLAttributes<HTMLInputElement>, "size"> & Sized) {
   return (
     <input
-      className={cn(controlClass, heightClass(resolveSize(size, touch)), className)}
+      className={cn(
+        controlClass,
+        heightClass(resolveSize(size, touch)),
+        className,
+      )}
       {...props}
     />
   );

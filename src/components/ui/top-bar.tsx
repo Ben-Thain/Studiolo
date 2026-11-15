@@ -41,11 +41,15 @@ export function SiteStatus({
   const label = status === "live" ? "Live" : "Draft";
   return (
     <span className="flex min-w-0 items-center">
-      <span className="truncate text-sm leading-5 font-medium text-ink">{name}</span>
+      <span className="truncate text-sm leading-5 font-medium text-ink">
+        {name}
+      </span>
       <span className="ml-2">
         <StatusDot status={status} />
       </span>
-      <span className="ml-1.5 text-xs leading-4 font-normal text-ink-3">{label}</span>
+      <span className="ml-1.5 text-xs leading-4 font-normal text-ink-3">
+        {label}
+      </span>
       {locked ? (
         <span className="ml-1.5 inline-flex text-ink-3">
           <Icon name="lock" size={12} />

@@ -68,12 +68,16 @@ describe("Dialog", () => {
     render(<DialogHarness />);
     const open = screen.getByRole("button", { name: "Open" });
     await user.click(open);
-    const dialog = screen.getByRole("dialog", { name: "Delete Riverton House?" });
+    const dialog = screen.getByRole("dialog", {
+      name: "Delete Riverton House?",
+    });
     const name = screen.getByLabelText("Name");
     expect(document.activeElement).toBe(name);
 
     await user.tab();
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Cancel" }));
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Cancel" }),
+    );
     await user.tab();
     expect(dialog.contains(document.activeElement)).toBe(true);
     expect(document.activeElement).toBe(name);
@@ -90,7 +94,9 @@ describe("Dialog", () => {
         <p>Body</p>
       </Dialog>,
     );
-    const dialog = screen.getByRole("dialog", { name: "Delete Riverton House?" });
+    const dialog = screen.getByRole("dialog", {
+      name: "Delete Riverton House?",
+    });
     const describedBy = dialog.getAttribute("aria-describedby");
     expect(describedBy).toBeTruthy();
     expect(document.getElementById(describedBy ?? "")?.textContent).toBe(lead);

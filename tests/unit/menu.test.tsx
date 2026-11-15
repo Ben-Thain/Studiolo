@@ -90,7 +90,10 @@ describe("Menu", () => {
 
     try {
       render(
-        <Menu trigger={<button type="button">Open menu</button>} items={items} />,
+        <Menu
+          trigger={<button type="button">Open menu</button>}
+          items={items}
+        />,
       );
       await user.click(screen.getByRole("button", { name: "Open menu" }));
       await new Promise((resolve) => {

@@ -101,7 +101,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     const timer = timers.current.get(id);
     if (timer) window.clearTimeout(timer);
     timers.current.delete(id);
-    const left = Math.max(0, (deadlines.current.get(id) ?? Date.now()) - Date.now());
+    const left = Math.max(
+      0,
+      (deadlines.current.get(id) ?? Date.now()) - Date.now(),
+    );
     remaining.current.set(id, left);
   }, []);
 
@@ -122,7 +125,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     [toasts, toast, dismiss, pause, resume],
   );
 
-  return <ToastContext.Provider value={value}>{children}</ToastContext.Provider>;
+  return (
+    <ToastContext.Provider value={value}>{children}</ToastContext.Provider>
+  );
 }
 
 export function useToast() {
@@ -199,7 +204,9 @@ export function ToastRegion({
   const { toasts } = useToast();
   const regionRef = useRef<HTMLDivElement>(null);
   const mounted = useClient();
-  const [frame, setFrame] = useState<{ left: number; width: number } | null>(null);
+  const [frame, setFrame] = useState<{ left: number; width: number } | null>(
+    null,
+  );
   const [wide, setWide] = useState(false);
   const mine = toasts.filter((item) => item.region === id);
 
@@ -269,7 +276,11 @@ export function ToastRegion({
       className={cn(contained && "relative", className)}
     >
       {children}
-      {contained ? viewport : mounted ? createPortal(viewport, document.body) : null}
+      {contained
+        ? viewport
+        : mounted
+          ? createPortal(viewport, document.body)
+          : null}
     </div>
   );
 }

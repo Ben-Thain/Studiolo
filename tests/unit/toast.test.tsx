@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider, ToastRegion, useToast } from "@/components/ui/toast";
 
@@ -8,13 +14,7 @@ afterEach(() => {
   cleanup();
 });
 
-function Probe({
-  duration,
-  message,
-}: {
-  duration?: number;
-  message: string;
-}) {
+function Probe({ duration, message }: { duration?: number; message: string }) {
   const { toast } = useToast();
   return (
     <button

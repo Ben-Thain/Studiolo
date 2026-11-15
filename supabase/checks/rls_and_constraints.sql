@@ -2,11 +2,16 @@
 -- psql -v ON_ERROR_STOP=1 -f supabase/checks/rls_and_constraints.sql
 -- Each successful section prints an ok: line. A failed assertion aborts the script.
 
+-- Remove every fixture this script creates, so it can run twice in a row and
+-- after supabase/seed.sql. Every fixture user id starts with 10000000-,
+-- 20000000- or c2000000-; their sites and site rows go with them (cascade).
+-- The seeded account (5a000000-…) is left alone.
 delete from auth.users
-where id in (
-  '10000000-0000-4000-8000-000000000001',
-  '10000000-0000-4000-8000-000000000002'
-);
+where id::text ~ '^(10000000|20000000|c2000000)-0000-4000-8000-';
+delete from storage.objects where name like 'c2000000-%';
+delete from public.rate_limits
+where bucket like 'form:c2000000-%'
+  or bucket in ('content-bucket', 'other-bucket');
 
 insert into auth.users (id, email)
 values
@@ -482,10 +487,11 @@ $$;
 do $$
 begin
   begin
-    insert into public.assets (site_id, path, mime, bytes)
+    insert into public.assets (id, site_id, path, mime, bytes)
     values (
+      '10000000-0000-4000-8000-0000000a0001',
       '10000000-0000-4000-8000-000000000014',
-      'live-address/empty.png',
+      '10000000-0000-4000-8000-000000000014/draft/10000000-0000-4000-8000-0000000a0001.png',
       'image/png',
       0
     );
@@ -499,7 +505,7 @@ begin
   values (
     '10000000-0000-4000-8000-000000000041',
     '10000000-0000-4000-8000-000000000014',
-    'live-address/og.png',
+    '10000000-0000-4000-8000-000000000014/draft/10000000-0000-4000-8000-000000000041.png',
     1200,
     630,
     'image/png',
@@ -617,7 +623,7 @@ begin
   where id = site;
 
   insert into public.assets (id, site_id, path, mime, bytes)
-  values (asset, site, 'publisher-address/og.png', 'image/png', 128);
+  values (asset, site, site::text || '/draft/' || asset::text || '.png', 'image/png', 128);
 
   insert into public.pages (id, site_id, title, slug, sort_order, is_home)
   values (
@@ -762,20 +768,22 @@ begin
 
   foreach allowed in array array['image/webp', 'image/avif', 'image/jpeg', 'image/png']
   loop
-    insert into public.assets (site_id, path, mime, bytes)
-    values (
+    insert into public.assets (id, site_id, path, mime, bytes)
+    select
+      n.id,
       '10000000-0000-4000-8000-000000000012',
-      'held-address/' || allowed,
+      '10000000-0000-4000-8000-000000000012/draft/' || n.id::text || '.' || split_part(allowed, '/', 2),
       allowed,
       64
-    );
+    from (select gen_random_uuid() as id) n;
   end loop;
 
   begin
-    insert into public.assets (site_id, path, mime, bytes)
+    insert into public.assets (id, site_id, path, mime, bytes)
     values (
+      '10000000-0000-4000-8000-0000000a0002',
       '10000000-0000-4000-8000-000000000012',
-      'held-address/no.gif',
+      '10000000-0000-4000-8000-000000000012/draft/10000000-0000-4000-8000-0000000a0002.png',
       'image/gif',
       1
     );
@@ -786,10 +794,11 @@ begin
   end;
 
   begin
-    insert into public.assets (site_id, path, mime, bytes)
+    insert into public.assets (id, site_id, path, mime, bytes)
     values (
+      '10000000-0000-4000-8000-0000000a0003',
       '10000000-0000-4000-8000-000000000012',
-      'held-address/no.html',
+      '10000000-0000-4000-8000-000000000012/draft/10000000-0000-4000-8000-0000000a0003.png',
       'text/html',
       1
     );
@@ -817,19 +826,21 @@ begin
     raise exception 'byte range constraint is missing';
   end if;
 
-  insert into public.assets (site_id, path, mime, bytes)
+  insert into public.assets (id, site_id, path, mime, bytes)
   values (
+    '10000000-0000-4000-8000-0000000a0004',
     '10000000-0000-4000-8000-000000000012',
-    'held-address/max.png',
+    '10000000-0000-4000-8000-000000000012/draft/10000000-0000-4000-8000-0000000a0004.png',
     'image/png',
     8388608
   );
 
   begin
-    insert into public.assets (site_id, path, mime, bytes)
+    insert into public.assets (id, site_id, path, mime, bytes)
     values (
+      '10000000-0000-4000-8000-0000000a0005',
       '10000000-0000-4000-8000-000000000012',
-      'held-address/over.png',
+      '10000000-0000-4000-8000-000000000012/draft/10000000-0000-4000-8000-0000000a0005.png',
       'image/png',
       8388609
     );
@@ -1165,8 +1176,8 @@ begin
 
   insert into public.assets (id, site_id, path, mime, bytes)
   values
-    (own_asset, content_site, 'content-address/photo.png', 'image/png', 128),
-    (rival_asset, rival_site, 'rival-address/photo.png', 'image/png', 128);
+    (own_asset, content_site, content_site::text || '/draft/' || own_asset::text || '.png', 'image/png', 128),
+    (rival_asset, rival_site, rival_site::text || '/draft/' || rival_asset::text || '.png', 'image/png', 128);
 
   insert into public.elements (
     id, site_id, page_id, section_id, type, name, content, sort_order
@@ -2326,6 +2337,68 @@ $$;
 
 \echo ok: save_draft swaps home and slugs
 
+-- 02c-fix: a payload that names only the new home moves the home; two homes
+-- in one payload is ST010, never a raw 23505.
+do $$
+declare
+  site_a uuid := '20000000-0000-4000-8000-000000000011';
+  page_home uuid := '20000000-0000-4000-8000-000000000021';
+  page_about uuid := '20000000-0000-4000-8000-000000000022';
+  rev integer;
+  rev_after integer;
+begin
+  if not (select is_home from public.pages where id = page_home) then
+    raise exception 'fixture: Home is not the home page';
+  end if;
+
+  select draft_revision into rev from public.sites where id = site_a;
+  perform public.save_draft(site_a, rev, jsonb_build_object(
+    'pages', jsonb_build_object('upsert', jsonb_build_array(
+      jsonb_build_object('id', page_about, 'title', 'About', 'slug', 'about', 'sort_order', 1, 'is_home', true)
+    ))
+  ));
+  if (select count(*) from public.pages where site_id = site_a and is_home) <> 1
+    or not (select is_home from public.pages where id = page_about)
+    or (select is_home from public.pages where id = page_home)
+  then
+    raise exception 'home-only payload did not move the home page';
+  end if;
+
+  select draft_revision into rev from public.sites where id = site_a;
+  begin
+    perform public.save_draft(site_a, rev, jsonb_build_object(
+      'pages', jsonb_build_object('upsert', jsonb_build_array(
+        jsonb_build_object('id', page_about, 'title', 'About', 'slug', 'about', 'sort_order', 1, 'is_home', true),
+        jsonb_build_object('id', page_home, 'title', 'Home', 'slug', '', 'sort_order', 0, 'is_home', true)
+      ))
+    ));
+    raise exception 'two homes in one payload were accepted';
+  exception
+    when sqlstate 'ST010' then
+      null;
+  end;
+  select draft_revision into rev_after from public.sites where id = site_a;
+  if rev_after <> rev or not (select is_home from public.pages where id = page_about) then
+    raise exception 'a rejected two-home save changed the draft';
+  end if;
+
+  -- Put Home back, again naming only the new home.
+  perform public.save_draft(site_a, rev, jsonb_build_object(
+    'pages', jsonb_build_object('upsert', jsonb_build_array(
+      jsonb_build_object('id', page_home, 'title', 'Home', 'slug', '', 'sort_order', 0, 'is_home', true)
+    ))
+  ));
+  if not (select is_home from public.pages where id = page_home)
+    or (select count(*) from public.pages where site_id = site_a and is_home) <> 1
+  then
+    raise exception 'home-only payload did not move the home back';
+  end if;
+end
+$$;
+
+\echo ok: save_draft moves the home from a payload naming only the new home
+\echo ok: save_draft rejects two homes in one payload with ST010
+
 do $$
 declare
   owner uuid := '20000000-0000-4000-8000-000000000001';
@@ -2536,9 +2609,9 @@ values
 
 insert into public.assets (id, site_id, path, mime, bytes)
 values
-  ('c2000000-0000-4000-8000-000000000081', 'c2000000-0000-4000-8000-000000000011', 'c2000000-0000-4000-8000-000000000011/draft/a.png', 'image/png', 10),
-  ('c2000000-0000-4000-8000-000000000082', 'c2000000-0000-4000-8000-000000000012', 'c2000000-0000-4000-8000-000000000012/draft/g.png', 'image/png', 10),
-  ('c2000000-0000-4000-8000-000000000083', 'c2000000-0000-4000-8000-000000000021', 'c2000000-0000-4000-8000-000000000021/draft/b.png', 'image/png', 10);
+  ('c2000000-0000-4000-8000-000000000081', 'c2000000-0000-4000-8000-000000000011', 'c2000000-0000-4000-8000-000000000011/draft/c2000000-0000-4000-8000-000000000081.png', 'image/png', 10),
+  ('c2000000-0000-4000-8000-000000000082', 'c2000000-0000-4000-8000-000000000012', 'c2000000-0000-4000-8000-000000000012/draft/c2000000-0000-4000-8000-000000000082.png', 'image/png', 10),
+  ('c2000000-0000-4000-8000-000000000083', 'c2000000-0000-4000-8000-000000000021', 'c2000000-0000-4000-8000-000000000021/draft/c2000000-0000-4000-8000-000000000083.png', 'image/png', 10);
 
 insert into public.domains (site_id, hostname, status)
 values
@@ -2569,7 +2642,8 @@ where id = 'c2000000-0000-4000-8000-000000000012';
 do $$
 declare
   expected text[] := array[
-    'public.assets|assets_owner_all|ALL|{authenticated}',
+    'public.assets|assets_owner_delete|DELETE|{authenticated}',
+    'public.assets|assets_owner_select|SELECT|{authenticated}',
     'public.domains|domains_select_owner|SELECT|{authenticated}',
     'public.element_layouts|element_layouts_owner_all|ALL|{authenticated}',
     'public.elements|elements_owner_all|ALL|{authenticated}',
@@ -2817,7 +2891,6 @@ begin
     or pg_temp.affected('update public.elements set name = ''Mine'' where site_id = ' || b_live) <> 0
     or pg_temp.affected('update public.element_layouts set hidden = true where element_id = ''c2000000-0000-4000-8000-000000000053''') <> 0
     or pg_temp.affected('delete from public.element_layouts where element_id = ''c2000000-0000-4000-8000-000000000053''') <> 0
-    or pg_temp.affected('update public.assets set width = 1 where site_id = ' || b_live) <> 0
     or pg_temp.affected('update public.submissions set read_at = now() where site_id = ' || b_live) <> 0
   then
     raise exception 'A changed B''s rows';
@@ -3081,6 +3154,8 @@ commit;
 \echo ok: service_role writes server-only rows and reads password_hash
 
 -- restore_site with the north-light case --------------------------------------
+-- Mirrors the spec's north-light example under an rls- prefix, so it does not
+-- collide with the seeded North Light site (slug north-light).
 
 do $$
 declare
@@ -3094,16 +3169,16 @@ begin
   values ('c2000000-0000-4000-8000-000000000094', 'c2000000-0000-4000-8000-000000000011', '{}', owner);
 
   insert into public.sites (id, owner_id, name, slug, slug_locked_at, deleted_at, purge_after)
-  values (gone, owner, 'North Light', 'north-light', now(), now() - interval '1 day', now() + interval '29 days');
+  values (gone, owner, 'North Light', 'rls-north-light', now(), now() - interval '1 day', now() + interval '29 days');
 
-  -- the owner has since used north-light for a new site.
+  -- the owner has since used rls-north-light for a new site.
   insert into public.sites (owner_id, name, slug)
-  values (owner, 'North Light again', 'north-light');
+  values (owner, 'North Light again', 'rls-north-light');
 
   select r.slug, r.slug_changed into got_slug, got_changed
   from public.restore_site(gone, owner) r;
 
-  if got_slug is distinct from 'north-light-2'
+  if got_slug is distinct from 'rls-north-light-2'
     or got_changed is not true
     or exists (
       select 1 from public.sites
@@ -3111,7 +3186,7 @@ begin
         and (live_publish_id is not null or deleted_at is not null or slug_locked_at is not null)
     )
   then
-    raise exception 'north-light restore mismatch: %', got_slug;
+    raise exception 'rls-north-light restore mismatch: %', got_slug;
   end if;
 
   insert into public.sites (id, owner_id, name, slug, deleted_at, purge_after)
@@ -3127,7 +3202,88 @@ begin
 end
 $$;
 
-\echo ok: restore_site returns north-light-2 as a draft and refuses an expired site
+\echo ok: restore_site returns rls-north-light-2 as a draft and refuses an expired site
+
+-- 02c-fix: an asset row's path is fixed by its own site and id. ------------
+
+do $$
+declare
+  a_live uuid := 'c2000000-0000-4000-8000-000000000011';
+  b_live uuid := 'c2000000-0000-4000-8000-000000000021';
+  new_id uuid := 'c2000000-0000-4000-8000-0000000000a1';
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.assets'::regclass and conname = 'assets_path_in_site'
+  ) then
+    raise exception 'assets_path_in_site is missing';
+  end if;
+
+  perform pg_temp.expect_state(format(
+    'insert into public.assets (id, site_id, path, mime, bytes) values (%L, %L, %L, ''image/png'', 1)',
+    new_id, a_live, b_live::text || '/draft/' || new_id::text || '.png'
+  ), '23514');
+  perform pg_temp.expect_state(format(
+    'insert into public.assets (id, site_id, path, mime, bytes) values (%L, %L, %L, ''image/png'', 1)',
+    new_id, a_live, a_live::text || '/draft/c2000000-0000-4000-8000-000000000081.png'
+  ), '23514');
+  perform pg_temp.expect_state(format(
+    'insert into public.assets (id, site_id, path, mime, bytes) values (%L, %L, %L, ''image/png'', 1)',
+    new_id, a_live, a_live::text || '/draft/' || new_id::text || '.png/../x.png'
+  ), '23514');
+  perform pg_temp.expect_state(format(
+    'insert into public.assets (id, site_id, path, mime, bytes) values (%L, %L, %L, ''image/png'', 1)',
+    new_id, a_live, a_live::text || '/published/' || new_id::text || '.png'
+  ), '23514');
+  perform pg_temp.expect_state(
+    'update public.assets set site_id = ''' || b_live || ''' where id = ''c2000000-0000-4000-8000-000000000081''',
+    '23514'
+  );
+  perform pg_temp.expect_state(format(
+    'insert into public.assets (id, site_id, path, mime, bytes) values (%L, %L, %L, ''image/webp'', 1)',
+    new_id, a_live, a_live::text || '/draft/' || new_id::text || '.webp'
+  ), null);
+  delete from public.assets where id = new_id;
+end
+$$;
+
+\echo 'ok: asset path must be the row''s own site draft path'
+
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', 'c2000000-0000-4000-8000-000000000001', true) \g /dev/null
+
+do $$
+declare
+  a_live constant text := 'c2000000-0000-4000-8000-000000000011';
+begin
+  if has_table_privilege('authenticated', 'public.assets', 'insert')
+    or has_table_privilege('authenticated', 'public.assets', 'update')
+    or has_table_privilege('authenticated', 'public.assets', 'select') is not true
+    or has_table_privilege('authenticated', 'public.assets', 'delete') is not true
+  then
+    raise exception 'authenticated has the wrong asset privileges';
+  end if;
+  perform pg_temp.expect_denied(format(
+    'insert into public.assets (id, site_id, path, mime, bytes) values (%L, %L, %L, ''image/png'', 1)',
+    'c2000000-0000-4000-8000-0000000000a2', a_live,
+    a_live || '/draft/c2000000-0000-4000-8000-0000000000a2.png'
+  ));
+  perform pg_temp.expect_denied(
+    'update public.assets set bytes = 1, mime = ''image/png'', width = 9 where site_id = ''' || a_live || ''''
+  );
+  if pg_temp.counted('select 1 from public.assets where site_id = ''' || a_live || '''') < 1 then
+    raise exception 'owner cannot read own assets';
+  end if;
+  if pg_temp.affected('delete from public.assets where id = ''c2000000-0000-4000-8000-000000000081''') <> 1 then
+    raise exception 'owner cannot delete own asset';
+  end if;
+end
+$$;
+
+rollback;
+
+\echo ok: owners read and delete asset rows but cannot insert or update them
 
 do $$
 begin
@@ -3148,7 +3304,9 @@ where id in (
   'c2000000-0000-4000-8000-000000000002'
 );
 delete from storage.objects where name like 'c2000000-%';
-delete from public.rate_limits where bucket like 'form:c2000000-%';
+delete from public.rate_limits
+where bucket like 'form:c2000000-%'
+  or bucket in ('content-bucket', 'other-bucket');
 
 delete from auth.users
 where id in (

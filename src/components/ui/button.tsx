@@ -3,11 +3,7 @@ import { cn } from "@/lib/utils";
 import { Icon } from "./icons";
 
 export type ButtonVariant =
-  | "primary"
-  | "secondary"
-  | "ghost"
-  | "danger"
-  | "destructive";
+  "primary" | "secondary" | "ghost" | "danger" | "destructive";
 
 export type ButtonSize = "sm" | "lg" | "touch" | "nav" | "desktop";
 
@@ -41,7 +37,8 @@ const sizes: Record<Exclude<ButtonSize, "nav">, string> = {
   touch: "h-12 gap-2 px-4 text-base",
 };
 
-const responsiveSize = "h-12 gap-2 px-4 text-base sm:h-8 sm:gap-2 sm:px-3 sm:text-sm";
+const responsiveSize =
+  "h-12 gap-2 px-4 text-base sm:h-8 sm:gap-2 sm:px-3 sm:text-sm";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant;

@@ -78,7 +78,11 @@ const siteMenu = (onDelete: () => void): MenuEntry[] => [
 ];
 
 const edgeItems: MenuEntry[] = [
-  { id: "duplicate", label: "Duplicate", icon: <Icon name="duplicate" size={16} /> },
+  {
+    id: "duplicate",
+    label: "Duplicate",
+    icon: <Icon name="duplicate" size={16} />,
+  },
   { id: "view", label: "View live", icon: <Icon name="external" size={16} /> },
   { type: "separator", id: "sep" },
   {
@@ -160,7 +164,11 @@ function SiteSidebar() {
         </>
       }
     >
-      <SidebarRow href="#editor" icon={<Icon name="pencil" size={16} />} selected>
+      <SidebarRow
+        href="#editor"
+        icon={<Icon name="pencil" size={16} />}
+        selected
+      >
         Editor
       </SidebarRow>
       <SidebarRow href="#pages" icon={<Icon name="document" size={16} />}>
@@ -215,10 +223,14 @@ function LayerTree() {
           </button>
         </li>
         <li>
-          <p className="flex h-8 items-center gap-2 pl-7 text-sm text-ink-2">Heading</p>
+          <p className="flex h-8 items-center gap-2 pl-7 text-sm text-ink-2">
+            Heading
+          </p>
         </li>
         <li>
-          <p className="flex h-8 items-center gap-2 pl-7 text-sm text-ink-2">Intro</p>
+          <p className="flex h-8 items-center gap-2 pl-7 text-sm text-ink-2">
+            Intro
+          </p>
         </li>
         <li>
           <button
@@ -322,10 +334,16 @@ function SitesTable({
             <TableCell>
               <StatusLabel status={row.status} locked={row.locked} />
             </TableCell>
-            <TableCell className="tabular text-sm text-ink-2">{row.domain}</TableCell>
-            <TableCell className="tabular text-sm text-ink-3">{row.edited}</TableCell>
+            <TableCell className="tabular text-sm text-ink-2">
+              {row.domain}
+            </TableCell>
+            <TableCell className="tabular text-sm text-ink-3">
+              {row.edited}
+            </TableCell>
             <TableCell className="w-12 text-right">
-              {onDelete ? <SiteActions name={row.name} onDelete={onDelete} /> : null}
+              {onDelete ? (
+                <SiteActions name={row.name} onDelete={onDelete} />
+              ) : null}
             </TableCell>
           </TableRow>
         ))}
@@ -344,14 +362,20 @@ function PublishBody({
   return (
     <>
       <PopoverSection>
-        <p className="text-sm leading-5 font-medium text-ink">Publish Riverton House</p>
+        <p className="text-sm leading-5 font-medium text-ink">
+          Publish Riverton House
+        </p>
         <p className="mt-1 truncate text-xs leading-4 text-ink-3">
           Last published 2 hours ago
         </p>
       </PopoverSection>
       <PopoverSection>
         <Field label="Live at">
-          <CopyField value="rivertonhouse.co.uk" size="desktop" label="Live at" />
+          <CopyField
+            value="rivertonhouse.co.uk"
+            size="desktop"
+            label="Live at"
+          />
         </Field>
         <PopoverRow label="Domain">
           <span className="inline-flex items-center gap-1 text-ink">
@@ -367,7 +391,9 @@ function PublishBody({
       </PopoverSection>
       <PopoverSection>
         <div className="flex items-center justify-between">
-          <span className="text-xs leading-4 font-medium text-ink-2">Password</span>
+          <span className="text-xs leading-4 font-medium text-ink-2">
+            Password
+          </span>
           <span className="inline-flex items-center gap-2 text-sm text-ink">
             {passwordOn ? "On" : "Off"}
             <Toggle
@@ -436,7 +462,12 @@ function MobilePublish({
         <Button size="touch" className="w-full">
           Publish
         </Button>
-        <Button variant="secondary" size="touch" className="w-full" onClick={onCancel}>
+        <Button
+          variant="secondary"
+          size="touch"
+          className="w-full"
+          onClick={onCancel}
+        >
           Cancel
         </Button>
       </div>
@@ -482,7 +513,10 @@ function DeleteSiteDialog({
     >
       <div className="mt-4">
         <Field label={`Type ${site} to confirm`}>
-          <Input value={name} onChange={(event) => setName(event.target.value)} />
+          <Input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
         </Field>
       </div>
     </Dialog>
@@ -519,7 +553,12 @@ function GalleryToasts() {
   return null;
 }
 
-const buttonStates: Array<{ label: string; forceState?: ForceState; disabled?: boolean; loading?: boolean }> = [
+const buttonStates: Array<{
+  label: string;
+  forceState?: ForceState;
+  disabled?: boolean;
+  loading?: boolean;
+}> = [
   { label: "Default" },
   { label: "Hover", forceState: "hover" },
   { label: "Focus", forceState: "focus" },
@@ -598,7 +637,10 @@ function GalleryBody() {
                   </Button>
                 }
               />
-              <SitesTable rows={homeRows} onDelete={() => setDialogOpen(true)} />
+              <SitesTable
+                rows={homeRows}
+                onDelete={() => setDialogOpen(true)}
+              />
             </div>
           </ToastRegion>
         </Shell>
@@ -650,12 +692,7 @@ function GalleryBody() {
           >
             <div className="px-8 pt-8">
               <PageHead title="Sites" lead="Open a site to edit it." />
-              <SitesTable
-                rows={[
-                  homeRows[0],
-                  homeRows[2],
-                ]}
-              />
+              <SitesTable rows={[homeRows[0], homeRows[2]]} />
               <button
                 type="button"
                 className="mt-3 inline-flex items-center gap-2 text-sm text-ink-3"
@@ -707,7 +744,10 @@ function GalleryBody() {
                       </Button>
                     }
                   >
-                    <PublishBody passwordOn={passwordOn} onPassword={setPasswordOn} />
+                    <PublishBody
+                      passwordOn={passwordOn}
+                      onPassword={setPasswordOn}
+                    />
                   </Popover>
                 </>
               }
@@ -764,8 +804,8 @@ function GalleryBody() {
                         Interiors for old houses, done slowly.
                       </h3>
                       <p className="mt-3 text-sm leading-5 text-ink-2">
-                        A small studio in York restoring Georgian and Victorian homes
-                        since 2014.
+                        A small studio in York restoring Georgian and Victorian
+                        homes since 2014.
                       </p>
                     </div>
                     <SelectionFrame className="min-h-[180px] bg-canvas">
@@ -791,7 +831,9 @@ function GalleryBody() {
               <aside className="w-[280px] shrink-0 overflow-auto border-l border-line bg-bg">
                 <div className="border-b border-line px-4 py-4">
                   <h2 className="text-sm leading-5 font-medium">Hero image</h2>
-                  <p className="mt-1 text-xs leading-4 text-ink-3">Image · Intro section</p>
+                  <p className="mt-1 text-xs leading-4 text-ink-3">
+                    Image · Intro section
+                  </p>
                 </div>
                 <div className="flex flex-col gap-4 px-4 py-4">
                   <div className="h-24 rounded-control bg-canvas" />
@@ -916,9 +958,7 @@ function GalleryBody() {
               backLabel="Sites"
               onBack={() => undefined}
               onTitle={() => undefined}
-              action={
-                <Button size="nav">Publish</Button>
-              }
+              action={<Button size="nav">Publish</Button>}
             />
             <MobileNavBar
               variant="detail"
@@ -937,7 +977,10 @@ function GalleryBody() {
               title="Publish Riverton House"
               meta="Last published 10 Nov, 17:20"
             >
-              <MobilePublish passwordOn={passwordOn} onPassword={setPasswordOn} />
+              <MobilePublish
+                passwordOn={passwordOn}
+                onPassword={setPasswordOn}
+              />
             </Sheet>
             <div className="border-t border-line px-6">
               <MobileListRow
@@ -953,7 +996,11 @@ function GalleryBody() {
             </div>
             <StudioloCredit />
             <div className="p-6">
-              <Button variant="secondary" size="touch" onClick={() => setSheetOpen(true)}>
+              <Button
+                variant="secondary"
+                size="touch"
+                onClick={() => setSheetOpen(true)}
+              >
                 Open publish sheet
               </Button>
             </div>
@@ -970,7 +1017,12 @@ function GalleryBody() {
               onChange={setTab}
               tabs={[
                 { id: "sites", label: "Sites", icon: "sites", href: "#sites" },
-                { id: "account", label: "Account", icon: "person", href: "#account" },
+                {
+                  id: "account",
+                  label: "Account",
+                  icon: "person",
+                  href: "#account",
+                },
                 { id: "plan", label: "Plan", icon: "plan", href: "#plan" },
               ]}
             />
@@ -1073,7 +1125,10 @@ function GalleryBody() {
             <CopyField value="rivertonhouse.co.uk" label="Live at" />
           </Field>
           <Field label="Address">
-            <InputWithSuffix defaultValue="riverton-house" suffix=".studiolo.page" />
+            <InputWithSuffix
+              defaultValue="riverton-house"
+              suffix=".studiolo.page"
+            />
           </Field>
           <Field label="Domain">
             <InputWithSuffix
@@ -1086,7 +1141,11 @@ function GalleryBody() {
               }
             />
           </Field>
-          <Input disabled defaultValue="Disabled field" aria-label="Disabled field" />
+          <Input
+            disabled
+            defaultValue="Disabled field"
+            aria-label="Disabled field"
+          />
           <Input
             readOnly
             value="Focused field"
@@ -1104,8 +1163,16 @@ function GalleryBody() {
 
       <Section title="Controls">
         <div className="flex flex-wrap items-center gap-6">
-          <Toggle checked={switchOn} onChange={setSwitchOn} label="Password on" />
-          <Toggle checked={false} onChange={() => undefined} label="Password off" />
+          <Toggle
+            checked={switchOn}
+            onChange={setSwitchOn}
+            label="Password on"
+          />
+          <Toggle
+            checked={false}
+            onChange={() => undefined}
+            label="Password off"
+          />
           <Toggle
             checked={false}
             disabled
@@ -1211,22 +1278,84 @@ function GalleryBody() {
         </div>
         <div className="mt-4 grid max-w-[440px] gap-3">
           <Input defaultValue="Name" aria-label="State field" />
-          <Input defaultValue="Name" aria-label="State hover field" data-force-state="hover" />
-          <Input defaultValue="Name" aria-label="State focus field" data-force-state="focus" />
-          <Input defaultValue="" aria-label="State error field" data-force-state="error" aria-invalid />
-          <Input defaultValue="Name" aria-label="State disabled field" data-force-state="disabled" disabled />
+          <Input
+            defaultValue="Name"
+            aria-label="State hover field"
+            data-force-state="hover"
+          />
+          <Input
+            defaultValue="Name"
+            aria-label="State focus field"
+            data-force-state="focus"
+          />
+          <Input
+            defaultValue=""
+            aria-label="State error field"
+            data-force-state="error"
+            aria-invalid
+          />
+          <Input
+            defaultValue="Name"
+            aria-label="State disabled field"
+            data-force-state="disabled"
+            disabled
+          />
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-4">
           <Toggle checked onChange={() => undefined} label="Toggle on" />
-          <Toggle checked={false} onChange={() => undefined} label="Toggle off" />
-          <Toggle checked onChange={() => undefined} label="Toggle on hover" forceState="hover" />
-          <Toggle checked={false} onChange={() => undefined} label="Toggle off hover" forceState="hover" />
-          <Toggle checked onChange={() => undefined} label="Toggle on active" forceState="active" />
-          <Toggle checked={false} onChange={() => undefined} label="Toggle off active" forceState="active" />
-          <Toggle checked onChange={() => undefined} label="Toggle on focus" forceState="focus" />
-          <Toggle checked={false} onChange={() => undefined} label="Toggle off focus" forceState="focus" />
-          <Toggle checked onChange={() => undefined} label="Toggle on disabled" forceState="disabled" />
-          <Toggle checked={false} onChange={() => undefined} label="Toggle off disabled" forceState="disabled" />
+          <Toggle
+            checked={false}
+            onChange={() => undefined}
+            label="Toggle off"
+          />
+          <Toggle
+            checked
+            onChange={() => undefined}
+            label="Toggle on hover"
+            forceState="hover"
+          />
+          <Toggle
+            checked={false}
+            onChange={() => undefined}
+            label="Toggle off hover"
+            forceState="hover"
+          />
+          <Toggle
+            checked
+            onChange={() => undefined}
+            label="Toggle on active"
+            forceState="active"
+          />
+          <Toggle
+            checked={false}
+            onChange={() => undefined}
+            label="Toggle off active"
+            forceState="active"
+          />
+          <Toggle
+            checked
+            onChange={() => undefined}
+            label="Toggle on focus"
+            forceState="focus"
+          />
+          <Toggle
+            checked={false}
+            onChange={() => undefined}
+            label="Toggle off focus"
+            forceState="focus"
+          />
+          <Toggle
+            checked
+            onChange={() => undefined}
+            label="Toggle on disabled"
+            forceState="disabled"
+          />
+          <Toggle
+            checked={false}
+            onChange={() => undefined}
+            label="Toggle off disabled"
+            forceState="disabled"
+          />
           <Segmented
             label="State layout"
             value="desktop"
@@ -1284,7 +1413,12 @@ function GalleryBody() {
             trigger={<button type="button">Menu states</button>}
             items={[
               { id: "duplicate", label: "Duplicate", forceState: "active" },
-              { id: "rename", label: "Rename", disabled: true, forceState: "disabled" },
+              {
+                id: "rename",
+                label: "Rename",
+                disabled: true,
+                forceState: "disabled",
+              },
             ]}
           />
         </div>
@@ -1301,8 +1435,16 @@ function GalleryBody() {
           </SidebarRow>
         </div>
         <div className="mt-4 grid max-w-[440px] gap-3">
-          <CopyField value="rivertonhouse.co.uk" label="Copy hover" forceState="hover" />
-          <CopyField value="rivertonhouse.co.uk" label="Copy focus" forceState="focus" />
+          <CopyField
+            value="rivertonhouse.co.uk"
+            label="Copy hover"
+            forceState="hover"
+          />
+          <CopyField
+            value="rivertonhouse.co.uk"
+            label="Copy focus"
+            forceState="focus"
+          />
         </div>
       </Section>
 
@@ -1314,12 +1456,17 @@ function GalleryBody() {
         />
         <Skeleton rows={2} />
         <div className="mt-4">
-          <InlineError onRetry={() => undefined}>Couldn’t load sites.</InlineError>
+          <InlineError onRetry={() => undefined}>
+            Couldn’t load sites.
+          </InlineError>
         </div>
         <p className="mt-6 text-[32px] leading-10 font-medium tabular">128</p>
       </Section>
 
-      <DeleteSiteDialog open={dialogOpen} onClose={() => setDialogOpen(false)} />
+      <DeleteSiteDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+      />
       <Sheet
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}

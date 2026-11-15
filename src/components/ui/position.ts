@@ -46,8 +46,10 @@ export function placeFloating({
   const height = Math.min(panel.height, maxHeight || panel.height);
   let top = placeBelow ? belowTop : trigger.top - gap - height;
   const maxTop = Math.max(margin, viewport.height - margin - height);
-  const triggerVisible = trigger.bottom > margin && trigger.top < viewport.height - margin;
-  const menuIntersects = top < viewport.height - margin && top + height > margin;
+  const triggerVisible =
+    trigger.bottom > margin && trigger.top < viewport.height - margin;
+  const menuIntersects =
+    top < viewport.height - margin && top + height > margin;
   if ((triggerVisible || menuIntersects) && (top < margin || top > maxTop)) {
     top = Math.min(Math.max(top, margin), maxTop);
   }

@@ -15,7 +15,9 @@ describe("MobileTabBar", () => {
     render(
       <MobileTabBar
         value="sites"
-        tabs={[{ id: "account", label: "Account", icon: "person", href: "#account" }]}
+        tabs={[
+          { id: "account", label: "Account", icon: "person", href: "#account" },
+        ]}
       />,
     );
     const link = screen.getByRole("link", { name: "Account" });

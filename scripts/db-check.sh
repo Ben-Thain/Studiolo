@@ -133,9 +133,31 @@ do
   psql "$url" -q -v ON_ERROR_STOP=1 -f "$file"
 done
 
-psql "$url" -q -v ON_ERROR_STOP=1 -f "$root/supabase/checks/rls_and_constraints.sql"
+checks="$root/supabase/checks/rls_and_constraints.sql"
 
+echo "== checks on the freshly migrated database"
+psql "$url" -q -v ON_ERROR_STOP=1 -f "$checks"
+
+echo "== seed"
 psql "$url" -q -v ON_ERROR_STOP=1 -f "$root/supabase/seed.sql"
+
+# The documented order (migrations, then seed, then checks) and a second run
+# in a row must both pass: the checks clean up every fixture they create.
+echo "== checks after seeding"
+psql "$url" -q -v ON_ERROR_STOP=1 -f "$checks"
+echo "== checks again (re-runnable)"
+psql "$url" -q -v ON_ERROR_STOP=1 -f "$checks"
+
+psql "$url" -q -v ON_ERROR_STOP=1 <<'SQL'
+do $$
+begin
+  if not exists (select 1 from public.sites where slug = 'north-light' and deleted_at is null) then
+    raise exception 'the checks removed seeded data';
+  end if;
+end
+$$;
+SQL
+echo "ok: checks leave the seeded account in place"
 psql "$url" -q -v ON_ERROR_STOP=1 <<'SQL'
 delete from auth.users;
 do $$

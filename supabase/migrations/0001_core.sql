@@ -139,6 +139,11 @@ create table public.assets (
   constraint assets_blur_data_url_length check (
     blur_data_url is null or char_length(blur_data_url) <= 16384
   ),
+  -- 02c-fix: the object path is fixed by the row's own site and id, so an
+  -- asset row can never point into another site's folder.
+  constraint assets_path_in_site check (
+    path ~ ('^' || site_id::text || '/draft/' || id::text || '\.(webp|avif|jpe?g|png)$')
+  ),
   constraint assets_site_path_key unique (site_id, path)
 );
 

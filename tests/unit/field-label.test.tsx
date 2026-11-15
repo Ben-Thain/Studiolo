@@ -28,6 +28,9 @@ describe("Field labels", () => {
         <LockedInput label="Live at" value="riverton-house" />
       </Field>,
     );
-    expect(screen.getByLabelText("Live at")).toHaveProperty("value", "riverton-house");
+    expect(screen.getByLabelText("Live at")).toHaveProperty(
+      "value",
+      "riverton-house",
+    );
   });
 });

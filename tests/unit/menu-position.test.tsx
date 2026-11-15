@@ -20,7 +20,14 @@ const items = [
 describe("placeFloating", () => {
   it("flips above the trigger and clamps to the viewport margin", () => {
     const placed = placeFloating({
-      trigger: { top: 360, right: 393, bottom: 392, left: 350, width: 43, height: 32 },
+      trigger: {
+        top: 360,
+        right: 393,
+        bottom: 392,
+        left: 350,
+        width: 43,
+        height: 32,
+      },
       panel: { width: 180, height: 160 },
       gap: 4,
       viewport: { width: 393, height: 400 },
@@ -48,12 +55,16 @@ describe("Menu", () => {
     expect(screen.getByRole("menu")).toBeTruthy();
     await user.keyboard("{Tab}");
     expect(screen.queryByRole("menu")).toBeNull();
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "After" }));
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "After" }),
+    );
   });
 
   it("renders a disabled destructive item in the quiet ink", async () => {
     const user = userEvent.setup();
-    render(<Menu trigger={<button type="button">Actions</button>} items={items} />);
+    render(
+      <Menu trigger={<button type="button">Actions</button>} items={items} />,
+    );
     await user.click(screen.getByRole("button", { name: "Actions" }));
     const item = screen.getByRole("menuitem", { name: "Delete" });
     expect(item.className).toContain("text-ink-4");
@@ -62,8 +73,14 @@ describe("Menu", () => {
 
   it("flips and clamps using the trigger rect", async () => {
     const user = userEvent.setup();
-    Object.defineProperty(window, "innerWidth", { configurable: true, value: 393 });
-    Object.defineProperty(window, "innerHeight", { configurable: true, value: 400 });
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 393,
+    });
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 400,
+    });
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
       function (this: HTMLElement) {
         if (this.tagName === "BUTTON") {
