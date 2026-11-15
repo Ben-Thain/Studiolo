@@ -2,7 +2,7 @@
 
 Freeform personal-site editor. One account owns many sites; each site has its own pages, slug, settings, password, domain, submissions, and stats. Desktop and Mobile layouts share content and store position, size, and hidden per layout.
 
-This repository is the Next.js app for the existing Vercel project `studiolo` in team `ben-thain-s-projects`. Prompt 00 is the scaffold. Prompts 02a–02c add the database schema, functions, row level security, column grants, the private `site-assets` storage bucket and the local seed. There is no auth UI or editor UI yet.
+This repository is the Next.js app for the existing Vercel project `studiolo` in team `ben-thain-s-projects`. Prompt 00 is the scaffold. Prompts 02a–02c add the database schema, functions, row level security, column grants, the private `site-assets` storage bucket and the local seed. Prompt 03a adds sign-in (email magic link and Google), the auth guards and the public landing page. There is no editor UI yet.
 
 ## Scripts
 
@@ -46,6 +46,21 @@ psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/checks/rls_and_constraints.sql
 `supabase/config.toml` is the stock `supabase init` file (`project_id = "studiolo"`, `[db.seed]` enabled with `sql_paths = ["./seed.sql"]`), so `supabase db reset` applies the migrations and then the seed; the checks pass after seeding. Every line must print `ok:` and the script must exit 0. `$DB_URL` is the local Supabase CLI database URL (`supabase status`), never the hosted project.
 
 **Never seed the hosted project.** Do not run `supabase db push --include-seed` (or any seed command) against hosted Supabase: `seed.sql` is local `@example.com` sample data only.
+
+## Auth (03a)
+
+- Routes: `/` (public landing; signed-in visitors go to `/sites`; `?ref=<slug>` is accepted and ignored), `/login`, `/signup`, `/auth/callback`, `/auth/expired` are public. `/sites`, `/account`, `/plan` and everything under them need a session; signed-out requests go to `/login?next=<path>`. `next` is only honoured when it is a same-origin relative path (starts with `/`, not `//` or `/\`).
+- `src/middleware.ts` refreshes the Supabase session on app hosts and app routes only (anon key, no UI, no service role). It must live in `src/` because the app uses `src/app`; a root `middleware.ts` is ignored. Pages also check the session on the server (`requireUser`).
+- Email sign-in is a magic link (`signInWithOtp`, new addresses get an account). `/auth/callback` exchanges the PKCE code (or verifies a `token_hash`) and redirects to `next` or `/sites`; any failure lands on `/auth/expired`. Raw auth errors are never shown.
+- `/sites`, `/account` and `/plan` are placeholders until prompt 03b builds the home shell.
+
+Supabase settings (Ben, in the dashboard; nothing here changes them):
+
+- Authentication → URL Configuration: Site URL `https://<app host>`; Redirect URLs `https://<app host>/auth/callback`, `http://localhost:3000/auth/callback`, and the Vercel preview pattern `https://*-ben-thain-s-projects.vercel.app/auth/callback` if previews should sign in.
+- Authentication → Providers → Google: enable with a Google OAuth client whose authorised redirect URI is `https://<project>.supabase.co/auth/v1/callback`.
+- The default magic-link email template works with the PKCE flow.
+
+e2e runs against `tests/e2e/mock-auth-server.mjs`, a local stand-in for Supabase Auth that sends no email and calls no third party. Not covered by tests: real Supabase Auth (GoTrue), real email delivery, real Google OAuth, cookies on the production domain, and Supabase's own rate limits.
 
 ## Manual steps
 

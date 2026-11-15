@@ -1,0 +1,449 @@
+"use client";
+
+import Link from "next/link";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useTransition,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+import { Button } from "@/components/ui/button";
+import { GoogleMark } from "@/components/auth/google-mark";
+import { AUTH_COPY } from "@/lib/auth/copy";
+import { sendMagicLink, startGoogleSignIn } from "@/lib/auth/actions";
+import { authHref } from "@/lib/auth/next";
+import { cn } from "@/lib/utils";
+
+export type AuthMode = "login" | "signup" | "expired";
+
+export const RESEND_SECONDS = 30;
+const LAST_EMAIL_KEY = "studiolo:last-email";
+
+const COPY: Record<AuthMode, { title: string; lead: string; submit: string }> =
+  {
+    signup: {
+      title: "Create an account",
+      lead: "A personal website in 5 minutes.",
+      submit: "Continue",
+    },
+    login: {
+      title: "Log in",
+      lead: "Use Google, or get a sign-in link by email.",
+      submit: "Continue",
+    },
+    expired: {
+      title: "This link has expired",
+      lead: "Sign-in links work once. Enter your email and we'll send a new one.",
+      submit: "Send a new link",
+    },
+  };
+
+// Desktop: 40px controls with 14px text. Below 900px: 48px, 16px text.
+const blockButton = "w-full min-[900px]:h-10 min-[900px]:text-sm";
+
+function rememberEmail(email: string) {
+  try {
+    window.localStorage.setItem(LAST_EMAIL_KEY, email);
+  } catch {
+    // Storage can be unavailable (private mode); prefill is a nicety.
+  }
+}
+
+function recallEmail(): string {
+  try {
+    return window.localStorage.getItem(LAST_EMAIL_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function AuthPanel({
+  mode,
+  next,
+  initialEmail = "",
+}: {
+  mode: AuthMode;
+  next: string | null;
+  initialEmail?: string;
+}) {
+  const [email, setEmail] = useState(initialEmail);
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [fieldError, setFieldError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [pending, setPending] = useState<"email" | "google" | null>(null);
+  const [, startTransition] = useTransition();
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
+  const firstRender = useRef(true);
+
+  // The expired page prefills the address used for the last link sent here.
+  useEffect(() => {
+    if (mode !== "expired" || initialEmail) return;
+    const remembered = recallEmail();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- read once from storage after hydration
+    if (remembered) setEmail(remembered);
+  }, [mode, initialEmail]);
+
+  // Move focus to the new heading when the view changes, and back to the
+  // email field when the user returns to the form.
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    if (sentTo) titleRef.current?.focus();
+    else emailRef.current?.focus();
+  }, [sentTo]);
+
+  async function send(address: string) {
+    setFormError(null);
+    setFieldError(null);
+    setPending("email");
+    try {
+      const result = await sendMagicLink({ email: address, next });
+      if (result.ok) {
+        rememberEmail(result.email);
+        setSentTo(result.email);
+        return true;
+      }
+      if (result.field === "email") setFieldError(result.message);
+      else setFormError(result.message);
+    } catch {
+      setFormError(AUTH_COPY.sendFailed);
+    } finally {
+      setPending(null);
+    }
+    return false;
+  }
+
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (pending) return;
+    const value = email.trim();
+    if (!value || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+      setFieldError(AUTH_COPY.invalidEmail);
+      emailRef.current?.focus();
+      return;
+    }
+    void send(value);
+  }
+
+  function onGoogle() {
+    if (pending) return;
+    setFormError(null);
+    setPending("google");
+    startTransition(async () => {
+      try {
+        const result = await startGoogleSignIn({ next });
+        if (result && !result.ok) {
+          setFormError(result.message);
+          setPending(null);
+        }
+      } catch (error) {
+        // A redirect to Google is thrown by the action and handled by Next;
+        // anything else is a failure.
+        if (isRedirectError(error)) throw error;
+        setFormError(AUTH_COPY.googleFailed);
+        setPending(null);
+      }
+    });
+  }
+
+  if (sentTo) {
+    return (
+      <CheckInbox
+        email={sentTo}
+        titleRef={titleRef}
+        pending={pending === "email"}
+        error={formError}
+        onResend={() => send(sentTo)}
+        onBack={() => {
+          setFormError(null);
+          setSentTo(null);
+        }}
+      />
+    );
+  }
+
+  const copy = COPY[mode];
+  const googleButton = (
+    <Button
+      variant="secondary"
+      size="touch"
+      className={blockButton}
+      onClick={onGoogle}
+      loading={pending === "google"}
+      disabled={pending === "email"}
+      icon={<GoogleMark />}
+    >
+      Continue with Google
+    </Button>
+  );
+
+  const emailForm = (
+    <form noValidate onSubmit={onSubmit} className="flex flex-col gap-4">
+      <EmailField
+        inputRef={emailRef}
+        value={email}
+        onChange={(value) => {
+          setEmail(value);
+          if (fieldError) setFieldError(null);
+        }}
+        error={fieldError}
+        disabled={pending !== null}
+      />
+      <Button
+        type="submit"
+        size="touch"
+        className={blockButton}
+        loading={pending === "email"}
+        disabled={pending === "google"}
+      >
+        {copy.submit}
+      </Button>
+    </form>
+  );
+
+  return (
+    <AuthColumn>
+      <AuthHeading title={copy.title} titleRef={titleRef}>
+        {copy.lead}
+      </AuthHeading>
+      <div className="mt-8 flex flex-col">
+        {mode === "expired" ? (
+          <>
+            {emailForm}
+            <Divider />
+            {googleButton}
+          </>
+        ) : (
+          <>
+            {googleButton}
+            <Divider />
+            {emailForm}
+          </>
+        )}
+        <FormError message={formError} />
+      </div>
+      {mode === "expired" ? null : (
+        <p className="mt-6 text-sm leading-5 text-ink-3 min-[900px]:text-[13px]">
+          {mode === "signup"
+            ? "Already have an account? "
+            : "New to Studiolo? "}
+          <Link
+            href={authHref(mode === "signup" ? "/login" : "/signup", next)}
+            className="rounded-control font-medium text-ink hover:underline"
+          >
+            {mode === "signup" ? "Log in" : "Create an account"}
+          </Link>
+        </p>
+      )}
+    </AuthColumn>
+  );
+}
+
+function isRedirectError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "digest" in error &&
+    typeof (error as { digest?: unknown }).digest === "string" &&
+    (error as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+  );
+}
+
+function CheckInbox({
+  email,
+  titleRef,
+  pending,
+  error,
+  onResend,
+  onBack,
+}: {
+  email: string;
+  titleRef: React.RefObject<HTMLHeadingElement | null>;
+  pending: boolean;
+  error: string | null;
+  onResend: () => Promise<boolean>;
+  onBack: () => void;
+}) {
+  // A deadline rather than a decrementing counter, so a throttled background
+  // tab still shows the right time when it wakes.
+  const [deadline, setDeadline] = useState(
+    () => Date.now() + RESEND_SECONDS * 1000,
+  );
+  const [now, setNow] = useState(() => Date.now());
+  const seconds = Math.max(0, Math.ceil((deadline - now) / 1000));
+
+  useEffect(() => {
+    if (seconds <= 0) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(timer);
+  }, [seconds]);
+
+  async function resend() {
+    if (await onResend()) {
+      const start = Date.now();
+      setNow(start);
+      setDeadline(start + RESEND_SECONDS * 1000);
+    }
+  }
+
+  const waiting = seconds > 0;
+  return (
+    <AuthColumn>
+      <AuthHeading title="Check your inbox" titleRef={titleRef}>
+        We sent a sign-in link to{" "}
+        <span className="font-medium break-all text-ink">{email}</span>. Open it
+        on this device.
+      </AuthHeading>
+      <div className="mt-8 flex flex-col gap-2">
+        {waiting ? (
+          <Button
+            size="touch"
+            className={cn(blockButton, "border border-line")}
+            disabled
+          >
+            Resend in {seconds}s
+          </Button>
+        ) : (
+          <Button
+            variant="secondary"
+            size="touch"
+            className={blockButton}
+            onClick={resend}
+            loading={pending}
+          >
+            Resend
+          </Button>
+        )}
+        <Button
+          variant="ghost"
+          size="touch"
+          className={cn(blockButton, "text-ink-2 enabled:hover:text-ink")}
+          onClick={onBack}
+        >
+          Use a different email
+        </Button>
+        <FormError message={error} />
+      </div>
+    </AuthColumn>
+  );
+}
+
+export function AuthColumn({ children }: { children: ReactNode }) {
+  return (
+    <main className="mx-auto w-full max-w-[408px] px-6 pt-16 pb-16 min-[900px]:pt-[136px]">
+      {children}
+    </main>
+  );
+}
+
+function AuthHeading({
+  title,
+  titleRef,
+  children,
+}: {
+  title: string;
+  titleRef: React.RefObject<HTMLHeadingElement | null>;
+  children: ReactNode;
+}) {
+  return (
+    <>
+      <h1
+        ref={titleRef}
+        tabIndex={-1}
+        className="text-[28px] leading-9 font-medium tracking-[-0.02em] text-ink outline-none min-[900px]:text-2xl min-[900px]:leading-8"
+      >
+        {title}
+      </h1>
+      <p className="mt-2 text-base leading-6 text-ink-3 min-[900px]:text-sm min-[900px]:leading-5">
+        {children}
+      </p>
+    </>
+  );
+}
+
+function Divider() {
+  return (
+    <div
+      className="my-6 flex items-center gap-3"
+      role="separator"
+      aria-label="or"
+    >
+      <span className="h-px flex-1 bg-line" />
+      <span className="text-xs leading-5 text-ink-3" aria-hidden="true">
+        or
+      </span>
+      <span className="h-px flex-1 bg-line" />
+    </div>
+  );
+}
+
+function EmailField({
+  inputRef,
+  value,
+  onChange,
+  error,
+  disabled,
+}: {
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  value: string;
+  onChange: (value: string) => void;
+  error: string | null;
+  disabled: boolean;
+}) {
+  const id = useId();
+  const errorId = `${id}-error`;
+  return (
+    <div className="flex flex-col gap-2">
+      <label
+        htmlFor={id}
+        className="text-sm leading-4 font-medium text-ink-2 min-[900px]:text-xs"
+      >
+        Email
+      </label>
+      <input
+        ref={inputRef}
+        id={id}
+        type="email"
+        name="email"
+        autoComplete="email"
+        inputMode="email"
+        autoCapitalize="none"
+        spellCheck={false}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        disabled={disabled}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? errorId : undefined}
+        className={cn(
+          "h-12 w-full rounded-control border border-line bg-bg px-3 text-base text-ink placeholder:text-ink-3 focus-visible:border-ink disabled:bg-surface-2 disabled:text-ink-4 aria-invalid:border-error",
+          "min-[900px]:h-10 min-[900px]:text-sm",
+        )}
+      />
+      {error ? (
+        <p id={errorId} className="text-xs leading-4 text-error">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function FormError({ message }: { message: string | null }) {
+  return (
+    <p
+      role="alert"
+      className={cn(
+        "text-center text-sm leading-5 text-error min-[900px]:text-[13px]",
+        message ? "mt-4" : "sr-only",
+      )}
+    >
+      {message ?? ""}
+    </p>
+  );
+}

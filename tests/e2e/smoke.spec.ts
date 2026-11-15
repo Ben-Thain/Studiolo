@@ -6,8 +6,13 @@ test("GET / returns 200", async ({ request }) => {
   expect(await response.text()).toContain("Studiolo");
 });
 
-test("home renders the Studiolo placeholder", async ({ page }) => {
+test("home renders the landing page", async ({ page }) => {
   const response = await page.goto("/");
   expect(response?.status()).toBe(200);
-  await expect(page.getByRole("heading", { name: "Studiolo" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: "A stunning personal website, in 5 minutes.",
+    }),
+  ).toBeVisible();
 });

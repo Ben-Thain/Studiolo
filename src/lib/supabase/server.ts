@@ -31,8 +31,8 @@ export async function createClient() {
               cookieStore.set(name, value, options);
             }
           } catch {
-            // Server Components cannot set cookies. The passthrough middleware
-            // does not refresh sessions yet; prompt 03 owns that.
+            // Server Components cannot set cookies. The middleware refreshes
+            // the session on app routes, so this is safe to ignore here.
           }
         },
       },
