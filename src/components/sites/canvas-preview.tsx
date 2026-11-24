@@ -1,5 +1,8 @@
 import type { CSSProperties } from "react";
 import { Icon } from "@/components/ui/icons";
+import { mobileFontSize } from "@/editor/fonts";
+import { gridPlacement, GRID_AUTO_ROWS } from "@/editor/renderGrid";
+import type { GridBox } from "@/editor/types";
 import type {
   CanvasElement,
   CanvasLayout,
@@ -14,22 +17,14 @@ import { cn } from "@/lib/utils";
  * mobile layout (below).
  */
 
-// Prompt 05: mobile maps large desktop sizes down; 24 and below unchanged.
-const MOBILE_SIZE: Record<number, number> = {
-  108: 64,
-  96: 48,
-  80: 48,
-  64: 40,
-  48: 32,
-  40: 28,
-  32: 24,
-};
-
 function place(layout: CanvasLayout): CSSProperties {
-  return {
-    gridColumn: `${layout.col} / span ${layout.span}`,
-    gridRow: `${layout.row} / span ${layout.rows}`,
+  const box: GridBox = {
+    col: layout.col,
+    span: layout.span,
+    row: layout.row,
+    rows: layout.rows,
   };
+  return gridPlacement(box);
 }
 
 function Element({
@@ -44,9 +39,7 @@ function Element({
   const c = element.content;
   if (element.type === "text") {
     const desktopSize = Number(c.fontSize ?? 16);
-    const size = mobile
-      ? (MOBILE_SIZE[desktopSize] ?? desktopSize)
-      : desktopSize;
+    const size = mobile ? mobileFontSize(desktopSize) : desktopSize;
     return (
       <p
         className="whitespace-pre-line text-ink"
@@ -124,7 +117,7 @@ function SectionGrid({
       className="grid grid-cols-12 gap-x-6 py-4"
       // Rows grow to fit text (the editor in prompt 06 measures them), so a
       // heading that wraps never runs into the element below it.
-      style={{ gridAutoRows: "minmax(8px, auto)" }}
+      style={{ gridAutoRows: GRID_AUTO_ROWS }}
     >
       {placed.map((element) => (
         <div
