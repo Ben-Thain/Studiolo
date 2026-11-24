@@ -7,28 +7,46 @@ import type {
   EditorSection,
   ElementLayout,
 } from "./types";
+import { applyDraftToDoc } from "./doc";
 
 export function emptyChanges(): DraftChanges {
   return {};
 }
 
+/** Ordered merge: later upsert cancels earlier delete and vice versa. */
 export function mergeChanges(a: DraftChanges, b: DraftChanges): DraftChanges {
   const mergeTable = <T extends { id: string }>(
     left: { upsert?: T[]; delete?: string[] } | undefined,
     right: { upsert?: T[]; delete?: string[] } | undefined,
   ) => {
     if (!left && !right) return undefined;
-    const deletes = new Set<string>([
-      ...(left?.delete ?? []),
-      ...(right?.delete ?? []),
-    ]);
-    const upserts = new Map<string, T>();
-    for (const row of left?.upsert ?? []) upserts.set(row.id, row);
-    for (const row of right?.upsert ?? []) upserts.set(row.id, row);
-    for (const id of deletes) upserts.delete(id);
+    const state = new Map<string, "upsert" | "delete">();
+    const rows = new Map<string, T>();
+
+    const apply = (patch: { upsert?: T[]; delete?: string[] } | undefined) => {
+      if (!patch) return;
+      for (const id of patch.delete ?? []) {
+        state.set(id, "delete");
+        rows.delete(id);
+      }
+      for (const row of patch.upsert ?? []) {
+        state.set(row.id, "upsert");
+        rows.set(row.id, row);
+      }
+    };
+
+    apply(left);
+    apply(right);
+
+    const upsert = [...rows.values()];
+    const del = [...state.entries()]
+      .filter(([, kind]) => kind === "delete")
+      .map(([id]) => id);
+
     const out: { upsert?: T[]; delete?: string[] } = {};
-    if (upserts.size) out.upsert = [...upserts.values()];
-    if (deletes.size) out.delete = [...deletes];
+    if (upsert.length) out.upsert = upsert;
+    if (del.length) out.delete = del;
+    if (!out.upsert && !out.delete) return undefined;
     return out;
   };
 
@@ -98,7 +116,7 @@ export function upsertChanges(
 
   for (const layout of doc.layouts) {
     const before = snapshot.layouts.find((l) => l.id === layout.id);
-    if (!before || JSON.stringify(before) !== JSON.stringify(layout)) {
+    if (!before || layoutDiffers(before, layout)) {
       touchedLayouts.add(layout.id);
     }
   }
@@ -110,7 +128,7 @@ export function upsertChanges(
 
   for (const element of doc.elements) {
     const before = snapshot.elements.find((e) => e.id === element.id);
-    if (!before || JSON.stringify(before) !== JSON.stringify(element)) {
+    if (!before || elementDiffers(before, element)) {
       touchedElements.add(element.id);
     }
   }
@@ -122,7 +140,7 @@ export function upsertChanges(
 
   for (const section of doc.sections) {
     const before = snapshot.sections.find((s) => s.id === section.id);
-    if (!before || JSON.stringify(before) !== JSON.stringify(section)) {
+    if (!before || sectionDiffers(before, section)) {
       touchedSections.add(section.id);
     }
   }
@@ -134,7 +152,7 @@ export function upsertChanges(
 
   for (const page of doc.pages) {
     const before = snapshot.pages.find((p) => p.id === page.id);
-    if (!before || JSON.stringify(before) !== JSON.stringify(page)) {
+    if (!before || pageDiffers(before, page)) {
       touchedPages.add(page.id);
     }
   }
@@ -211,12 +229,55 @@ export function upsertChanges(
   return changes;
 }
 
+function layoutDiffers(a: ElementLayout, b: ElementLayout): boolean {
+  return (
+    a.col !== b.col ||
+    a.span !== b.span ||
+    a.row !== b.row ||
+    a.rows !== b.rows ||
+    a.hidden !== b.hidden ||
+    a.placementSource !== b.placementSource ||
+    a.elementId !== b.elementId ||
+    a.breakpoint !== b.breakpoint
+  );
+}
+
+function elementDiffers(a: EditorElement, b: EditorElement): boolean {
+  return (
+    a.pageId !== b.pageId ||
+    a.sectionId !== b.sectionId ||
+    a.type !== b.type ||
+    a.name !== b.name ||
+    a.sortOrder !== b.sortOrder ||
+    JSON.stringify(a.content) !== JSON.stringify(b.content)
+  );
+}
+
+function sectionDiffers(a: EditorSection, b: EditorSection): boolean {
+  return (
+    a.pageId !== b.pageId || a.name !== b.name || a.sortOrder !== b.sortOrder
+  );
+}
+
+function pageDiffers(a: EditorPage, b: EditorPage): boolean {
+  return (
+    a.title !== b.title ||
+    a.slug !== b.slug ||
+    a.sortOrder !== b.sortOrder ||
+    a.inNav !== b.inNav ||
+    a.isHome !== b.isHome
+  );
+}
+
 export function snapshotDoc(doc: EditorDoc): DocSnapshot {
   return {
-    pages: structuredClone(doc.pages),
-    sections: structuredClone(doc.sections),
-    elements: structuredClone(doc.elements),
-    layouts: structuredClone(doc.layouts),
+    pages: doc.pages.map((p) => ({ ...p })),
+    sections: doc.sections.map((s) => ({ ...s })),
+    elements: doc.elements.map((e) => ({
+      ...e,
+      content: { ...e.content },
+    })),
+    layouts: doc.layouts.map((l) => ({ ...l })),
     revision: doc.revision,
   };
 }
@@ -225,9 +286,44 @@ export function restoreDoc(doc: EditorDoc, snapshot: DocSnapshot): EditorDoc {
   return {
     ...doc,
     revision: snapshot.revision,
-    pages: structuredClone(snapshot.pages),
-    sections: structuredClone(snapshot.sections),
-    elements: structuredClone(snapshot.elements),
-    layouts: structuredClone(snapshot.layouts),
+    pages: snapshot.pages.map((p) => ({ ...p })),
+    sections: snapshot.sections.map((s) => ({ ...s })),
+    elements: snapshot.elements.map((e) => ({
+      ...e,
+      content: { ...e.content },
+    })),
+    layouts: snapshot.layouts.map((l) => ({ ...l })),
+  };
+}
+
+/** Patch that returns the doc from `after` back to `before`. */
+export function inverseChanges(
+  after: EditorDoc,
+  before: DocSnapshot,
+): DraftChanges {
+  const beforeDoc = restoreDoc(after, before);
+  return upsertChanges(beforeDoc, snapshotDoc(after));
+}
+
+/** Apply an undo patch without changing revision. */
+export function applyInverse(doc: EditorDoc, inverse: DraftChanges): EditorDoc {
+  const revision = doc.revision;
+  const next = applyDraftToDoc(doc, inverse);
+  next.revision = revision;
+  return next;
+}
+
+export function cloneDoc(doc: EditorDoc): EditorDoc {
+  return {
+    siteId: doc.siteId,
+    revision: doc.revision,
+    pages: doc.pages.map((p) => ({ ...p })),
+    sections: doc.sections.map((s) => ({ ...s })),
+    elements: doc.elements.map((e) => ({
+      ...e,
+      content: { ...e.content },
+    })),
+    layouts: doc.layouts.map((l) => ({ ...l })),
+    assets: doc.assets ? { ...doc.assets } : undefined,
   };
 }

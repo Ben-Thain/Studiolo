@@ -8,6 +8,7 @@ export * from "./grid";
 export * from "./history";
 export * from "./links";
 export * from "./persist";
+export * from "./render";
 export * from "./renderGrid";
 export * from "./schema";
 export * from "./store";

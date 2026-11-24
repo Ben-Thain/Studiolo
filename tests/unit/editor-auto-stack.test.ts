@@ -6,10 +6,21 @@ import { starterChanges } from "@/lib/sites/starter";
 
 describe("autoStack", () => {
   it("stacks full width with a 3-row gap, stable and non-overlapping", () => {
+    const item = (
+      id: string,
+      sortOrder: number,
+      desktop: { col: number; span: number; row: number; rows: number },
+    ) => ({
+      id,
+      sortOrder,
+      desktop,
+      mobile: { col: 1, span: 12, row: 1, rows: desktop.rows },
+      placementSource: "auto" as const,
+    });
     const out = autoStack([
-      { id: "b", sortOrder: 1, desktop: { col: 7, span: 6, row: 1, rows: 10 } },
-      { id: "a", sortOrder: 0, desktop: { col: 1, span: 6, row: 1, rows: 4 } },
-      { id: "c", sortOrder: 2, desktop: { col: 1, span: 6, row: 1, rows: 2 } },
+      item("b", 1, { col: 7, span: 6, row: 1, rows: 10 }),
+      item("a", 0, { col: 1, span: 6, row: 1, rows: 4 }),
+      item("c", 2, { col: 1, span: 6, row: 1, rows: 2 }),
     ]);
     expect([...out.entries()]).toEqual([
       ["a", { col: 1, span: 12, row: 1, rows: 4 }],

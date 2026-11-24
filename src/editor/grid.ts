@@ -12,20 +12,47 @@ export const DEFAULT_TEXT_ROWS = 6;
 export const DEFAULT_IMAGE_ROWS = 40;
 export const DEFAULT_NAV_ROWS = 4;
 
+/** Fraction of a column/row within which a guide magnetizes. */
+export const SNAP_THRESHOLD = 0.45;
+
+export type SnapGuide = {
+  axis: "x" | "y";
+  position: number;
+  label: string;
+};
+
+export type SnapReadout = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  label: string;
+};
+
+export type SnapResult = {
+  box: GridBox;
+  guides: SnapGuide[];
+  readout: SnapReadout;
+};
+
 export function snapCol(value: number): number {
+  if (!Number.isFinite(value)) return 1;
   return Math.min(GRID_COLUMNS, Math.max(1, Math.round(value)));
 }
 
 export function snapSpan(value: number, col: number): number {
+  if (!Number.isFinite(value)) return 1;
   const span = Math.max(1, Math.round(value));
   return Math.min(span, GRID_COLUMNS - col + 1);
 }
 
 export function snapRow(value: number): number {
+  if (!Number.isFinite(value)) return 1;
   return Math.max(1, Math.round(value));
 }
 
 export function snapRowSpan(value: number): number {
+  if (!Number.isFinite(value)) return 1;
   return Math.max(1, Math.round(value));
 }
 
@@ -38,6 +65,169 @@ export function snapBox(box: GridBox): GridBox {
     row: snapRow(box.row),
     rows: snapRowSpan(box.rows),
   };
+}
+
+function nearestSnap(
+  value: number,
+  targets: { position: number; label: string }[],
+  threshold: number,
+): { value: number; guide: SnapGuide | null } {
+  let best = value;
+  let bestDist = threshold + 1;
+  let guide: SnapGuide | null = null;
+  for (const target of targets) {
+    const dist = Math.abs(value - target.position);
+    if (dist <= threshold && dist < bestDist) {
+      bestDist = dist;
+      best = target.position;
+      guide = {
+        axis: "x",
+        position: target.position,
+        label: target.label,
+      };
+    }
+  }
+  return { value: best, guide };
+}
+
+function colTargets(box: GridBox, others: GridBox[], section?: GridBox) {
+  const targets: { position: number; label: string }[] = [];
+  for (let c = 1; c <= GRID_COLUMNS; c += 1) {
+    targets.push({ position: c, label: `col ${c}` });
+  }
+  for (const o of others) {
+    targets.push(
+      { position: o.col, label: "edge" },
+      { position: o.col + o.span, label: "edge" },
+      { position: o.col + o.span / 2, label: "center" },
+    );
+  }
+  if (section) {
+    targets.push(
+      { position: section.col, label: "section" },
+      {
+        position: section.col + section.span,
+        label: "section",
+      },
+      {
+        position: section.col + section.span / 2,
+        label: "section center",
+      },
+    );
+  }
+  return targets;
+}
+
+function rowTargets(box: GridBox, others: GridBox[], section?: GridBox) {
+  const targets: { position: number; label: string }[] = [];
+  for (const o of others) {
+    targets.push(
+      { position: o.row, label: "edge" },
+      { position: o.row + o.rows, label: "edge" },
+      { position: o.row + o.rows / 2, label: "center" },
+    );
+  }
+  if (section) {
+    targets.push(
+      { position: section.row, label: "section" },
+      { position: section.row + section.rows, label: "section" },
+      {
+        position: section.row + section.rows / 2,
+        label: "section center",
+      },
+    );
+  }
+  return targets;
+}
+
+/** Snap a moving box to the grid, peers and section guides. */
+export function snapLayout(
+  box: GridBox,
+  others: GridBox[],
+  options?: { section?: GridBox; threshold?: number },
+): SnapResult {
+  const threshold = options?.threshold ?? SNAP_THRESHOLD;
+  const snapped = snapBox(box);
+  const guides: SnapGuide[] = [];
+
+  const colSnap = nearestSnap(
+    snapped.col,
+    colTargets(snapped, others, options?.section),
+    threshold,
+  );
+  const colEndSnap = nearestSnap(
+    snapped.col + snapped.span,
+    colTargets(snapped, others, options?.section).map((t) => ({
+      ...t,
+      position: t.position,
+    })),
+    threshold,
+  );
+
+  let col = colSnap.value;
+  let span = snapped.span;
+  if (colEndSnap.guide && !colSnap.guide) {
+    span = Math.max(1, Math.round(colEndSnap.value - col));
+    guides.push({ ...colEndSnap.guide, axis: "x" });
+  } else if (colSnap.guide) {
+    guides.push(colSnap.guide);
+  }
+
+  const rowSnap = nearestSnap(
+    snapped.row,
+    rowTargets(snapped, others, options?.section),
+    threshold,
+  );
+  const rowEndSnap = nearestSnap(
+    snapped.row + snapped.rows,
+    rowTargets(snapped, others, options?.section),
+    threshold,
+  );
+
+  let row = rowSnap.value;
+  let rows = snapped.rows;
+  if (rowEndSnap.guide && !rowSnap.guide) {
+    rows = Math.max(1, Math.round(rowEndSnap.value - row));
+    guides.push({ ...rowEndSnap.guide, axis: "y" });
+  } else if (rowSnap.guide) {
+    guides.push(rowSnap.guide);
+  }
+
+  const out = snapBox({ col, span, row, rows });
+  const readout: SnapReadout = {
+    x: out.col,
+    y: out.row,
+    w: out.span,
+    h: out.rows,
+    label: guides.map((g) => g.label).join(", ") || "grid",
+  };
+  return { box: out, guides, readout };
+}
+
+/** Snap only to column grid lines. */
+export function snapToGrid(
+  box: GridBox,
+  threshold = SNAP_THRESHOLD,
+): SnapResult {
+  return snapLayout(box, [], { threshold });
+}
+
+/** Snap to another element's edges and center. */
+export function snapToElement(
+  box: GridBox,
+  target: GridBox,
+  threshold = SNAP_THRESHOLD,
+): SnapResult {
+  return snapLayout(box, [target], { threshold });
+}
+
+/** Snap to section bounds. */
+export function snapToSection(
+  box: GridBox,
+  section: GridBox,
+  threshold = SNAP_THRESHOLD,
+): SnapResult {
+  return snapLayout(box, [], { section, threshold });
 }
 
 /** The first row after the bottom of `boxes`, plus optional gap rows. */
