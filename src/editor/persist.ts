@@ -3,6 +3,7 @@
  */
 
 import { mergeChanges } from "./changes";
+import { applyDraftToDoc } from "./doc";
 import type { DraftChanges } from "./schema";
 import type { EditorDoc, SaveStatus } from "./types";
 
@@ -180,6 +181,7 @@ export function createPersister(options: CreatePersisterOptions): Persister {
   let maxTimerStarted = false;
   let inFlight: Promise<void> | null = null;
   let queuedDuringFlight = false;
+  let persistChain: Promise<void> = Promise.resolve();
 
   const notify = () => options.onStatus?.(state);
 
@@ -221,6 +223,14 @@ export function createPersister(options: CreatePersisterOptions): Persister {
     }
 
     setStatus("saving");
+    await persistChain;
+    await writeDraftRow({
+      key: draftKey(options.siteId),
+      siteId: options.siteId,
+      baseRevision: state.revision,
+      doc,
+      pending: mergeChanges(batch, state.pending),
+    });
 
     const attempt = async () => {
       try {
@@ -237,20 +247,26 @@ export function createPersister(options: CreatePersisterOptions): Persister {
         };
         doc = { ...doc, revision: nextRevision };
         setStatus("saved");
-        await clearDraftRow(options.siteId);
+        if (!Object.keys(state.pending).length) {
+          await clearDraftRow(options.siteId);
+        } else {
+          await persistLocal();
+        }
       } catch (error) {
         if (isStale(error)) {
           state = {
             ...state,
-            pending: mergeChanges({}, batch),
+            pending: mergeChanges(batch, state.pending),
           };
+          await persistLocal();
           setStatus("error", "ST409");
+          queuedDuringFlight = false;
           throw new StaleRevisionError();
         }
         if (isOfflineError(error, options.isOffline)) {
           state = {
             ...state,
-            pending: mergeChanges(state.pending, batch),
+            pending: mergeChanges(batch, state.pending),
             queuedOffline: true,
           };
           await persistLocal();
@@ -261,10 +277,12 @@ export function createPersister(options: CreatePersisterOptions): Persister {
           ...state,
           pending: mergeChanges(batch, state.pending),
         };
+        await persistLocal();
         setStatus(
           "error",
           error instanceof Error ? error.message : "save_failed",
         );
+        queuedDuringFlight = false;
         throw error;
       }
     };
@@ -273,7 +291,7 @@ export function createPersister(options: CreatePersisterOptions): Persister {
       inFlight = null;
       if (queuedDuringFlight) {
         queuedDuringFlight = false;
-        void runSave();
+        return runSave();
       }
     });
     await inFlight;
@@ -307,7 +325,7 @@ export function createPersister(options: CreatePersisterOptions): Persister {
         pending: mergeChanges(state.pending, changes),
       };
       notify();
-      void persistLocal();
+      persistChain = persistChain.then(() => persistLocal());
       if (inFlight) {
         queuedDuringFlight = true;
         return;
@@ -349,16 +367,24 @@ function isOfflineError(error: unknown, isOffline?: () => boolean): boolean {
 export async function hydrateDraft(
   persister: Persister,
   serverDoc: EditorDoc,
-): Promise<void> {
+): Promise<EditorDoc> {
   const row = await readDraftRow(serverDoc.siteId);
-  if (!row) return;
-  persister.setDoc(serverDoc);
-  persister.setRevision(serverDoc.revision);
-  if (row.baseRevision === serverDoc.revision) {
-    persister.queue(row.pending);
-    return;
+  if (!row) {
+    persister.setDoc(serverDoc);
+    persister.setRevision(serverDoc.revision);
+    return serverDoc;
   }
-  persister.queue(row.pending);
+  const rebased =
+    Object.keys(row.pending).length > 0
+      ? applyDraftToDoc(serverDoc, row.pending)
+      : serverDoc;
+  rebased.revision = serverDoc.revision;
+  persister.setDoc(rebased);
+  persister.setRevision(serverDoc.revision);
+  if (Object.keys(row.pending).length > 0) {
+    persister.queue(row.pending);
+  }
+  return rebased;
 }
 
 /** @deprecated Use hydrateDraft */

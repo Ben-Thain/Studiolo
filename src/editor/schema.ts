@@ -1,5 +1,8 @@
 import { z } from "zod";
+import { elementLinkSchema, validateLink } from "./links";
 import { FONT_FAMILIES, SIZE_STEPS } from "./fonts";
+
+export { elementLinkSchema };
 
 const uuid = z.uuid();
 
@@ -12,11 +15,6 @@ export const fontFamilySchema = z.enum(FONT_FAMILIES);
 export const sizeStepSchema = z
   .number()
   .refine((n) => SIZE_STEPS.includes(n as (typeof SIZE_STEPS)[number]));
-
-export const elementLinkSchema = z.object({
-  kind: linkKindSchema,
-  value: z.string().min(1),
-});
 
 export const textContentSchema = z.object({
   text: z.string(),
@@ -89,15 +87,30 @@ export const editorAssetSchema = z.object({
   mime: z.string().optional(),
 });
 
-export const editorDocSchema = z.object({
-  siteId: uuid,
-  revision: z.number().int().min(0),
-  pages: z.array(editorPageSchema),
-  sections: z.array(editorSectionSchema),
-  elements: z.array(editorElementSchema),
-  layouts: z.array(elementLayoutSchema),
-  assets: z.record(z.string(), editorAssetSchema).optional(),
-});
+export const editorDocSchema = z
+  .object({
+    siteId: uuid,
+    revision: z.number().int().min(0),
+    pages: z.array(editorPageSchema),
+    sections: z.array(editorSectionSchema),
+    elements: z.array(editorElementSchema),
+    layouts: z.array(elementLayoutSchema),
+    assets: z.record(z.string(), editorAssetSchema).optional(),
+  })
+  .superRefine((doc, ctx) => {
+    const pageIds = new Set(doc.pages.map((p) => p.id));
+    for (const [index, element] of doc.elements.entries()) {
+      const link = (element.content as { link?: unknown }).link;
+      if (link === undefined) continue;
+      if (!validateLink(link, pageIds)) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Invalid link",
+          path: ["elements", index, "content", "link"],
+        });
+      }
+    }
+  });
 
 const tablePatchSchema = <T extends z.ZodType>(row: T) =>
   z.object({

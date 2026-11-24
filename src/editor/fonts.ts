@@ -1,9 +1,10 @@
 /**
- * Desktop → mobile font sizes (prompt 05). Sizes 24 and below stay unchanged.
+ * Desktop → mobile font sizes and allowed text tokens (prompt 05).
  */
 
-import type { SizeStep } from "./types";
+import type { FontFamily, SizeStep } from "./types";
 
+/** Desktop sizes at or below 24 stay unchanged on mobile (minimum 16). */
 export const MOBILE_FONT_SIZE: Record<number, number> = {
   108: 64,
   96: 48,
@@ -12,16 +13,23 @@ export const MOBILE_FONT_SIZE: Record<number, number> = {
   48: 32,
   40: 28,
   32: 24,
+  28: 24,
 };
 
-export const SIZE_STEPS: SizeStep[] = [
-  13, 16, 18, 24, 32, 40, 48, 64, 80, 96, 108,
-];
+export const SIZE_STEPS = [
+  12, 13, 14, 16, 18, 20, 22, 24, 28, 32, 40, 48, 64, 80, 96, 108,
+] as const satisfies readonly SizeStep[];
 
-export const FONT_FAMILIES = ["Inter", "Georgia", "Times New Roman"] as const;
+export const FONT_FAMILIES = [
+  "Inter",
+  "Geist",
+  "Manrope",
+  "Instrument Serif",
+] as const satisfies readonly FontFamily[];
 
 /** Map a desktop text size to the mobile canvas size (minimum 16). */
 export function mobileFontSize(desktopSize: number): number {
+  if (desktopSize <= 24) return Math.max(16, desktopSize);
   const mapped = MOBILE_FONT_SIZE[desktopSize] ?? desktopSize;
   return Math.max(16, mapped);
 }

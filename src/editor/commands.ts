@@ -3,6 +3,7 @@
  */
 
 import { appendMobileStack, autoStack, type StackItem } from "./autoStack";
+import { parseTextContent } from "./content";
 import {
   cloneDoc,
   inverseChanges,
@@ -120,7 +121,7 @@ export function applyCommand(
       updatePage(next, command.pageId, { inNav: command.inNav });
       break;
     case "reorderPages":
-      updatePage(next, command.pageId, { sortOrder: command.sortOrder });
+      reorderPagesInDoc(next, command.pageId, command.sortOrder);
       break;
     case "deletePage":
       deletePage(next, command.pageId);
@@ -251,7 +252,13 @@ function addElement(
     sectionId: section.id,
     type: command.elementType,
     name: command.name ?? command.elementType,
-    content: command.content ?? defaultContent(command.elementType),
+    content:
+      command.elementType === "text"
+        ? parseTextContent({
+            ...defaultContent("text"),
+            ...(command.content ?? {}),
+          })
+        : (command.content ?? defaultContent(command.elementType)),
     sortOrder,
   };
   doc.elements.push(element);
@@ -342,11 +349,23 @@ function updateContent(
   pageIds: Set<string>,
 ) {
   const element = elementOf(doc, elementId);
-  const merged = sanitizeContentLinks(
+  if (element.type === "text") {
+    const { link, ...rest } = content;
+    const parsed = parseTextContent({
+      ...(element.content as Record<string, unknown>),
+      ...rest,
+    });
+    const merged =
+      link === undefined
+        ? (parsed as unknown as Record<string, unknown>)
+        : { ...(parsed as unknown as Record<string, unknown>), link };
+    element.content = sanitizeContentLinks(merged, pageIds);
+    return;
+  }
+  element.content = sanitizeContentLinks(
     { ...element.content, ...content },
     pageIds,
   );
-  element.content = merged;
 }
 
 function updateName(doc: EditorDoc, elementId: string, name: string) {
@@ -445,9 +464,21 @@ function restackSection(doc: EditorDoc, sectionId: string) {
   }
 }
 
+function reorderPagesInDoc(doc: EditorDoc, pageId: string, newIndex: number) {
+  const sorted = [...doc.pages].sort((a, b) => a.sortOrder - b.sortOrder);
+  const currentIndex = sorted.findIndex((p) => p.id === pageId);
+  if (currentIndex === -1) throw new Error("Unknown page");
+  const [moved] = sorted.splice(currentIndex, 1);
+  const clamped = Math.max(0, Math.min(newIndex, sorted.length));
+  sorted.splice(clamped, 0, moved);
+  sorted.forEach((page, index) => {
+    page.sortOrder = index;
+  });
+}
+
 function resetMobileAuto(doc: EditorDoc, pageId: string) {
   const sectionIds = doc.sections
-    .filter((s) => s.pageId === pageId || s.pageId === null)
+    .filter((s) => s.pageId === pageId)
     .map((s) => s.id);
   for (const sectionId of sectionIds) {
     for (const item of stackItemsForSection(doc, sectionId)) {

@@ -18,8 +18,13 @@ function assetPath(doc: EditorDoc, assetId: string | null): string | null {
   if (!assetId) return null;
   const asset = doc.assets?.[assetId];
   if (!asset) return null;
-  if (!asset.path.includes(`${doc.siteId}/`)) return null;
-  return asset.path;
+  const raw = asset.path.trim();
+  if (/^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("//")) return null;
+  const normalized = raw.replace(/^\/+/, "");
+  const prefix = `${doc.siteId}/`;
+  if (!normalized.startsWith(prefix)) return null;
+  if (normalized.split("/").includes("..")) return null;
+  return normalized;
 }
 
 function renderLink(

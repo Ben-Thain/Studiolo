@@ -78,6 +78,29 @@ describe("extended commands", () => {
       "auto",
     );
   });
+
+  it("resetMobileAuto does not change the site-wide header manual mobile layout", () => {
+    const headerSection = rivertonHomeDoc.sections.find(
+      (s) => s.pageId === null,
+    )!;
+    const headerElement = rivertonHomeDoc.elements.find(
+      (e) => e.sectionId === headerSection.id,
+    )!;
+    const manual = applyCommand(rivertonHomeDoc, {
+      type: "move",
+      elementId: headerElement.id,
+      breakpoint: "mobile",
+      col: 2,
+      row: 20,
+    });
+    const reset = applyCommand(manual.doc, {
+      type: "resetMobileAuto",
+      pageId: RIVERTON_HOME,
+    });
+    const headerMobile = layoutFor(reset.doc, headerElement.id, "mobile");
+    expect(headerMobile?.placementSource).toBe("manual");
+    expect(headerMobile?.row).toBe(20);
+  });
 });
 
 function layoutFor(

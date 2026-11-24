@@ -12,13 +12,23 @@ import {
   fetchEditorDoc,
   persistSiteDraft,
 } from "@/app/(app)/sites/[siteId]/editor/actions";
+import type { SaveDraftResult } from "@/lib/editor/save";
 
 type SaveStatusStore = {
   get: () => PersistState;
   subscribe: (listener: () => void) => () => void;
 };
 
-const BACKOFF_SECONDS = [2, 5, 10, 30] as const;
+export const SAVE_ERROR_BACKOFF_SECONDS = [2, 5, 10, 30] as const;
+
+export function saveErrorRetryDelayMs(
+  errorAttempt: number,
+  backoff: readonly number[] = SAVE_ERROR_BACKOFF_SECONDS,
+): number {
+  return (errorAttempt < backoff.length ? backoff[errorAttempt] : 30) * 1000;
+}
+
+const BACKOFF_SECONDS = SAVE_ERROR_BACKOFF_SECONDS;
 
 function createStatusStore(initial: PersistState): SaveStatusStore & {
   set: (s: PersistState) => void;
@@ -45,13 +55,32 @@ export type EditorPersistHandle = {
   flush: () => Promise<void>;
 };
 
+export class AuthExpiredError extends Error {
+  constructor() {
+    super("session_expired");
+    this.name = "AuthExpiredError";
+  }
+}
+
 /** Client wrapper: debounced save with 409 refetch, rebase and one retry. */
 export function createEditorPersist(args: {
   siteId: string;
   doc: EditorDoc;
   onSessionExpired?: () => void;
+  /** Test hook: override error-retry delays (seconds). */
+  retryBackoffSeconds?: readonly number[];
+  saveDraft?: (input: {
+    siteId: string;
+    expectedRevision: number;
+    changes: DraftChanges;
+  }) => Promise<SaveDraftResult>;
+  fetchDoc?: (siteId: string) => Promise<EditorDoc>;
 }): EditorPersistHandle {
   let doc = args.doc;
+  let sessionExpiredFired = false;
+  const saveDraft = args.saveDraft ?? persistSiteDraft;
+  const fetchDoc = args.fetchDoc ?? fetchEditorDoc;
+
   const store = createStatusStore({
     status: "saved",
     revision: doc.revision,
@@ -68,33 +97,44 @@ export function createEditorPersist(args: {
     maxWaitMs: 5000,
     onStatus: (state) => store.set(state),
     save: async ({ siteId, expectedRevision, changes }) => {
-      let attempt = 0;
-      while (attempt < BACKOFF_SECONDS.length + 1) {
-        try {
-          return await persistSiteDraft({
-            siteId,
-            expectedRevision,
-            changes,
-            pageIds: doc.pages.map((p) => p.id),
-          });
-        } catch (error) {
-          if (error instanceof StaleRevisionError) {
-            doc = await fetchEditorDoc(siteId);
-            persister.setDoc(doc);
-            persister.setRevision(doc.revision);
-            if (attempt === 0) {
-              attempt += 1;
-              continue;
-            }
-            throw error;
+      let revision = expectedRevision;
+      let staleRetries = 0;
+      let errorAttempt = 0;
+      while (true) {
+        const result = await saveDraft({
+          siteId,
+          expectedRevision: revision,
+          changes,
+        });
+        if (result.ok) return result.revision;
+
+        if (result.code === "auth") {
+          if (!sessionExpiredFired) {
+            sessionExpiredFired = true;
+            args.onSessionExpired?.();
           }
-          if (attempt >= BACKOFF_SECONDS.length) throw error;
-          const delay = BACKOFF_SECONDS[attempt] * 1000;
-          attempt += 1;
-          await new Promise((resolve) => setTimeout(resolve, delay));
+          throw new AuthExpiredError();
         }
+
+        if (result.code === "stale") {
+          if (staleRetries === 0) {
+            doc = await fetchDoc(siteId);
+            persister.setDoc(doc);
+            revision = doc.revision;
+            persister.setRevision(revision);
+            staleRetries += 1;
+            continue;
+          }
+          throw new StaleRevisionError();
+        }
+
+        const delay = saveErrorRetryDelayMs(
+          errorAttempt,
+          args.retryBackoffSeconds ?? BACKOFF_SECONDS,
+        );
+        errorAttempt += 1;
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
-      throw new Error("save_exhausted");
     },
     isOffline: () =>
       typeof navigator !== "undefined" ? navigator.onLine === false : false,
@@ -104,10 +144,6 @@ export function createEditorPersist(args: {
     persister,
     status: store,
     queue: (changes) => {
-      if (!doc.pages.length) {
-        args.onSessionExpired?.();
-        return;
-      }
       persister.queue(changes);
     },
     flush: () => persister.flush(),

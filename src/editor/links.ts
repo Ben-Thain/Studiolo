@@ -2,12 +2,26 @@
  * Inline links on text and image content (prompt 05).
  */
 
-import { elementLinkSchema } from "./schema";
+import { z } from "zod";
 import type { DraftChanges } from "./schema";
 import type { EditorDoc, ElementLink, LinkKind } from "./types";
 
 const UNSAFE_PROTOCOL = /^\s*(javascript|data|vbscript):/i;
 const PROTOCOL_RELATIVE = /^\s*\/\//;
+const MAILTO_QUERY = /\?|#/;
+
+const linkKindSchema = z.enum(["page", "url", "email"]);
+
+const linkShape = z.object({
+  kind: linkKindSchema,
+  value: z.string().min(1),
+});
+
+export const elementLinkSchema = linkShape.superRefine((link, ctx) => {
+  if (validateLink(link) === null) {
+    ctx.addIssue({ code: "custom", message: "Invalid link" });
+  }
+});
 
 export function parseLink(value: unknown): ElementLink | null {
   const parsed = elementLinkSchema.safeParse(value);
@@ -52,7 +66,9 @@ export function normalizeUrl(raw: string): string | null {
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function normalizeEmail(raw: string): string | null {
-  const trimmed = raw.trim();
+  const stripped = raw.trim().replace(/^mailto:/i, "");
+  if (MAILTO_QUERY.test(stripped)) return null;
+  const trimmed = stripped.trim();
   if (!trimmed || EMAIL_PATTERN.test(trimmed) === false) return null;
   if (/\s/.test(raw) && raw !== trimmed) return null;
   return trimmed.toLowerCase();
@@ -62,8 +78,9 @@ export function validateLink(
   link: unknown,
   pageIds?: Set<string>,
 ): ElementLink | null {
-  const parsed = parseLink(link);
-  if (!parsed) return null;
+  const shaped = linkShape.safeParse(link);
+  if (!shaped.success) return null;
+  const parsed = shaped.data;
   switch (parsed.kind) {
     case "page":
       if (pageIds && !pageIds.has(parsed.value)) return null;
@@ -106,12 +123,9 @@ export function sanitizeContentLinks(
   content: Record<string, unknown>,
   pageIds: Set<string>,
 ): Record<string, unknown> {
-  const link = getContentLink(content);
-  if (!link) return content;
-  const valid = validateLink(link, pageIds);
-  if (!valid) {
-    return setContentLink(content, null);
-  }
+  if (!("link" in content) || content.link == null) return content;
+  const valid = validateLink(content.link, pageIds);
+  if (!valid) return setContentLink(content, null);
   return setContentLink(content, valid);
 }
 

@@ -324,6 +324,10 @@ export function cloneDoc(doc: EditorDoc): EditorDoc {
       content: { ...e.content },
     })),
     layouts: doc.layouts.map((l) => ({ ...l })),
-    assets: doc.assets ? { ...doc.assets } : undefined,
+    assets: doc.assets
+      ? Object.fromEntries(
+          Object.entries(doc.assets).map(([id, row]) => [id, { ...row }]),
+        )
+      : undefined,
   };
 }

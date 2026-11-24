@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { emptyChanges } from "@/editor/changes";
 import { createDoc } from "@/editor/doc";
 import {
@@ -11,10 +11,21 @@ import {
   writeDraftRow,
 } from "@/editor/persist";
 
-const SITE = "40000000-0000-4000-8000-000000000011";
+let siteCounter = 0;
+function testSite() {
+  siteCounter += 1;
+  return `40000000-0000-4000-8000-${String(siteCounter).padStart(12, "0")}`;
+}
 
-afterEach(() => {
+let SITE = testSite();
+
+afterEach(async () => {
   vi.useRealTimers();
+  await clearDraftRow(SITE);
+});
+
+beforeEach(() => {
+  SITE = testSite();
 });
 
 describe("persist", () => {
@@ -113,7 +124,9 @@ describe("persist", () => {
       },
     });
     const flight = persister.flush();
-    await Promise.resolve();
+    while (save.mock.calls.length === 0) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
     persister.queue({
       pages: {
         upsert: [
@@ -130,7 +143,6 @@ describe("persist", () => {
     });
     release();
     await flight;
-    await new Promise((r) => setTimeout(r, 0));
     expect(save).toHaveBeenCalledTimes(2);
     expect(save.mock.calls[1]?.[0].changes.pages?.upsert?.[0]?.title).toBe(
       "Second",
@@ -139,7 +151,6 @@ describe("persist", () => {
   });
 
   it("merges back failed batches and saves queued edits during flight immediately after", async () => {
-    vi.useFakeTimers();
     let calls = 0;
     const save = vi.fn(async () => {
       calls += 1;
@@ -186,20 +197,133 @@ describe("persist", () => {
         ],
       },
     });
-    await vi.runAllTimersAsync();
+    await persister.flush();
     expect(save).toHaveBeenCalledTimes(2);
     expect(persister.getState().revision).toBe(4);
   });
 
+  it("keeps in-flight edits through a 409 and saves both afterwards", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let calls = 0;
+    const save = vi.fn(
+      async (payload: {
+        changes: { pages?: { upsert?: { title: string }[] } };
+      }) => {
+        calls += 1;
+        await gate;
+        const title = payload.changes.pages?.upsert?.[0]?.title;
+        if (calls === 1) throw new Error("stale_revision ST409");
+        return title === "second" ? 7 : 6;
+      },
+    );
+    const persister = createPersister({
+      siteId: SITE,
+      initialRevision: 4,
+      doc: createDoc(SITE, 4),
+      save,
+      debounceMs: 0,
+    });
+    persister.queue({
+      pages: {
+        upsert: [
+          {
+            id: "p",
+            title: "first",
+            slug: "first",
+            sort_order: 0,
+            in_nav: true,
+            is_home: true,
+          },
+        ],
+      },
+    });
+    const flight = persister.flush();
+    while (save.mock.calls.length === 0) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    persister.queue({
+      pages: {
+        upsert: [
+          {
+            id: "p",
+            title: "second",
+            slug: "second",
+            sort_order: 0,
+            in_nav: true,
+            is_home: true,
+          },
+        ],
+      },
+    });
+    release();
+    await expect(flight).rejects.toBeInstanceOf(StaleRevisionError);
+    expect(persister.getState().pending.pages?.upsert?.[0]?.title).toBe(
+      "second",
+    );
+    await persister.flush();
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(persister.getState().revision).toBe(7);
+  });
+
+  it("preserves newer offline edits when merging a failed batch", async () => {
+    const save = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("network error"))
+      .mockResolvedValueOnce(5);
+    const persister = createPersister({
+      siteId: SITE,
+      initialRevision: 3,
+      doc: createDoc(SITE, 3),
+      save,
+      debounceMs: 0,
+      isOffline: () => false,
+    });
+    persister.queue({
+      pages: {
+        upsert: [
+          {
+            id: "p",
+            title: "old",
+            slug: "old",
+            sort_order: 0,
+            in_nav: true,
+            is_home: true,
+          },
+        ],
+      },
+    });
+    await persister.flush();
+    persister.queue({
+      pages: {
+        upsert: [
+          {
+            id: "p",
+            title: "NEW",
+            slug: "new",
+            sort_order: 0,
+            in_nav: true,
+            is_home: true,
+          },
+        ],
+      },
+    });
+    await persister.flush();
+    expect(save.mock.calls.at(-1)?.[0].changes.pages?.upsert?.[0]?.title).toBe(
+      "NEW",
+    );
+  });
+
   it("surfaces ST409 as error", async () => {
-    vi.useFakeTimers();
     const save = vi.fn().mockRejectedValue(new Error("stale_revision ST409"));
     const persister = createPersister({
       siteId: SITE,
       initialRevision: 1,
       doc: createDoc(SITE, 1),
       save,
-      debounceMs: 10,
+      debounceMs: 0,
     });
     persister.queue(emptyChanges());
     persister.queue({
@@ -285,7 +409,8 @@ describe("persist", () => {
       save,
       debounceMs: 0,
     });
-    await hydrateDraft(persister, createDoc(SITE, 3));
+    const hydrated = await hydrateDraft(persister, createDoc(SITE, 3));
+    expect(hydrated.pages[0]?.title).toBe("After crash");
     await persister.flush();
     expect(save).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -293,6 +418,75 @@ describe("persist", () => {
         changes: pending,
       }),
     );
+    await clearDraftRow(SITE);
+  });
+
+  it("keeps IndexedDB pending when a save succeeds during an in-flight queue", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let hangSecond!: () => void;
+    const secondGate = new Promise<void>((resolve) => {
+      hangSecond = resolve;
+    });
+    let saveCalls = 0;
+    const save = vi.fn(async () => {
+      saveCalls += 1;
+      if (saveCalls === 1) {
+        await gate;
+        return 11;
+      }
+      await secondGate;
+      return 12;
+    });
+    const persister = createPersister({
+      siteId: SITE,
+      initialRevision: 10,
+      doc: createDoc(SITE, 10),
+      save,
+      debounceMs: 0,
+    });
+    persister.queue({
+      pages: {
+        upsert: [
+          {
+            id: "p",
+            title: "saved",
+            slug: "saved",
+            sort_order: 0,
+            in_nav: true,
+            is_home: true,
+          },
+        ],
+      },
+    });
+    const flight = persister.flush();
+    while (save.mock.calls.length === 0) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    persister.queue({
+      pages: {
+        upsert: [
+          {
+            id: "p",
+            title: "after crash",
+            slug: "after",
+            sort_order: 0,
+            in_nav: true,
+            is_home: true,
+          },
+        ],
+      },
+    });
+    release();
+    while (saveCalls < 2) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    const row = await readDraftRow(SITE);
+    expect(row?.pending.pages?.upsert?.[0]?.title).toBe("after crash");
+    hangSecond();
+    await flight;
     await clearDraftRow(SITE);
   });
 });

@@ -13,9 +13,25 @@ export type TextAlign = "left" | "center" | "right";
 
 export type LinkKind = "page" | "url" | "email";
 
-export type FontFamily = "Inter" | "Georgia" | "Times New Roman";
+export type FontFamily = "Inter" | "Geist" | "Manrope" | "Instrument Serif";
 
-export type SizeStep = 13 | 16 | 18 | 24 | 32 | 40 | 48 | 64 | 80 | 96 | 108;
+export type SizeStep =
+  | 12
+  | 13
+  | 14
+  | 16
+  | 18
+  | 20
+  | 22
+  | 24
+  | 28
+  | 32
+  | 40
+  | 48
+  | 64
+  | 80
+  | 96
+  | 108;
 
 export type EditorAsset = {
   path: string;

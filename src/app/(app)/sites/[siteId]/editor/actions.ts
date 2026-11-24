@@ -12,7 +12,6 @@ export async function persistSiteDraft(args: {
   siteId: string;
   expectedRevision: number;
   changes: DraftChanges;
-  pageIds: string[];
 }) {
   return saveSiteDraft(args);
 }
