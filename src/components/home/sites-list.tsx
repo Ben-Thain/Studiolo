@@ -100,7 +100,12 @@ export function SitesList({
 
   return (
     <>
-      <Table className="hidden max-w-[944px] table-fixed min-[900px]:table">
+      <div
+        className="hidden max-w-[944px] min-[900px]:block outline-none"
+        data-sites-focus=""
+        tabIndex={-1}
+      >
+      <Table className="w-full table-fixed">
         <SitesTableHead />
         <TableBody>
           {sites.map((site) => (
@@ -139,12 +144,14 @@ export function SitesList({
                   name={site.name}
                   live={site.status === "live"}
                   url={site.url}
+                  hasDomain={site.hasDomain}
                 />
               </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
+      </div>
 
       <ul className="min-[900px]:hidden">
         {sites.map((site) => (

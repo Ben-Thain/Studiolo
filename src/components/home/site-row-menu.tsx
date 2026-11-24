@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { duplicateSite } from "@/app/(app)/sites/actions";
+import { DeleteSiteDialog } from "@/components/sites/delete-site-dialog";
 import { IconButton } from "@/components/ui/icon-button";
 import { Icon } from "@/components/ui/icons";
 import { Menu } from "@/components/ui/menu";
@@ -12,22 +13,28 @@ import { SITES_COPY } from "@/lib/sites/copy";
 
 /**
  * The row ⋯ menu (d-sites.png): Duplicate, View live (only when Live),
- * divider, Delete. Prompt 04b wires Delete; until then it is shown disabled.
+ * divider, Delete.
  */
 export function SiteRowMenu({
   siteId,
   name,
   live,
   url,
+  hasDomain,
+  onDeleteComplete,
 }: {
   siteId: string;
   name: string;
   live: boolean;
   url: string;
+  hasDomain: boolean;
+  onDeleteComplete?: () => void;
 }) {
   const router = useRouter();
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const menuLabel = HOME_COPY.menu.label(name);
 
   async function duplicate() {
     if (busy) return;
@@ -54,14 +61,16 @@ export function SiteRowMenu({
   }
 
   return (
+    <>
     <Menu
       align="end"
       trigger={
         <IconButton
-          label={HOME_COPY.menu.label(name)}
+          label={menuLabel}
           size="desktop"
           className="size-8"
           aria-busy={busy || undefined}
+          data-site-menu={siteId}
         >
           <Icon name="ellipsis" size={16} />
         </IconButton>
@@ -92,9 +101,31 @@ export function SiteRowMenu({
           label: HOME_COPY.menu.delete,
           icon: <Icon name="trash" size={16} />,
           destructive: true,
-          disabled: true,
+          disabled: busy,
+          onSelect: () => setDeleteOpen(true),
         },
       ]}
     />
+    <DeleteSiteDialog
+      siteId={siteId}
+      name={name}
+      hasDomain={hasDomain}
+      open={deleteOpen}
+      onClose={() => setDeleteOpen(false)}
+      returnFocus={() =>
+        document.querySelector<HTMLElement>(
+          `[data-site-menu="${siteId}"]`,
+        ) ?? undefined
+      }
+      onDeleted={() => {
+        onDeleteComplete?.();
+        requestAnimationFrame(() => {
+          document
+            .querySelector<HTMLElement>("[data-sites-focus]")
+            ?.focus();
+        });
+      }}
+    />
+    </>
   );
 }

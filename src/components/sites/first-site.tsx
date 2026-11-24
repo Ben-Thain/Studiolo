@@ -1,4 +1,5 @@
 import type { AddressParts } from "@/lib/addresses";
+import { RecentlyDeletedLink } from "@/components/home/recently-deleted-link";
 import { SITES_COPY } from "@/lib/sites/copy";
 import { NewSiteForm } from "./new-site-form";
 
@@ -6,7 +7,13 @@ import { NewSiteForm } from "./new-site-form";
  * Zero sites (d-empty.png): no page head, a centred 480px column that leads
  * with creating. Desktop: the column's top sits 200px from the top.
  */
-export function FirstSite({ parts }: { parts: AddressParts }) {
+export function FirstSite({
+  parts,
+  restorableCount = 0,
+}: {
+  parts: AddressParts;
+  restorableCount?: number;
+}) {
   return (
     <section
       aria-labelledby="first-site-title"
@@ -22,6 +29,9 @@ export function FirstSite({ parts }: { parts: AddressParts }) {
         {SITES_COPY.firstLead}
       </p>
       <NewSiteForm variant="first" parts={parts} />
+      <div className="mt-6 flex justify-center">
+        <RecentlyDeletedLink count={restorableCount} />
+      </div>
     </section>
   );
 }

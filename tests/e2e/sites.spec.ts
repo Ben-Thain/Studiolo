@@ -418,6 +418,142 @@ test.describe("duplicate with a missing image file", () => {
   });
 });
 
+test.describe("delete and restore", () => {
+  test("delete needs the exact name, then Undo restores a Draft", async ({
+    page,
+  }) => {
+    await signInAs(page, uniqueEmail("del-undo"));
+    const north = uniqueName("North Light");
+    await createFirstSite(page, north);
+    await page.getByRole("link", { name: "Sites" }).click();
+    await expect(page).toHaveURL("/sites");
+    await page.getByRole("button", { name: `Actions for ${north}` }).click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
+    const dialog = page.getByRole("dialog", { name: `Delete ${north}?` });
+    await expect(dialog).toBeVisible();
+    const deleteBtn = dialog.getByRole("button", { name: "Delete site" });
+    await expect(deleteBtn).toBeDisabled();
+    await dialog.getByRole("textbox").fill("Wrong");
+    await expect(deleteBtn).toBeDisabled();
+    await dialog.getByRole("textbox").fill(north);
+    await expect(deleteBtn).toBeEnabled();
+    await deleteBtn.click();
+    await expect(dialog).toBeHidden();
+    await expect(page.getByText(`${north} deleted`)).toBeVisible();
+    await expect(page.getByRole("link", { name: north })).toHaveCount(0);
+    await page.getByRole("button", { name: "Undo" }).click();
+    await expect(page).toHaveURL(/highlight=/);
+    const row = page.getByRole("table").getByRole("row").filter({
+      hasText: north,
+    });
+    await expect(row).toContainText("Draft");
+    await expect(row).toHaveAttribute("data-highlighted", "");
+    await expect(page.getByText(`${north} restored as a draft`)).toBeVisible();
+    const siteId = new URL(page.url()).searchParams.get("highlight")!;
+    const gone = await page.goto(`/sites/${siteId}/pages`);
+    expect(gone?.status()).toBe(200);
+  });
+
+  test("Recently deleted lists a site and Restore brings it back", async ({
+    page,
+  }) => {
+    await signInAs(page, uniqueEmail("del-page"));
+    const name = uniqueName("North Light");
+    const { siteId } = await createFirstSite(page, name);
+    await page.goto("/sites");
+    await page.getByRole("button", { name: `Actions for ${name}` }).click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
+    await page
+      .getByRole("dialog", { name: `Delete ${name}?` })
+      .getByRole("textbox")
+      .fill(name);
+    await page.getByRole("button", { name: "Delete site" }).click();
+    await expect(page.getByRole("link", { name: /Recently deleted \(1\)/ })).toBeVisible();
+    await page.getByRole("link", { name: /Recently deleted \(1\)/ }).click();
+    await expect(page).toHaveURL("/sites/deleted");
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Recently deleted" }),
+    ).toBeVisible();
+    const row = page.getByRole("table").getByRole("row").filter({
+      hasText: name,
+    });
+    await expect(row).toBeVisible();
+    await row.getByRole("button", { name: "Restore" }).click();
+    await expect(page).toHaveURL(/\/sites\?highlight=/);
+    await expect(page.getByText(`${name} restored as a draft`)).toBeVisible();
+    const response = await page.goto(`/sites/${siteId}/pages`);
+    expect(response?.status()).toBe(200);
+  });
+
+  test("restore picks -2 when the address was taken", async ({ page }) => {
+    test.setTimeout(60_000);
+    await signInAs(page, uniqueEmail("del-rename"));
+    const slugBase = `north-light-${Math.random().toString(36).slice(2, 8)}`;
+    const first = uniqueName("First Light");
+    await page.getByRole("textbox", { name: "Site name" }).fill(first);
+    await page.getByRole("button", { name: "Edit address" }).click();
+    await page.getByRole("textbox", { name: "Address" }).fill(slugBase);
+    await page.getByRole("button", { name: "Create site" }).click();
+    await expect(page).toHaveURL(new RegExp(`/sites/${UUID}/editor/${UUID}$`));
+    await page.goto("/sites");
+    await expect(page.getByRole("link", { name: first })).toBeVisible();
+    await page.getByRole("button", { name: `Actions for ${first}` }).click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
+    await page
+      .getByRole("dialog")
+      .getByRole("textbox")
+      .fill(first);
+    await page.getByRole("button", { name: "Delete site" }).click();
+
+    const second = uniqueName("North Light");
+    await page.getByRole("textbox", { name: "Site name" }).fill(second);
+    await page.getByRole("button", { name: "Edit address" }).click();
+    await page.getByRole("textbox", { name: "Address" }).fill(slugBase);
+    await page.getByRole("button", { name: "Create site" }).click();
+    await expect(page).toHaveURL(new RegExp(`/sites/${UUID}/editor/${UUID}$`));
+    await page.goto("/sites");
+    await expect(page.getByRole("link", { name: second })).toBeVisible();
+    await page.getByRole("link", { name: /Recently deleted \(1\)/ }).click();
+    await page
+      .getByRole("table")
+      .getByRole("row")
+      .filter({ hasText: first })
+      .getByRole("button", { name: "Restore" })
+      .click();
+    const renamed = `${slugBase}-2`;
+    await expect(
+      page.getByText(`${first} restored as a draft at ${HOST}${renamed}`),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("table").getByRole("row").filter({ hasText: first }),
+    ).toContainText(renamed);
+  });
+
+  test("another user cannot see or open a deleted site", async ({ page }) => {
+    const owner = uniqueEmail("del-owner");
+    await signInAs(page, owner);
+    const name = uniqueName("Secret Yard");
+    const { siteId } = await createFirstSite(page, name);
+    await page.goto("/sites");
+    await page.getByRole("button", { name: `Actions for ${name}` }).click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
+    await page
+      .getByRole("dialog")
+      .getByRole("textbox")
+      .fill(name);
+    await page.getByRole("button", { name: "Delete site" }).click();
+    await expect(page.getByRole("link", { name: /Recently deleted \(1\)/ })).toBeVisible();
+
+    const intruder = uniqueEmail("del-intruder");
+    await signInAs(page, intruder);
+    await page.goto("/sites/deleted");
+    await expect(page).toHaveURL("/sites");
+    await expect(page.getByText(name)).toHaveCount(0);
+    const response = await page.goto(`/sites/${siteId}/pages`);
+    expect(response?.status()).toBe(404);
+  });
+});
+
 test.describe("row menu (seeded account)", () => {
   test("View live opens the canonical address; drafts have no View live", async ({
     page,

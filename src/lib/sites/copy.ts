@@ -26,6 +26,32 @@ export const SITES_COPY = {
   duplicateFailed: (name: string) =>
     `We couldn't duplicate ${name}. Try again.`,
   siteGone: "This site no longer exists.",
+  deleteFailed: "We couldn't delete that site. Try again.",
+  restoreFailed: "We couldn't restore that site. Try again.",
+  restoreExpired: "This site can't be restored any more.",
+  deleted: (name: string) => `${name} deleted`,
+  restored: (name: string) => `${name} restored as a draft`,
+  restoredRenamed: (name: string, address: string) =>
+    `${name} restored as a draft at ${address}`,
+  undo: "Undo",
+  deleteSite: "Delete site",
+  deleteTitle: (name: string) => `Delete ${name}?`,
+  deleteConfirmLabel: (name: string) => `Type ${name} to confirm`,
+  deleteLead: (name: string) =>
+    `${name} will go offline straight away. You can restore it from Recently deleted for 30 days.`,
+  deleteLeadDomain:
+    "Its custom domain will be disconnected.",
+  recentlyDeletedTitle: "Recently deleted",
+  recentlyDeleted: "Recently deleted",
+  recentlyDeletedLead:
+    "Deleted sites stay here for 30 days, then they're removed for good.",
+  recentlyDeletedFootnote:
+    "A restored site comes back as a draft, so publish it to put it online again. It keeps its address if no one has taken it. A custom domain is disconnected on delete and needs connecting again.",
+  restore: "Restore",
+  deletedColumns: {
+    deleted: "Deleted",
+    deletesOn: "Deletes on",
+  },
   openEditor: "Open editor",
   publish: "Publish",
   publishSoon: "Publishing comes next",

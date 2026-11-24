@@ -2,8 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { studioloAddress } from "@/lib/addresses";
 import { requireUser } from "@/lib/auth/session";
 import { SITES_COPY } from "@/lib/sites/copy";
+import {
+  detachSiteDomain,
+  invalidateSiteCaches,
+} from "@/lib/sites/hooks";
 import { isValidSlug } from "@/lib/sites/slug";
 import { starterChanges } from "@/lib/sites/starter";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -278,5 +283,142 @@ export async function duplicateSite(
     ok: true,
     siteId: copy.id,
     message: SITES_COPY.duplicated(source.name),
+  };
+}
+
+export type DeleteSiteResult =
+  | { ok: true; siteId: string; name: string }
+  | { ok: false; error: string };
+
+export type RestoreSiteResult =
+  | {
+      ok: true;
+      siteId: string;
+      name: string;
+      slug: string;
+      slugChanged: boolean;
+      address: string;
+    }
+  | { ok: false; error: string; expired?: boolean };
+
+/**
+ * Soft-deletes a site (service role after an ownership check): offline at once,
+ * kept for 30 days, custom domain detached.
+ */
+export async function deleteSite(siteId: string): Promise<DeleteSiteResult> {
+  const user = await requireUser();
+  if (!UUID.test(String(siteId))) {
+    return { ok: false, error: SITES_COPY.siteGone };
+  }
+  const supabase = await createClient();
+  const { data: site, error: readError } = await supabase
+    .from("sites")
+    .select("id, name")
+    .eq("id", siteId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (readError) return { ok: false, error: SITES_COPY.deleteFailed };
+  if (!site) return { ok: false, error: SITES_COPY.siteGone };
+
+  let admin: ReturnType<typeof createAdminClient>;
+  try {
+    admin = createAdminClient();
+  } catch {
+    return { ok: false, error: SITES_COPY.deleteFailed };
+  }
+
+  const purgeAfter = new Date();
+  purgeAfter.setDate(purgeAfter.getDate() + 30);
+  const { data: updated, error: deleteError } = await admin
+    .from("sites")
+    .update({
+      deleted_at: new Date().toISOString(),
+      purge_after: purgeAfter.toISOString(),
+      live_publish_id: null,
+    })
+    .eq("id", siteId)
+    .eq("owner_id", user.id)
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
+  if (deleteError || !updated) {
+    return { ok: false, error: SITES_COPY.deleteFailed };
+  }
+
+  try {
+    await detachSiteDomain(siteId);
+    await invalidateSiteCaches(siteId);
+  } catch {
+    return { ok: false, error: SITES_COPY.deleteFailed };
+  }
+
+  revalidatePath("/sites");
+  revalidatePath("/sites/deleted");
+  return { ok: true, siteId, name: site.name };
+}
+
+/**
+ * Restores a soft-deleted site as a Draft (service role). Used by Undo, Restore
+ * and prompt 08 Settings → Delete site undo paths.
+ */
+export async function restoreSite(siteId: string): Promise<RestoreSiteResult> {
+  const user = await requireUser();
+  if (!UUID.test(String(siteId))) {
+    return { ok: false, error: SITES_COPY.siteGone };
+  }
+  const supabase = await createClient();
+  const { data: site, error: readError } = await supabase
+    .from("sites")
+    .select("id, name, deleted_at, purge_after")
+    .eq("id", siteId)
+    .maybeSingle();
+  if (readError) return { ok: false, error: SITES_COPY.restoreFailed };
+  if (!site?.deleted_at) return { ok: false, error: SITES_COPY.siteGone };
+  if (!site.purge_after || new Date(site.purge_after) <= new Date()) {
+    return {
+      ok: false,
+      error: SITES_COPY.restoreExpired,
+      expired: true,
+    };
+  }
+
+  let admin: ReturnType<typeof createAdminClient>;
+  try {
+    admin = createAdminClient();
+  } catch {
+    return { ok: false, error: SITES_COPY.restoreFailed };
+  }
+
+  const { data: rows, error: restoreError } = await admin.rpc("restore_site", {
+    p_site: siteId,
+    p_owner: user.id,
+  });
+  const row = rows?.[0];
+  if (restoreError || !row) {
+    if (restoreError?.code === "ST404") {
+      return {
+        ok: false,
+        error: SITES_COPY.restoreExpired,
+        expired: true,
+      };
+    }
+    return { ok: false, error: SITES_COPY.restoreFailed };
+  }
+
+  try {
+    await invalidateSiteCaches(siteId);
+  } catch {
+    return { ok: false, error: SITES_COPY.restoreFailed };
+  }
+
+  revalidatePath("/sites");
+  revalidatePath("/sites/deleted");
+  return {
+    ok: true,
+    siteId,
+    name: site.name,
+    slug: row.slug,
+    slugChanged: row.slug_changed,
+    address: studioloAddress(row.slug),
   };
 }

@@ -74,10 +74,20 @@ export type SiteListItem = {
   name: string;
   status: "live" | "draft";
   passwordOn: boolean;
+  hasDomain: boolean;
   address: string;
   /** The canonical address as a URL, for View live. */
   url: string;
   lastEditedAt: string;
+};
+
+export type DeletedSiteItem = {
+  id: string;
+  name: string;
+  slug: string;
+  address: string;
+  deletedAt: string;
+  purgeAfter: string;
 };
 
 /** The user's sites, not deleted, most recently edited first. */
@@ -115,17 +125,55 @@ export async function listSites(): Promise<SiteListItem[]> {
   );
 
   return sites.map((site) => {
-    const address = canonicalAddress(site, bySite.get(site.id));
+    const domain = bySite.get(site.id);
+    const address = canonicalAddress(site, domain);
     return {
       id: site.id,
       name: site.name,
       status: site.live_publish_id ? "live" : "draft",
       passwordOn: site.password_enabled,
+      hasDomain: domain !== undefined,
       address,
       url: addressUrl(address),
       lastEditedAt: site.draft_updated_at,
     };
   });
+}
+
+const nowIso = () => new Date().toISOString();
+
+/** Soft-deleted sites the user can still restore. */
+export async function listRestorableSites(): Promise<DeletedSiteItem[]> {
+  await requireUser();
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("sites")
+    .select("id, name, slug, deleted_at, purge_after")
+    .not("deleted_at", "is", null)
+    .gt("purge_after", nowIso())
+    .order("deleted_at", { ascending: false });
+  if (error) throw new Error("Could not load recently deleted sites.");
+  return data.map((site) => ({
+    id: site.id,
+    name: site.name,
+    slug: site.slug,
+    address: canonicalAddress(site, null),
+    deletedAt: site.deleted_at!,
+    purgeAfter: site.purge_after!,
+  }));
+}
+
+/** Count for the quiet Recently deleted link. */
+export async function countRestorableSites(): Promise<number> {
+  await requireUser();
+  const supabase = await createClient();
+  const { count, error } = await supabase
+    .from("sites")
+    .select("id", { count: "exact", head: true })
+    .not("deleted_at", "is", null)
+    .gt("purge_after", nowIso());
+  if (error) throw new Error("Could not load recently deleted sites.");
+  return count ?? 0;
 }
 
 /** How many sites the user has (not deleted), for the Delete account copy. */
