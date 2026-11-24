@@ -86,7 +86,10 @@ function pageRow(page: EditorPage) {
   };
 }
 
-export function upsertChanges(doc: EditorDoc, snapshot: DocSnapshot): DraftChanges {
+export function upsertChanges(
+  doc: EditorDoc,
+  snapshot: DocSnapshot,
+): DraftChanges {
   const changes = emptyChanges();
   const touchedLayouts = new Set<string>();
   const touchedElements = new Set<string>();
@@ -145,28 +148,39 @@ export function upsertChanges(doc: EditorDoc, snapshot: DocSnapshot): DraftChang
     .filter((l) => touchedLayouts.has(l.id))
     .map(layoutRow);
   const layoutDelete = snapshot.layouts
-    .filter((l) => touchedLayouts.has(l.id) && !doc.layouts.some((x) => x.id === l.id))
+    .filter(
+      (l) =>
+        touchedLayouts.has(l.id) && !doc.layouts.some((x) => x.id === l.id),
+    )
     .map((l) => l.id);
 
   const elementUpsert = doc.elements
     .filter((e) => touchedElements.has(e.id))
     .map(elementRow);
   const elementDelete = snapshot.elements
-    .filter((e) => touchedElements.has(e.id) && !doc.elements.some((x) => x.id === e.id))
+    .filter(
+      (e) =>
+        touchedElements.has(e.id) && !doc.elements.some((x) => x.id === e.id),
+    )
     .map((e) => e.id);
 
   const sectionUpsert = doc.sections
     .filter((s) => touchedSections.has(s.id))
     .map(sectionRow);
   const sectionDelete = snapshot.sections
-    .filter((s) => touchedSections.has(s.id) && !doc.sections.some((x) => x.id === s.id))
+    .filter(
+      (s) =>
+        touchedSections.has(s.id) && !doc.sections.some((x) => x.id === s.id),
+    )
     .map((s) => s.id);
 
   const pageUpsert = doc.pages
     .filter((p) => touchedPages.has(p.id))
     .map(pageRow);
   const pageDelete = snapshot.pages
-    .filter((p) => touchedPages.has(p.id) && !doc.pages.some((x) => x.id === p.id))
+    .filter(
+      (p) => touchedPages.has(p.id) && !doc.pages.some((x) => x.id === p.id),
+    )
     .map((p) => p.id);
 
   if (layoutUpsert.length || layoutDelete.length) {

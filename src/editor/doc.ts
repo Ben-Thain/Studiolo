@@ -95,7 +95,9 @@ export function layoutFromRow(row: LayoutRow): ElementLayout {
 export function applyDraftToDoc(doc: EditorDoc, payload: DraftRow): EditorDoc {
   const next = structuredClone(doc);
   if (payload.pages?.delete) {
-    next.pages = next.pages.filter((p) => !payload.pages!.delete!.includes(p.id));
+    next.pages = next.pages.filter(
+      (p) => !payload.pages!.delete!.includes(p.id),
+    );
   }
   for (const row of payload.pages?.upsert ?? []) {
     const page = pageFromRow(row);

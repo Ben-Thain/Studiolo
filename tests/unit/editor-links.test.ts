@@ -38,7 +38,8 @@ describe("links", () => {
       link: makePageLink(RIVERTON_HOME),
     });
     expect(
-      getContentLink(doc.elements.find((e) => e.id === intro.id)!.content)?.value,
+      getContentLink(doc.elements.find((e) => e.id === intro.id)!.content)
+        ?.value,
     ).toBe(RIVERTON_HOME);
     expect(() =>
       applyCommand(doc, {

@@ -172,7 +172,8 @@ function addElement(
   const id = newId();
   const sortOrder =
     command.sortOrder ??
-    Math.max(-1, ...sectionElements(doc, section.id).map((e) => e.sortOrder)) + 1;
+    Math.max(-1, ...sectionElements(doc, section.id).map((e) => e.sortOrder)) +
+      1;
 
   const element: EditorElement = {
     id,
@@ -195,14 +196,18 @@ function addElement(
   const sectionBoxes = desktopBoxesForElements(doc, existingInSection);
   if (command.elementType === "image" && pageId) {
     const lastSection = lastSectionOfPage(doc, pageId);
-    const lastElements = (lastSection
-      ? sectionElements(doc, lastSection.id)
-      : sectionElements(doc, section.id)
+    const lastElements = (
+      lastSection
+        ? sectionElements(doc, lastSection.id)
+        : sectionElements(doc, section.id)
     ).filter((e) => e.id !== id);
     row = rowBelow(desktopBoxesForElements(doc, lastElements), 0);
   } else if (sectionBoxes.length) {
     row = rowBelow(sectionBoxes, command.elementType === "text" ? 0 : 0);
-    if (command.elementType === "image" && sectionBoxes.some((b) => b.row === row)) {
+    if (
+      command.elementType === "image" &&
+      sectionBoxes.some((b) => b.row === row)
+    ) {
       // Same row as a sibling text block when the section already has content in row 1.
       const topRow = Math.min(...sectionBoxes.map((b) => b.row));
       row = topRow;
@@ -297,8 +302,12 @@ function addSection(
 ) {
   const sortOrder =
     command.sortOrder ??
-  Math.max(-1, ...doc.sections.filter((s) => s.pageId === command.pageId).map((s) => s.sortOrder)) +
-      1;
+    Math.max(
+      -1,
+      ...doc.sections
+        .filter((s) => s.pageId === command.pageId)
+        .map((s) => s.sortOrder),
+    ) + 1;
   doc.sections.push({
     id: newId(),
     pageId: command.pageId,
@@ -358,8 +367,7 @@ function addPage(
   newId: () => string,
 ) {
   const sortOrder =
-    command.sortOrder ??
-    Math.max(-1, ...doc.pages.map((p) => p.sortOrder)) + 1;
+    command.sortOrder ?? Math.max(-1, ...doc.pages.map((p) => p.sortOrder)) + 1;
   doc.pages.push({
     id: newId(),
     title: command.title,
@@ -405,7 +413,10 @@ function deletePage(doc: EditorDoc, pageId: string) {
 }
 
 /** Apply a saved snapshot back onto the doc (undo / redo). */
-export function applySnapshot(doc: EditorDoc, snapshot: DocSnapshot): EditorDoc {
+export function applySnapshot(
+  doc: EditorDoc,
+  snapshot: DocSnapshot,
+): EditorDoc {
   return restoreDoc(doc, snapshot);
 }
 

@@ -10,7 +10,9 @@ export function parseLink(value: unknown): ElementLink | null {
   return parsed.success ? parsed.data : null;
 }
 
-export function getContentLink(content: Record<string, unknown>): ElementLink | null {
+export function getContentLink(
+  content: Record<string, unknown>,
+): ElementLink | null {
   const link = content.link;
   return parseLink(link);
 }
@@ -20,7 +22,8 @@ export function setContentLink(
   link: ElementLink | null,
 ): Record<string, unknown> {
   if (link === null) {
-    const { link: _drop, ...rest } = content;
+    const rest = { ...content };
+    delete rest.link;
     return rest;
   }
   return { ...content, link };
@@ -30,7 +33,9 @@ export function normalizeUrl(raw: string): string | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
   try {
-    const url = new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`);
+    const url = new URL(
+      trimmed.includes("://") ? trimmed : `https://${trimmed}`,
+    );
     if (url.protocol !== "http:" && url.protocol !== "https:") return null;
     return url.toString();
   } catch {

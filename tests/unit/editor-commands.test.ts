@@ -2,10 +2,7 @@ import { describe, expect, it } from "vitest";
 import { applyCommand, layoutFor } from "@/editor/commands";
 import { createDoc } from "@/editor/doc";
 import { starterChanges } from "@/lib/sites/starter";
-import {
-  RIVERTON_HOME,
-  rivertonHomeDoc,
-} from "../fixtures/riverton-home";
+import { RIVERTON_HOME, rivertonHomeDoc } from "../fixtures/riverton-home";
 
 let n = 0;
 const ids = () => `90000000-0000-4000-8000-${String(++n).padStart(12, "0")}`;
@@ -117,7 +114,13 @@ describe("applyCommand", () => {
       },
       ids,
     );
-    expect(layoutFor(pageImage.doc, pageImage.doc.elements.find((e) => e.name === "Gallery")!.id, "desktop")).toMatchObject({
+    expect(
+      layoutFor(
+        pageImage.doc,
+        pageImage.doc.elements.find((e) => e.name === "Gallery")!.id,
+        "desktop",
+      ),
+    ).toMatchObject({
       col: 7,
       span: 6,
     });
@@ -145,7 +148,9 @@ describe("applyCommand", () => {
   });
 
   it("site-wide section uses pageId null on elements", () => {
-    const siteName = rivertonHomeDoc.elements.find((e) => e.name === "Site name")!;
+    const siteName = rivertonHomeDoc.elements.find(
+      (e) => e.name === "Site name",
+    )!;
     expect(siteName.pageId).toBeNull();
     expect(siteName.sectionId).toBe("5a000000-0000-4000-8000-000000000031");
   });

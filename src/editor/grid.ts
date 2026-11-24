@@ -56,7 +56,9 @@ export function defaultDesktopSpan(type: "text" | "image" | "nav" | "form"): {
   return { col: 1, span: 6 };
 }
 
-export function defaultDesktopRows(type: "text" | "image" | "nav" | "form"): number {
+export function defaultDesktopRows(
+  type: "text" | "image" | "nav" | "form",
+): number {
   switch (type) {
     case "image":
       return DEFAULT_IMAGE_ROWS;
@@ -75,9 +77,6 @@ export function boxesOverlap(a: GridBox, b: GridBox): boolean {
   const aRowEnd = a.row + a.rows;
   const bRowEnd = b.row + b.rows;
   return (
-    a.col < bColEnd &&
-    aColEnd > b.col &&
-    a.row < bRowEnd &&
-    aRowEnd > b.row
+    a.col < bColEnd && aColEnd > b.col && a.row < bRowEnd && aRowEnd > b.row
   );
 }

@@ -53,14 +53,17 @@ async function openDb(): Promise<IDBDatabase | null> {
   });
 }
 
-export async function readPendingSave(siteId: string): Promise<PendingRow | null> {
+export async function readPendingSave(
+  siteId: string,
+): Promise<PendingRow | null> {
   const db = await openDb();
   if (!db) return null;
   return new Promise((resolve, reject) => {
     const tx = db.transaction(IDB_STORE, "readonly");
     const store = tx.objectStore(IDB_STORE);
     const req = store.get(siteId);
-    req.onsuccess = () => resolve((req.result as PendingRow | undefined) ?? null);
+    req.onsuccess = () =>
+      resolve((req.result as PendingRow | undefined) ?? null);
     req.onerror = () => reject(req.error);
   });
 }
@@ -164,7 +167,10 @@ export function createPersister(options: CreatePersisterOptions): Persister {
           setStatus("offline");
           return;
         }
-        setStatus("error", error instanceof Error ? error.message : "save_failed");
+        setStatus(
+          "error",
+          error instanceof Error ? error.message : "save_failed",
+        );
         throw error;
       }
     };
@@ -213,7 +219,8 @@ function isStale(error: unknown): boolean {
 }
 
 function isOffline(error: unknown): boolean {
-  if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
+  if (typeof navigator !== "undefined" && navigator.onLine === false)
+    return true;
   const message = error instanceof Error ? error.message : String(error);
   return message.toLowerCase().includes("network");
 }

@@ -2,7 +2,7 @@
 
 Freeform personal-site editor. One account owns many sites; each site has its own pages, slug, settings, password, domain, submissions, and stats. Desktop and Mobile layouts share content and store position, size, and hidden per layout.
 
-This repository is the Next.js app for the existing Vercel project `studiolo` in team `ben-thain-s-projects`. Prompt 00 is the scaffold. Prompts 02a–02c add the database schema, functions, row level security, column grants, the private `site-assets` storage bucket and the local seed. Prompt 03a adds sign-in (email magic link and Google), the auth guards and the public landing page. Prompt 03b adds the home shell (Sites, Account, Plan) and the app 404. Prompt 04a adds creating and duplicating sites and the site shell with read-only placeholders for each area. Prompt 04b adds soft delete, Undo, Recently deleted and restore. The editor model lands in prompt 05; the desktop editor UI is prompt 06.
+This repository is the Next.js app for the existing Vercel project `studiolo` in team `ben-thain-s-projects`. Prompt 00 is the scaffold. Prompts 02a–02c add the database schema, functions, row level security, column grants, the private `site-assets` storage bucket and the local seed. Prompt 03a adds sign-in (email magic link and Google), the auth guards and the public landing page. Prompt 03b adds the home shell (Sites, Account, Plan) and the app 404. Prompt 04a adds creating and duplicating sites and the site shell with read-only placeholders for each area. Prompt 04b adds soft delete, Undo, Recently deleted and restore. Prompt 05 adds the headless editor model under `src/editor/` (commands, grid, autosave, undo); the desktop editor UI is prompt 06.
 
 ## Scripts
 

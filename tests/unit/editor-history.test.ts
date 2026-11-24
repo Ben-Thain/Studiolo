@@ -14,7 +14,7 @@ import { rivertonHomeDoc } from "../fixtures/riverton-home";
 describe("history", () => {
   it("undoes and redoes a content edit", () => {
     const intro = rivertonHomeDoc.elements.find((e) => e.name === "Intro")!;
-  const first = applyCommand(rivertonHomeDoc, {
+    const first = applyCommand(rivertonHomeDoc, {
       type: "updateContent",
       elementId: intro.id,
       content: { text: "Changed once" },
@@ -25,11 +25,13 @@ describe("history", () => {
     const undone = undo(first.doc, history)!;
     expect(
       undone.doc.elements.find((e) => e.id === intro.id)?.content.text,
-    ).toBe("A small studio in York restoring Georgian and Victorian homes since 2014.");
-    const redone = redo(undone.doc, undone.history)!;
-    expect(redone.doc.elements.find((e) => e.id === intro.id)?.content.text).toBe(
-      "Changed once",
+    ).toBe(
+      "A small studio in York restoring Georgian and Victorian homes since 2014.",
     );
+    const redone = redo(undone.doc, undone.history)!;
+    expect(
+      redone.doc.elements.find((e) => e.id === intro.id)?.content.text,
+    ).toBe("Changed once");
     expect(canRedo(history)).toBe(false);
   });
 

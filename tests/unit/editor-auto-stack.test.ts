@@ -20,7 +20,8 @@ describe("autoStack", () => {
 
   it("restackSection keeps Intro mobile order from the starter", () => {
     let n = 0;
-    const ids = () => `10000000-0000-4000-8000-${String(++n).padStart(12, "0")}`;
+    const ids = () =>
+      `10000000-0000-4000-8000-${String(++n).padStart(12, "0")}`;
     const { changes } = starterChanges("Test", ids);
     const home = changes.pages.upsert.find((p) => p.is_home)!;
     const intro = changes.sections.upsert.find((s) => s.name === "Intro")!;
@@ -40,7 +41,9 @@ describe("autoStack", () => {
       name: intro.name,
       sortOrder: intro.sort_order,
     });
-    for (const row of elements.upsert.filter((e) => e.section_id === intro.id)) {
+    for (const row of elements.upsert.filter(
+      (e) => e.section_id === intro.id,
+    )) {
       doc.elements.push({
         id: row.id,
         pageId: row.page_id,

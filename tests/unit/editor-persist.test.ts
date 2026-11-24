@@ -27,7 +27,19 @@ describe("persist", () => {
       onStatus: (state) => statuses.push(state.status),
     });
     persister.queue({
-      elements: { upsert: [{ id: "el", page_id: null, section_id: "s", type: "text", name: "T", content: {}, sort_order: 0 }] },
+      elements: {
+        upsert: [
+          {
+            id: "el",
+            page_id: null,
+            section_id: "s",
+            type: "text",
+            name: "T",
+            content: {},
+            sort_order: 0,
+          },
+        ],
+      },
     });
     expect(save).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(200);
@@ -43,9 +55,7 @@ describe("persist", () => {
 
   it("surfaces ST409 as error", async () => {
     vi.useFakeTimers();
-    const save = vi
-      .fn()
-      .mockRejectedValue(new Error("stale_revision ST409"));
+    const save = vi.fn().mockRejectedValue(new Error("stale_revision ST409"));
     const persister = createPersister({
       siteId: SITE,
       initialRevision: 1,
@@ -87,9 +97,7 @@ describe("persist", () => {
     });
     const changes = {
       sections: {
-        upsert: [
-          { id: "s", page_id: null, name: "Header", sort_order: 0 },
-        ],
+        upsert: [{ id: "s", page_id: null, name: "Header", sort_order: 0 }],
       },
     };
     persister.queue(changes);
