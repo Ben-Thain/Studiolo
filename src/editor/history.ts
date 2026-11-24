@@ -1,15 +1,21 @@
 /**
- * Undo / redo through inverse document snapshots (prompt 05, cap 50).
+ * Undo / redo through inverse DraftChanges patches (prompt 05, cap 50).
  */
 
-import { applySnapshot } from "./commands";
-import type { DocSnapshot, EditorDoc } from "./types";
+import { applyInverse, snapshotDoc, upsertChanges } from "./changes";
+import { applyDraftToDoc } from "./doc";
+import type { DraftChanges } from "./schema";
+import type { EditorDoc } from "./types";
 
 export const HISTORY_CAP = 50;
 
+export type HistoryEntry = {
+  inverse: DraftChanges;
+};
+
 export type HistoryState = {
-  past: DocSnapshot[];
-  future: DocSnapshot[];
+  past: HistoryEntry[];
+  future: DraftChanges[];
 };
 
 export function createHistory(): HistoryState {
@@ -18,11 +24,15 @@ export function createHistory(): HistoryState {
 
 export function pushHistory(
   history: HistoryState,
-  before: DocSnapshot,
+  inverse: DraftChanges,
+  clearsRedo = true,
 ): HistoryState {
-  const past = [...history.past, before];
+  const past = [...history.past, { inverse }];
   if (past.length > HISTORY_CAP) past.shift();
-  return { past, future: [] };
+  return {
+    past,
+    future: clearsRedo ? [] : [...history.future],
+  };
 }
 
 export function canUndo(history: HistoryState): boolean {
@@ -39,11 +49,13 @@ export function undo(
 ): { doc: EditorDoc; history: HistoryState } | null {
   if (!canUndo(history)) return null;
   const past = [...history.past];
-  const target = past.pop()!;
-  const future = [snapshotFromDoc(doc), ...history.future];
+  const { inverse } = past.pop()!;
+  const docAfter = doc;
+  const nextDoc = applyInverse(docAfter, inverse);
+  const forward = upsertChanges(docAfter, snapshotDoc(nextDoc));
   return {
-    doc: applySnapshot(doc, target),
-    history: { past, future },
+    doc: nextDoc,
+    history: { past, future: [forward, ...history.future] },
   };
 }
 
@@ -53,20 +65,23 @@ export function redo(
 ): { doc: EditorDoc; history: HistoryState } | null {
   if (!canRedo(history)) return null;
   const future = [...history.future];
-  const target = future.shift()!;
-  const past = [...history.past, snapshotFromDoc(doc)];
+  const forward = future.shift()!;
+  const beforeRedo = snapshotDoc(doc);
+  const nextDoc = applyDraftToDoc(doc, forward);
+  const revision = doc.revision;
+  nextDoc.revision = revision;
+  const inverse = upsertChanges(nextDoc, beforeRedo);
   return {
-    doc: applySnapshot(doc, target),
-    history: { past, future },
+    doc: nextDoc,
+    history: {
+      past: [...history.past, { inverse }],
+      future,
+    },
   };
 }
 
-function snapshotFromDoc(doc: EditorDoc): DocSnapshot {
-  return {
-    pages: structuredClone(doc.pages),
-    sections: structuredClone(doc.sections),
-    elements: structuredClone(doc.elements),
-    layouts: structuredClone(doc.layouts),
-    revision: doc.revision,
-  };
+/** Rough retained bytes for history diagnostics. */
+export function historyMemoryBytes(history: HistoryState): number {
+  const json = JSON.stringify(history);
+  return json.length;
 }

@@ -17,7 +17,7 @@ export function DeletedSitesTable({ sites }: { sites: DeletedSiteItem[] }) {
     <>
       <Table className="hidden max-w-[944px] table-fixed min-[900px]:table">
         <colgroup>
-          <col />
+          <col className="w-[520px]" />
           <col className="w-[164px]" />
           <col className="w-[164px]" />
           <col className="w-[120px]" />

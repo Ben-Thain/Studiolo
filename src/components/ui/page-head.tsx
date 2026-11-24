@@ -6,6 +6,7 @@ export function PageHead({
   lead,
   action,
   size = "desktop",
+  className,
 }: {
   title: string;
   lead?: string;
@@ -15,6 +16,7 @@ export function PageHead({
    * mobile nav bar carries the action); from 900px the desktop head.
    */
   size?: "desktop" | "mobile" | "responsive";
+  className?: string;
 }) {
   const responsive = size === "responsive";
   return (
@@ -22,6 +24,7 @@ export function PageHead({
       className={cn(
         "flex max-w-[944px] items-start justify-between gap-4",
         responsive ? "mb-4 min-[900px]:mb-8" : "mb-8",
+        className,
       )}
     >
       <div className="min-w-0">

@@ -14,8 +14,11 @@ if ! command -v "$bin" >/dev/null; then
   exit 1
 fi
 
-socket_dir="${PGHOST:-/tmp}"
-export PGRST_DB_URI="postgresql://authenticator@/studiolo_e2e?host=${socket_dir}"
+if [ -n "${PGHOST:-}" ]; then
+  export PGRST_DB_URI="postgresql://authenticator@/studiolo_e2e?host=${PGHOST}"
+else
+  export PGRST_DB_URI="postgresql://authenticator@/studiolo_e2e"
+fi
 export PGRST_DB_SCHEMAS="public"
 export PGRST_DB_ANON_ROLE="anon"
 # Test-only value shared with tests/e2e/mock-auth-server.mjs. Not a secret:

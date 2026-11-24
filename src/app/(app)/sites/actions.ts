@@ -373,7 +373,13 @@ export async function restoreSite(siteId: string): Promise<RestoreSiteResult> {
     .eq("id", siteId)
     .maybeSingle();
   if (readError) return { ok: false, error: SITES_COPY.restoreFailed };
-  if (!site) return { ok: false, error: SITES_COPY.siteGone };
+  if (!site) {
+    return {
+      ok: false,
+      error: SITES_COPY.restoreExpired,
+      expired: true,
+    };
+  }
   if (!site.deleted_at) {
     return { ok: true, siteId, name: site.name, alreadyActive: true };
   }

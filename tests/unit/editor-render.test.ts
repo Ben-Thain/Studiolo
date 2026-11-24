@@ -1,0 +1,40 @@
+import { describe, expect, it } from "vitest";
+import { createDoc } from "@/editor/doc";
+import { escapeHtml, renderElement } from "@/editor/render";
+
+const SITE = "40000000-0000-4000-8000-000000000011";
+const ASSET = "50000000-0000-4000-8000-000000000001";
+
+describe("render", () => {
+  it("escapes hostile text", () => {
+    expect(escapeHtml(`<script>alert("x")</script>`)).toBe(
+      "&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;",
+    );
+  });
+
+  it("renders only site-owned image paths", () => {
+    const doc = createDoc(SITE);
+    doc.assets = {
+      [ASSET]: { path: `${SITE}/draft/hero.png`, mime: "image/png" },
+    };
+    doc.elements.push({
+      id: "60000000-0000-4000-8000-000000000001",
+      pageId: null,
+      sectionId: "70000000-0000-4000-8000-000000000001",
+      type: "image",
+      name: "Hero",
+      content: {
+        assetId: ASSET,
+        alt: '"><img onerror=alert(1)>',
+        aspectLocked: true,
+        link: { kind: "url", value: "javascript:alert(1)" },
+      },
+      sortOrder: 0,
+    });
+    const html = renderElement(doc, doc.elements[0]);
+    expect(html).toContain(`${SITE}/draft/hero.png`);
+    expect(html).not.toContain("javascript:");
+    expect(html).not.toContain("<img onerror");
+    expect(html).toContain("&quot;&gt;&lt;img");
+  });
+});

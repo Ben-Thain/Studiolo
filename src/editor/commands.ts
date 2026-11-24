@@ -2,15 +2,21 @@
  * Pure document commands for the headless editor (prompt 05).
  */
 
-import { autoStack } from "./autoStack";
-import { restoreDoc, snapshotDoc, upsertChanges } from "./changes";
+import { appendMobileStack, autoStack, type StackItem } from "./autoStack";
+import {
+  cloneDoc,
+  inverseChanges,
+  restoreDoc,
+  snapshotDoc,
+  upsertChanges,
+} from "./changes";
 import {
   defaultDesktopRows,
   defaultDesktopSpan,
   rowBelow,
   snapBox,
 } from "./grid";
-import { setContentLink } from "./links";
+import { sanitizeContentLinks, setContentLink, validateLink } from "./links";
 import type { DraftChanges } from "./schema";
 import type { EditorCommand } from "./command-types";
 import type {
@@ -28,7 +34,7 @@ export type { EditorCommand } from "./command-types";
 export type CommandResult = {
   doc: EditorDoc;
   changes: DraftChanges;
-  before: DocSnapshot;
+  inverse: DraftChanges;
 };
 
 export function applyCommand(
@@ -37,7 +43,9 @@ export function applyCommand(
   newId: () => string = () => crypto.randomUUID(),
 ): CommandResult {
   const before = snapshotDoc(doc);
-  const next = structuredClone(doc);
+  const next = cloneDoc(doc);
+  const pageIds = new Set(next.pages.map((p) => p.id));
+
   switch (command.type) {
     case "addElement":
       addElement(next, command, newId);
@@ -45,14 +53,32 @@ export function applyCommand(
     case "deleteElement":
       deleteElement(next, command.elementId);
       break;
+    case "duplicateElement":
+      duplicateElement(next, command.elementId, newId);
+      break;
     case "updateContent":
-      updateContent(next, command.elementId, command.content);
+      updateContent(next, command.elementId, command.content, pageIds);
       break;
     case "updateName":
       updateName(next, command.elementId, command.name);
       break;
+    case "renameLayer":
+      updateName(next, command.elementId, command.name);
+      break;
     case "setLayout":
       setLayout(next, command.elementId, command.breakpoint, command.layout);
+      break;
+    case "move":
+      setLayout(next, command.elementId, command.breakpoint, {
+        col: command.col,
+        row: command.row,
+      });
+      break;
+    case "resize":
+      setLayout(next, command.elementId, command.breakpoint, {
+        span: command.span,
+        rows: command.rows,
+      });
       break;
     case "setHidden":
       setHidden(next, command.elementId, command.breakpoint, command.hidden);
@@ -69,17 +95,32 @@ export function applyCommand(
     case "renameSection":
       renameSection(next, command.sectionId, command.name);
       break;
+    case "reorderSection":
+      reorderSection(next, command.sectionId, command.sortOrder);
+      break;
     case "restackSection":
       restackSection(next, command.sectionId);
       break;
+    case "resetMobileAuto":
+      resetMobileAuto(next, command.pageId);
+      break;
     case "setLink":
-      setLink(next, command.elementId, command.link);
+      setLink(next, command.elementId, command.link, pageIds);
       break;
     case "addPage":
       addPage(next, command, newId);
       break;
     case "updatePage":
       updatePage(next, command.pageId, command.patch);
+      break;
+    case "setHome":
+      updatePage(next, command.pageId, { isHome: true });
+      break;
+    case "setInNav":
+      updatePage(next, command.pageId, { inNav: command.inNav });
+      break;
+    case "reorderPages":
+      updatePage(next, command.pageId, { sortOrder: command.sortOrder });
       break;
     case "deletePage":
       deletePage(next, command.pageId);
@@ -89,8 +130,10 @@ export function applyCommand(
       throw new Error(`Unknown command: ${JSON.stringify(_exhaustive)}`);
     }
   }
+
   const changes = upsertChanges(next, before);
-  return { doc: next, changes, before };
+  const inverse = inverseChanges(next, before);
+  return { doc: next, changes, inverse };
 }
 
 function sectionOf(doc: EditorDoc, sectionId: string) {
@@ -138,6 +181,33 @@ function desktopBoxesForElements(
       row: l.row,
       rows: l.rows,
     }));
+}
+
+function stackItemsForSection(doc: EditorDoc, sectionId: string): StackItem[] {
+  return sectionElements(doc, sectionId).flatMap((element) => {
+    const desktop = layoutFor(doc, element.id, "desktop");
+    const mobile = layoutFor(doc, element.id, "mobile");
+    if (!desktop || !mobile) return [];
+    return [
+      {
+        id: element.id,
+        sortOrder: element.sortOrder,
+        desktop: {
+          col: desktop.col,
+          span: desktop.span,
+          row: desktop.row,
+          rows: desktop.rows,
+        },
+        mobile: {
+          col: mobile.col,
+          span: mobile.span,
+          row: mobile.row,
+          rows: mobile.rows,
+        },
+        placementSource: mobile.placementSource,
+      },
+    ];
+  });
 }
 
 const defaultContent = (type: ElementType): Record<string, unknown> => {
@@ -208,7 +278,6 @@ function addElement(
       command.elementType === "image" &&
       sectionBoxes.some((b) => b.row === row)
     ) {
-      // Same row as a sibling text block when the section already has content in row 1.
       const topRow = Math.min(...sectionBoxes.map((b) => b.row));
       row = topRow;
     }
@@ -224,19 +293,40 @@ function addElement(
     ...desktop,
   });
 
+  const mobileStack = appendMobileStack(
+    stackItemsForSection(doc, section.id).filter((i) => i.id !== id),
+    { id, rows: desktop.rows },
+  );
+
   doc.layouts.push({
     id: newId(),
     elementId: id,
     breakpoint: "mobile",
     hidden: false,
     placementSource: "auto",
-    col: 1,
-    span: 12,
-    row: 1,
-    rows: desktop.rows,
+    ...mobileStack,
   });
+}
 
-  restackSection(doc, section.id);
+function duplicateElement(
+  doc: EditorDoc,
+  elementId: string,
+  newId: () => string,
+) {
+  const source = elementOf(doc, elementId);
+  addElement(
+    doc,
+    {
+      type: "addElement",
+      sectionId: source.sectionId,
+      elementType: source.type,
+      name: `${source.name} copy`,
+      content: { ...source.content },
+      pageId: source.pageId,
+      sortOrder: source.sortOrder + 1,
+    },
+    newId,
+  );
 }
 
 function deleteElement(doc: EditorDoc, elementId: string) {
@@ -249,9 +339,14 @@ function updateContent(
   doc: EditorDoc,
   elementId: string,
   content: Record<string, unknown>,
+  pageIds: Set<string>,
 ) {
   const element = elementOf(doc, elementId);
-  element.content = { ...element.content, ...content };
+  const merged = sanitizeContentLinks(
+    { ...element.content, ...content },
+    pageIds,
+  );
+  element.content = merged;
 }
 
 function updateName(doc: EditorDoc, elementId: string, name: string) {
@@ -288,6 +383,7 @@ function setHidden(
 ) {
   const layout = layoutOf(doc, elementId, breakpoint);
   layout.hidden = hidden;
+  if (breakpoint === "mobile") layout.placementSource = "manual";
 }
 
 function reorderElement(doc: EditorDoc, elementId: string, sortOrder: number) {
@@ -329,18 +425,18 @@ function renameSection(doc: EditorDoc, sectionId: string, name: string) {
   sectionOf(doc, sectionId).name = name;
 }
 
+function reorderSection(doc: EditorDoc, sectionId: string, sortOrder: number) {
+  sectionOf(doc, sectionId).sortOrder = sortOrder;
+}
+
 function restackSection(doc: EditorDoc, sectionId: string) {
-  const elements = sectionElements(doc, sectionId);
-  const mobileMap = autoStack(
-    elements.map((e) => ({
-      id: e.id,
-      sortOrder: e.sortOrder,
-      desktop: layoutOf(doc, e.id, "desktop"),
-    })),
-  );
-  for (const element of elements) {
+  const items = stackItemsForSection(doc, sectionId);
+  const mobileMap = autoStack(items);
+  for (const element of sectionElements(doc, sectionId)) {
     const layout = layoutOf(doc, element.id, "mobile");
-    const next = mobileMap.get(element.id)!;
+    const next = mobileMap.get(element.id);
+    if (!next) continue;
+    if (layout.placementSource === "manual") continue;
     layout.col = next.col;
     layout.span = next.span;
     layout.row = next.row;
@@ -349,16 +445,36 @@ function restackSection(doc: EditorDoc, sectionId: string) {
   }
 }
 
+function resetMobileAuto(doc: EditorDoc, pageId: string) {
+  const sectionIds = doc.sections
+    .filter((s) => s.pageId === pageId || s.pageId === null)
+    .map((s) => s.id);
+  for (const sectionId of sectionIds) {
+    for (const item of stackItemsForSection(doc, sectionId)) {
+      const layout = layoutOf(doc, item.id, "mobile");
+      layout.placementSource = "auto";
+    }
+    restackSection(doc, sectionId);
+  }
+}
+
 function setLink(
   doc: EditorDoc,
   elementId: string,
   link: Extract<EditorCommand, { type: "setLink" }>["link"],
+  pageIds: Set<string>,
 ) {
   const element = elementOf(doc, elementId);
   if (element.type !== "text" && element.type !== "image") {
     throw new Error("Links are only supported on text and image elements");
   }
-  element.content = setContentLink(element.content, link);
+  if (link === null) {
+    element.content = setContentLink(element.content, null);
+    return;
+  }
+  const valid = validateLink(link, pageIds);
+  if (!valid) throw new Error("Invalid link");
+  element.content = setContentLink(element.content, valid);
 }
 
 function addPage(
@@ -412,7 +528,7 @@ function deletePage(doc: EditorDoc, pageId: string) {
   doc.pages = doc.pages.filter((p) => p.id !== pageId);
 }
 
-/** Apply a saved snapshot back onto the doc (undo / redo). */
+/** Apply a saved snapshot back onto the doc (legacy helper). */
 export function applySnapshot(
   doc: EditorDoc,
   snapshot: DocSnapshot,

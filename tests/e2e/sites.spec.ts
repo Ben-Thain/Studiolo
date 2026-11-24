@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { e2eDbUrl } from "./db";
 
 // Prompt 04a against the local stack: create (empty state and dialog), slug
 // validation, the site shell and areas, Duplicate (database + storage copy)
@@ -537,9 +538,7 @@ test.describe("delete and restore", () => {
     const name = uniqueName("Domain House");
     const { siteId } = await createFirstSite(page, name);
     const slug = name.toLowerCase().replace(/ /g, "-");
-    const db = new pg.Client({
-      connectionString: process.env.E2E_DB_URL ?? "postgresql:///studiolo_e2e",
-    });
+    const db = new pg.Client({ connectionString: e2eDbUrl() });
     await db.connect();
     await db.query(
       `insert into public.domains (site_id, hostname, status)
@@ -577,9 +576,7 @@ test.describe("delete and restore", () => {
     await page.getByRole("dialog").getByRole("textbox").fill(name);
     await page.getByRole("button", { name: "Delete site" }).click();
     await expect(page.getByText(`${name} deleted`)).toBeVisible();
-    const db = new pg.Client({
-      connectionString: process.env.E2E_DB_URL ?? "postgresql:///studiolo_e2e",
-    });
+    const db = new pg.Client({ connectionString: e2eDbUrl() });
     await db.connect();
     const { rowCount } = await db.query(
       `update public.sites
@@ -636,6 +633,104 @@ test.describe("delete and restore", () => {
     await expect(page.getByText(name)).toHaveCount(0);
     const response = await page.goto(`/sites/${siteId}/pages`);
     expect(response?.status()).toBe(404);
+  });
+
+  test("hard-deleted site shows restore expired on Undo", async ({ page }) => {
+    const pg = await import("pg");
+    await signInAs(page, uniqueEmail("del-hard"));
+    const name = uniqueName("Hard Yard");
+    const { siteId } = await createFirstSite(page, name);
+    await page.goto("/sites");
+    await page.getByRole("button", { name: `Actions for ${name}` }).click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
+    await page.getByRole("dialog").getByRole("textbox").fill(name);
+    await page.getByRole("button", { name: "Delete site" }).click();
+    await expect(page.getByText(`${name} deleted`)).toBeVisible();
+    const db = new pg.Client({ connectionString: e2eDbUrl() });
+    await db.connect();
+    await db.query(`delete from public.sites where id = $1`, [siteId]);
+    await db.end();
+    await page.getByRole("button", { name: "Undo" }).click();
+    await expect(page.getByText(/can't be restored any more/)).toBeVisible();
+  });
+
+  test("user B cannot restore user A's deleted site via restoreSite", async ({
+    page,
+  }) => {
+    const pg = await import("pg");
+    const owner = uniqueEmail("del-rpc-owner");
+    await signInAs(page, owner);
+    const name = uniqueName("Rpc Yard");
+    const { siteId } = await createFirstSite(page, name);
+    await page.goto("/sites");
+    await page.getByRole("button", { name: `Actions for ${name}` }).click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
+    await page.getByRole("dialog").getByRole("textbox").fill(name);
+    await page.getByRole("button", { name: "Delete site" }).click();
+    await expect(page.getByText(`${name} deleted`)).toBeVisible();
+    const db = new pg.Client({ connectionString: e2eDbUrl() });
+    await db.connect();
+    const before = await db.query<{ deleted_at: string | null }>(
+      `select deleted_at from public.sites where id = $1`,
+      [siteId],
+    );
+    expect(before.rows[0]?.deleted_at).toBeTruthy();
+    const intruder = uniqueEmail("del-rpc-intruder");
+    await signInAs(page, intruder);
+    const res = await page.request.post("/api/e2e/restore-site", {
+      data: { siteId },
+    });
+    expect(res.ok()).toBeTruthy();
+    const body = await res.json();
+    expect(body.ok).toBe(false);
+    const after = await db.query<{ deleted_at: string | null }>(
+      `select deleted_at from public.sites where id = $1`,
+      [siteId],
+    );
+    await db.end();
+    expect(after.rows[0]?.deleted_at).toBeTruthy();
+    expect(body.error).toBe("This site can't be restored any more.");
+  });
+});
+
+test.describe("Recently deleted layout", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test("matches the desktop ref positions", async ({ page }) => {
+    const email = uniqueEmail("del-layout");
+    await signInAs(page, email);
+    const name = uniqueName("Layout Yard");
+    const { siteId } = await createFirstSite(page, name);
+    await page.goto("/sites");
+    await page.getByRole("button", { name: `Actions for ${name}` }).click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
+    await page.getByRole("dialog").getByRole("textbox").fill(name);
+    await page.getByRole("button", { name: "Delete site" }).click();
+    await page.getByRole("link", { name: /Recently deleted \(1\)/ }).click();
+    const main = page.getByRole("main");
+    const back = main.getByRole("link", { name: "Sites" });
+    const title = main.getByRole("heading", {
+      level: 1,
+      name: "Recently deleted",
+    });
+    const backBox = await back.boundingBox();
+    const titleBox = await title.boundingBox();
+    expect(backBox!.y).toBeGreaterThanOrEqual(30);
+    expect(backBox!.y).toBeLessThanOrEqual(38);
+    expect(backBox!.y + backBox!.height).toBeLessThanOrEqual(66);
+    expect(titleBox!.y).toBeGreaterThanOrEqual(67);
+    expect(titleBox!.y).toBeLessThanOrEqual(75);
+    const deletedHead = main
+      .getByRole("columnheader", { name: "Deleted" })
+      .first();
+    const deletesHead = main.getByRole("columnheader", { name: "Deletes on" });
+    const deletedBox = await deletedHead.boundingBox();
+    const deletesBox = await deletesHead.boundingBox();
+    expect(deletedBox!.x).toBeGreaterThanOrEqual(804);
+    expect(deletedBox!.x).toBeLessThanOrEqual(812);
+    expect(deletesBox!.x).toBeGreaterThanOrEqual(968);
+    expect(deletesBox!.x).toBeLessThanOrEqual(976);
+    void siteId;
   });
 });
 

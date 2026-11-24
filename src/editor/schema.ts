@@ -1,11 +1,17 @@
 import { z } from "zod";
+import { FONT_FAMILIES, SIZE_STEPS } from "./fonts";
 
 const uuid = z.uuid();
 
 export const breakpointSchema = z.enum(["desktop", "mobile"]);
 export const elementTypeSchema = z.enum(["text", "image", "nav", "form"]);
 export const placementSourceSchema = z.enum(["auto", "manual"]);
-export const linkKindSchema = z.enum(["page", "url"]);
+export const linkKindSchema = z.enum(["page", "url", "email"]);
+
+export const fontFamilySchema = z.enum(FONT_FAMILIES);
+export const sizeStepSchema = z
+  .number()
+  .refine((n) => SIZE_STEPS.includes(n as (typeof SIZE_STEPS)[number]));
 
 export const elementLinkSchema = z.object({
   kind: linkKindSchema,
@@ -14,8 +20,8 @@ export const elementLinkSchema = z.object({
 
 export const textContentSchema = z.object({
   text: z.string(),
-  fontFamily: z.string(),
-  fontSize: z.number().finite(),
+  fontFamily: fontFamilySchema,
+  fontSize: sizeStepSchema,
   fontWeight: z.union([z.literal(400), z.literal(500)]),
   align: z.enum(["left", "center", "right"]),
   link: elementLinkSchema.optional(),
@@ -78,6 +84,11 @@ export const editorPageSchema = z.object({
   isHome: z.boolean(),
 });
 
+export const editorAssetSchema = z.object({
+  path: z.string().min(1),
+  mime: z.string().optional(),
+});
+
 export const editorDocSchema = z.object({
   siteId: uuid,
   revision: z.number().int().min(0),
@@ -85,6 +96,7 @@ export const editorDocSchema = z.object({
   sections: z.array(editorSectionSchema),
   elements: z.array(editorElementSchema),
   layouts: z.array(elementLayoutSchema),
+  assets: z.record(z.string(), editorAssetSchema).optional(),
 });
 
 const tablePatchSchema = <T extends z.ZodType>(row: T) =>

@@ -8,6 +8,7 @@ import { defineConfig } from "@playwright/test";
 const MOCK_AUTH_PORT = 54399;
 const POSTGREST_PORT = 54398;
 const APP_URL = "http://127.0.0.1:3000";
+const PGHOST = process.env.PGHOST ?? "/var/run/postgresql";
 
 // A service-role token for the local stack only, signed with the test-only
 // key shared with scripts/e2e-stack.sh and the mock. Not a secret: it opens
@@ -48,7 +49,10 @@ export default defineConfig({
       url: `http://127.0.0.1:${POSTGREST_PORT}/`,
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
-      env: { POSTGREST_PORT: String(POSTGREST_PORT) },
+      env: {
+        POSTGREST_PORT: String(POSTGREST_PORT),
+        PGHOST: process.env.PGHOST ?? "/var/run/postgresql",
+      },
     },
     {
       command: "node tests/e2e/mock-auth-server.mjs",
@@ -58,6 +62,7 @@ export default defineConfig({
       env: {
         MOCK_AUTH_PORT: String(MOCK_AUTH_PORT),
         POSTGREST_PORT: String(POSTGREST_PORT),
+        PGHOST: process.env.PGHOST ?? "/var/run/postgresql",
       },
     },
     {
@@ -66,6 +71,7 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
       env: {
+        E2E_STACK: "1",
         NEXT_PUBLIC_SUPABASE_URL: `http://127.0.0.1:${MOCK_AUTH_PORT}`,
         NEXT_PUBLIC_SUPABASE_ANON_KEY: "mock-anon-key",
         NEXT_PUBLIC_APP_URL: APP_URL,

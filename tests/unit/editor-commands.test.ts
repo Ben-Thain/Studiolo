@@ -13,6 +13,7 @@ describe("riverton fixture", () => {
       ["Header", null],
       ["Intro", RIVERTON_HOME],
       ["Projects", RIVERTON_HOME],
+      ["Form", "5a000000-0000-4000-8000-000000000024"],
     ]);
     const intro = rivertonHomeDoc.elements.filter(
       (e) => e.sectionId === "5a000000-0000-4000-8000-000000000032",

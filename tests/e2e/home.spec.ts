@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import pg from "pg";
+import { e2eDbUrl } from "./db";
 
 // The home shell (prompt 03b) against real data: the mock signs real JWTs and
 // proxies /rest/v1 to a local PostgREST on the seeded studiolo_e2e database
@@ -490,9 +491,7 @@ test.describe("deep links and 404", () => {
   test("a soft-deleted site is not listed and is 404", async ({ page }) => {
     const email = uniqueEmail("deleted");
     await signInAs(page, email);
-    const db = new pg.Client({
-      connectionString: process.env.E2E_DB_URL ?? "postgresql:///studiolo_e2e",
-    });
+    const db = new pg.Client({ connectionString: e2eDbUrl() });
     await db.connect();
     let deletedId: string;
     try {

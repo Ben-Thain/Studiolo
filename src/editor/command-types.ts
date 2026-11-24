@@ -11,12 +11,14 @@ export type EditorCommand =
       sortOrder?: number;
     }
   | { type: "deleteElement"; elementId: string }
+  | { type: "duplicateElement"; elementId: string }
   | {
       type: "updateContent";
       elementId: string;
       content: Record<string, unknown>;
     }
   | { type: "updateName"; elementId: string; name: string }
+  | { type: "renameLayer"; elementId: string; name: string }
   | {
       type: "setLayout";
       elementId: string;
@@ -28,6 +30,20 @@ export type EditorCommand =
         rows: number;
         hidden: boolean;
       }>;
+    }
+  | {
+      type: "move";
+      elementId: string;
+      breakpoint: "desktop" | "mobile";
+      col: number;
+      row: number;
+    }
+  | {
+      type: "resize";
+      elementId: string;
+      breakpoint: "desktop" | "mobile";
+      span: number;
+      rows: number;
     }
   | {
       type: "setHidden";
@@ -44,7 +60,9 @@ export type EditorCommand =
     }
   | { type: "deleteSection"; sectionId: string }
   | { type: "renameSection"; sectionId: string; name: string }
+  | { type: "reorderSection"; sectionId: string; sortOrder: number }
   | { type: "restackSection"; sectionId: string }
+  | { type: "resetMobileAuto"; pageId: string }
   | { type: "setLink"; elementId: string; link: ElementLink | null }
   | {
       type: "addPage";
@@ -65,4 +83,7 @@ export type EditorCommand =
         isHome: boolean;
       }>;
     }
+  | { type: "setHome"; pageId: string }
+  | { type: "setInNav"; pageId: string; inNav: boolean }
+  | { type: "reorderPages"; pageId: string; sortOrder: number }
   | { type: "deletePage"; pageId: string };

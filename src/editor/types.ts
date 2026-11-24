@@ -11,7 +11,16 @@ export type PlacementSource = "auto" | "manual";
 
 export type TextAlign = "left" | "center" | "right";
 
-export type LinkKind = "page" | "url";
+export type LinkKind = "page" | "url" | "email";
+
+export type FontFamily = "Inter" | "Georgia" | "Times New Roman";
+
+export type SizeStep = 13 | 16 | 18 | 24 | 32 | 40 | 48 | 64 | 80 | 96 | 108;
+
+export type EditorAsset = {
+  path: string;
+  mime?: string;
+};
 
 export type ElementLink = {
   kind: LinkKind;
@@ -20,8 +29,8 @@ export type ElementLink = {
 
 export type TextContent = {
   text: string;
-  fontFamily: string;
-  fontSize: number;
+  fontFamily: FontFamily;
+  fontSize: SizeStep;
   fontWeight: 400 | 500;
   align: TextAlign;
   link?: ElementLink;
@@ -92,6 +101,7 @@ export type EditorDoc = {
   sections: EditorSection[];
   elements: EditorElement[];
   layouts: ElementLayout[];
+  assets?: Record<string, EditorAsset>;
 };
 
 export type SaveStatus = "saved" | "saving" | "offline" | "error";

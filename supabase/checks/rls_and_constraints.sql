@@ -2845,6 +2845,7 @@ begin
   if has_function_privilege('authenticated', 'public.increment_page_views(uuid, date)', 'execute')
     or has_function_privilege('authenticated', 'public.rate_limit_hit(text, integer, integer)', 'execute')
     or has_function_privilege('authenticated', 'public.restore_site(uuid, uuid)', 'execute')
+    or has_function_privilege('authenticated', 'public.is_site_restorable(uuid, uuid)', 'execute')
     or has_function_privilege('anon', 'public.save_draft(uuid, integer, jsonb)', 'execute')
     or has_function_privilege('anon', 'public.bump_draft_revision(uuid, integer)', 'execute')
     or has_function_privilege('anon', 'public.is_site_owner(uuid)', 'execute')
@@ -2992,6 +2993,9 @@ begin
   perform pg_temp.expect_denied('select public.increment_page_views(' || a_live || ', current_date)');
   perform pg_temp.expect_denied('select public.rate_limit_hit(''x'', 60, 5)');
   perform pg_temp.expect_denied('select public.restore_site(' || a_gone || ', ''c2000000-0000-4000-8000-000000000001'')');
+  perform pg_temp.expect_denied(
+    'select public.is_site_restorable(' || a_gone || ', ''c2000000-0000-4000-8000-000000000001'')'
+  );
 
   -- submissions: own read_at and delete.
   if pg_temp.affected('update public.submissions set read_at = now() where id = ''c2000000-0000-4000-8000-000000000071''') <> 1
