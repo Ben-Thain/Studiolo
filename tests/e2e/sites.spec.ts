@@ -468,7 +468,9 @@ test.describe("delete and restore", () => {
       .getByRole("textbox")
       .fill(name);
     await page.getByRole("button", { name: "Delete site" }).click();
-    await expect(page.getByRole("link", { name: /Recently deleted \(1\)/ })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /Recently deleted \(1\)/ }),
+    ).toBeVisible();
     await page.getByRole("link", { name: /Recently deleted \(1\)/ }).click();
     await expect(page).toHaveURL("/sites/deleted");
     await expect(
@@ -499,10 +501,7 @@ test.describe("delete and restore", () => {
     await expect(page.getByRole("link", { name: first })).toBeVisible();
     await page.getByRole("button", { name: `Actions for ${first}` }).click();
     await page.getByRole("menuitem", { name: "Delete" }).click();
-    await page
-      .getByRole("dialog")
-      .getByRole("textbox")
-      .fill(first);
+    await page.getByRole("dialog").getByRole("textbox").fill(first);
     await page.getByRole("button", { name: "Delete site" }).click();
 
     const second = uniqueName("North Light");
@@ -529,6 +528,93 @@ test.describe("delete and restore", () => {
     ).toContainText(renamed);
   });
 
+  test("undo after delete does not bring back a custom domain", async ({
+    page,
+  }) => {
+    const pg = await import("pg");
+    const email = uniqueEmail("del-domain");
+    await signInAs(page, email);
+    const name = uniqueName("Domain House");
+    const { siteId } = await createFirstSite(page, name);
+    const slug = name.toLowerCase().replace(/ /g, "-");
+    const db = new pg.Client({
+      connectionString: process.env.E2E_DB_URL ?? "postgresql:///studiolo_e2e",
+    });
+    await db.connect();
+    await db.query(
+      `insert into public.domains (site_id, hostname, status)
+       values ($1, $2, 'connected')`,
+      [siteId, `custom-${slug}.example`],
+    );
+    await db.end();
+    await page.goto("/sites");
+    await page.getByRole("button", { name: `Actions for ${name}` }).click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
+    const dialog = page.getByRole("dialog", { name: `Delete ${name}?` });
+    await expect(
+      dialog.getByText("Its custom domain will be disconnected."),
+    ).toBeVisible();
+    await dialog.getByRole("textbox").fill(name);
+    await dialog.getByRole("button", { name: "Delete site" }).click();
+    await page.getByRole("button", { name: "Undo" }).click();
+    const row = page.getByRole("table").getByRole("row").filter({
+      hasText: name,
+    });
+    await expect(row).toContainText(`${HOST}${slug}`);
+    await expect(row).not.toContainText(`custom-${slug}.example`);
+  });
+
+  test("purged sites show the restore-expired message on Undo", async ({
+    page,
+  }) => {
+    const pg = await import("pg");
+    await signInAs(page, uniqueEmail("del-purged"));
+    const name = uniqueName("Purged Yard");
+    const { siteId } = await createFirstSite(page, name);
+    await page.goto("/sites");
+    await page.getByRole("button", { name: `Actions for ${name}` }).click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
+    await page.getByRole("dialog").getByRole("textbox").fill(name);
+    await page.getByRole("button", { name: "Delete site" }).click();
+    await expect(page.getByText(`${name} deleted`)).toBeVisible();
+    const db = new pg.Client({
+      connectionString: process.env.E2E_DB_URL ?? "postgresql:///studiolo_e2e",
+    });
+    await db.connect();
+    const { rowCount } = await db.query(
+      `update public.sites
+       set purge_after = now() - interval '1 day'
+       where id = $1`,
+      [siteId],
+    );
+    expect(rowCount).toBe(1);
+    await db.end();
+    await page.getByRole("button", { name: "Undo" }).click();
+    await expect(page.getByText(/can't be restored any more/)).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.getByRole("link", { name: name })).toHaveCount(0);
+  });
+
+  test("deleting the last site focuses the empty-state name field", async ({
+    page,
+  }) => {
+    await signInAs(page, uniqueEmail("del-focus"));
+    const name = uniqueName("Only Yard");
+    await createFirstSite(page, name);
+    await page.goto("/sites");
+    await page.getByRole("button", { name: `Actions for ${name}` }).click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
+    await page.getByRole("dialog").getByRole("textbox").fill(name);
+    await page.getByRole("button", { name: "Delete site" }).click();
+    await expect(
+      page.getByRole("heading", { name: "Create your first site" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("textbox", { name: "Site name" }),
+    ).toBeFocused();
+  });
+
   test("another user cannot see or open a deleted site", async ({ page }) => {
     const owner = uniqueEmail("del-owner");
     await signInAs(page, owner);
@@ -537,12 +623,11 @@ test.describe("delete and restore", () => {
     await page.goto("/sites");
     await page.getByRole("button", { name: `Actions for ${name}` }).click();
     await page.getByRole("menuitem", { name: "Delete" }).click();
-    await page
-      .getByRole("dialog")
-      .getByRole("textbox")
-      .fill(name);
+    await page.getByRole("dialog").getByRole("textbox").fill(name);
     await page.getByRole("button", { name: "Delete site" }).click();
-    await expect(page.getByRole("link", { name: /Recently deleted \(1\)/ })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /Recently deleted \(1\)/ }),
+    ).toBeVisible();
 
     const intruder = uniqueEmail("del-intruder");
     await signInAs(page, intruder);

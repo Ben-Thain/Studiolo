@@ -17,12 +17,17 @@ export default async function RecentlyDeletedPage() {
 
   return (
     <>
-      <div className="mb-6 max-w-[944px]">
-        <SidebarBack as={Link} href="/sites">
+      <div className="max-w-[944px]">
+        <SidebarBack
+          as={Link}
+          href="/sites"
+          className="min-h-11 min-[900px]:min-h-10"
+        >
           {SITES_COPY.back}
         </SidebarBack>
       </div>
       <PageHead
+        size="desktop"
         title={SITES_COPY.recentlyDeletedTitle}
         lead={SITES_COPY.recentlyDeletedLead}
       />

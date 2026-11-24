@@ -14,23 +14,19 @@ import { RestoreSiteButton } from "./restore-site-button";
 
 export function DeletedSitesTable({ sites }: { sites: DeletedSiteItem[] }) {
   return (
-  <>
+    <>
       <Table className="hidden max-w-[944px] table-fixed min-[900px]:table">
         <colgroup>
           <col />
-          <col className="w-[120px]" />
-          <col className="w-[120px]" />
+          <col className="w-[164px]" />
+          <col className="w-[164px]" />
           <col className="w-[120px]" />
         </colgroup>
         <TableHeader>
           <TableRow header>
             <TableHead>Site</TableHead>
-            <TableHead className="text-center">
-              {SITES_COPY.deletedColumns.deleted}
-            </TableHead>
-            <TableHead className="text-center">
-              {SITES_COPY.deletedColumns.deletesOn}
-            </TableHead>
+            <TableHead>{SITES_COPY.deletedColumns.deleted}</TableHead>
+            <TableHead>{SITES_COPY.deletedColumns.deletesOn}</TableHead>
             <TableHead>
               <span className="sr-only">{SITES_COPY.restore}</span>
             </TableHead>
@@ -47,10 +43,10 @@ export function DeletedSitesTable({ sites }: { sites: DeletedSiteItem[] }) {
                   {site.address}
                 </div>
               </TableCell>
-              <TableCell className="text-center text-sm leading-5 text-ink-2">
+              <TableCell className="text-sm leading-5 text-ink-2">
                 <LocalDate iso={site.deletedAt} format="day-month" />
               </TableCell>
-              <TableCell className="text-center text-sm leading-5 text-ink-2">
+              <TableCell className="text-sm leading-5 text-ink-2">
                 <LocalDate iso={site.purgeAfter} format="day-month" />
               </TableCell>
               <TableCell className="text-right">

@@ -171,6 +171,7 @@ export function NewSiteForm({
             autoComplete="off"
             autoFocus={first}
             data-autofocus=""
+            {...(first ? { "data-first-site-name": "" } : {})}
             onChange={(event) => {
               setName(event.target.value);
               if (nameError) setNameError(null);

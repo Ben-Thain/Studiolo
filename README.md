@@ -2,7 +2,7 @@
 
 Freeform personal-site editor. One account owns many sites; each site has its own pages, slug, settings, password, domain, submissions, and stats. Desktop and Mobile layouts share content and store position, size, and hidden per layout.
 
-This repository is the Next.js app for the existing Vercel project `studiolo` in team `ben-thain-s-projects`. Prompt 00 is the scaffold. Prompts 02a–02c add the database schema, functions, row level security, column grants, the private `site-assets` storage bucket and the local seed. Prompt 03a adds sign-in (email magic link and Google), the auth guards and the public landing page. Prompt 03b adds the home shell (Sites, Account, Plan) and the app 404. Prompt 04a adds creating and duplicating sites and the site shell with read-only placeholders for each area. There is no editor UI yet (prompt 06).
+This repository is the Next.js app for the existing Vercel project `studiolo` in team `ben-thain-s-projects`. Prompt 00 is the scaffold. Prompts 02a–02c add the database schema, functions, row level security, column grants, the private `site-assets` storage bucket and the local seed. Prompt 03a adds sign-in (email magic link and Google), the auth guards and the public landing page. Prompt 03b adds the home shell (Sites, Account, Plan) and the app 404. Prompt 04a adds creating and duplicating sites and the site shell with read-only placeholders for each area. Prompt 04b adds soft delete, Undo, Recently deleted and restore. The editor model lands in prompt 05; the desktop editor UI is prompt 06.
 
 ## Scripts
 
@@ -12,6 +12,7 @@ cp .env.example .env.local
 npm run dev
 npm run lint
 npm run typecheck
+npm run format:check
 npm run test
 npx playwright install chromium
 npm run test:e2e
@@ -67,7 +68,7 @@ Supabase settings (Ben, in the dashboard; nothing here changes them):
 ## Home shell (03b)
 
 - `src/app/(app)/(home)/layout.tsx`: the account-level home sidebar (Sites, Account, Plan; trial line and account row at the bottom; no site list) from 900px, and the home nav bar plus tab bar below it. Every read and write runs as the signed-in user through RLS; nothing uses the service role.
-- `/sites` lists the user's sites where `deleted_at is null`, selected with `SITE_OWNER_SELECT`, most recently edited first. Rows are real links to `/sites/[id]`. New site and the row menu are wired in prompt 04a (below); Delete stays disabled until prompt 04b.
+- `/sites` lists the user's sites where `deleted_at is null`, selected with `SITE_OWNER_SELECT`, most recently edited first. Rows are real links to `/sites/[id]`.
 - Another user's, a deleted or an unknown site id renders the app 404 (`src/app/not-found.tsx`, HTTP 404, `noindex`), never a 403.
 - `/account`: name and form-notification email save to `profiles` (the database also enforces them: `0005_profile_checks.sql`, a name of 1–80 characters after trimming or `''` for "not set", and a notification address of at most 254 characters or null). **The notification address is not verified**: the owner can enter any address. Prompt 12 must verify it (or mail only the login email) before sending submissions to it. The login email change goes through Supabase's confirm flow (`auth.updateUser`, "Check both inboxes to confirm the change"). Delete account is shown but disabled until prompt 15.
 - `/plan`: copy lives in `src/content/plan.ts` (unconfirmed by Ben). The 7-day trial is display only (`src/lib/trial.ts`): no prices, no payment, nothing locks when it ends, and `profiles.plan` stays unread.
@@ -78,8 +79,14 @@ Supabase settings (Ben, in the dashboard; nothing here changes them):
 - **Create.** With no sites, `/sites` is the "Create your first site" form; otherwise New site (or `/sites?new=1`, the mobile +) opens the dialog. The address is derived from the name (`src/lib/sites/slug.ts`) and checked as you type (`checkSlug` in `src/app/(app)/sites/actions.ts`: format, then 60 checks a minute per user through `rate_limit_hit('slug:<user id>', 60, 60)`, then `reserved_slugs`, the `slug_is_free` RPC and, if taken, one `first_free_slug` query for the "Use …-2" suggestion; over the limit the form shows a quiet note and Create site still checks). It is never changed silently. `createSite` calls `create_site(p_name, p_slug, p_changes)` (`0007_sites_fixes.sql`, `security invoker`, as the signed-in user under RLS), which inserts the site and writes the starter content (`src/lib/sites/starter.ts`: Home and Contact pages, a site-wide Header, an Intro with heading, text and an empty hero image, and a contact form) through `save_draft` at revision 0 in one transaction, so a failure leaves no site. Then it opens the editor on the home page.
 - **Duplicate.** `duplicateSite` checks ownership as the user, then calls `duplicate_site(p_site, p_owner)` (`0006_duplicate_site.sql`, `security definer`, executable by `service_role` only) with the service role. In one transaction it copies the site as a draft ("Copy of …", a free `copy-of-…` address), with its pages, sections, elements, layouts and asset rows under new ids, and remaps image `assetId`s, page links and the social image and favicon. Two duplicates by the same owner queue on an advisory lock and a clash on the address moves to the next suffix (0007). The server then copies the storage object of every asset row (`asset_paths`) by name, then any other `{old}/draft/*` object found by listing. If any copy fails, including a missing file, it removes the copies and the new site. The row is highlighted (`#FAFAFA`) for about 4 seconds, with the toast "Duplicated {name}. The copy is a draft." and an Open editor action.
 - **Site shell** (`src/components/sites/site-shell.tsx`): ‹ Sites, then Editor, Pages, Submissions, Stats and Settings, plus a Layers slot in the Editor only. The top bar shows the name and status, Open editor (the last page opened in this browser, otherwise Home) and Publish, which is shown but disabled until prompt 09. Below 900px, a nav bar whose title opens the site menu sheet. `/sites/[id]` redirects to the editor on the home page. Unknown page and submission ids are 404s.
-- The editor and the Pages, Submissions, Stats, Settings and Custom domain areas are read-only placeholders that show the site's real data until their prompts (06, 07, 08, 11, 12, 13). `src/lib/sites/hooks.ts` holds no-op `invalidateSiteCaches` and `detachSiteDomain` for 04b, 09 and 11.
+- The editor and the Pages, Submissions, Stats, Settings and Custom domain areas are read-only placeholders that show the site's real data until their prompts (06, 07, 08, 11, 12, 13). `src/lib/sites/hooks.ts` holds no-op `invalidateSiteCaches` and `detachSiteDomain` for 09 and 11 (the Vercel detach call is prompt 11; the `domains` row is removed on delete in `soft_delete_site`, `0008`).
 - `src/lib/addresses.ts` is the one place addresses are built (`{slug}.studiolo.page` once `NEXT_PUBLIC_WILDCARD_READY` is set, otherwise `{app}/s/{slug}`).
+
+## Sites delete and restore (04b)
+
+- **Delete.** The row ⋯ menu opens a type-to-confirm dialog (extra line when the site has a domain row). `deleteSite` checks ownership as the user, then `soft_delete_site` (`0008_soft_delete_site.sql`, service role only) sets `deleted_at` and `purge_after` with database `now()`, clears `live_publish_id`, and deletes the site's `domains` row. Hook failures after that write are logged and still show the Undo toast. Undo and Restore call `restore_site` (service role); a restored site is always a Draft and never gets its domain back.
+- **Recently deleted.** `/sites/deleted` lists restorable sites (`deleted_at` set and `purge_after > now()`), ordered by `deleted_at` desc; when there are none, it redirects to `/sites`. A quiet link under the Sites table (and under the empty-state create form when count > 0) shows the count and links there.
+- **Undo toast.** `"{name} deleted"` with Undo for 10 seconds (pauses on hover/focus). Focus returns to the Sites table, or to the empty-state name field when the last site was deleted.
 
 ## e2e
 

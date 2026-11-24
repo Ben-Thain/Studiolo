@@ -105,52 +105,52 @@ export function SitesList({
         data-sites-focus=""
         tabIndex={-1}
       >
-      <Table className="w-full table-fixed">
-        <SitesTableHead />
-        <TableBody>
-          {sites.map((site) => (
-            <TableRow
-              key={site.id}
-              interactive
-              highlight={site.id === highlighted}
-              data-highlighted={site.id === highlighted ? "" : undefined}
-            >
-              <TableCell>
-                <TableRowLink
-                  id={`site-link-${site.id}`}
-                  href={`/sites/${site.id}`}
-                  className="block truncate text-sm leading-5 font-medium text-ink"
-                >
-                  {site.name}
-                </TableRowLink>
-              </TableCell>
-              <TableCell>
-                <span className="flex items-center gap-2 text-sm leading-5 text-ink-2">
-                  <StatusDot status={site.status} />
-                  <StatusText site={site} />
-                </span>
-              </TableCell>
-              <TableCell>
-                <span className="block truncate text-sm leading-5 text-ink-2">
-                  {site.address}
-                </span>
-              </TableCell>
-              <TableCell className="text-sm leading-5 whitespace-nowrap text-ink-3">
-                <LocalDate iso={site.lastEditedAt} format="last-edited" />
-              </TableCell>
-              <TableCell className="relative z-10 text-center">
-                <SiteRowMenu
-                  siteId={site.id}
-                  name={site.name}
-                  live={site.status === "live"}
-                  url={site.url}
-                  hasDomain={site.hasDomain}
-                />
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+        <Table className="w-full table-fixed">
+          <SitesTableHead />
+          <TableBody>
+            {sites.map((site) => (
+              <TableRow
+                key={site.id}
+                interactive
+                highlight={site.id === highlighted}
+                data-highlighted={site.id === highlighted ? "" : undefined}
+              >
+                <TableCell>
+                  <TableRowLink
+                    id={`site-link-${site.id}`}
+                    href={`/sites/${site.id}`}
+                    className="block truncate text-sm leading-5 font-medium text-ink"
+                  >
+                    {site.name}
+                  </TableRowLink>
+                </TableCell>
+                <TableCell>
+                  <span className="flex items-center gap-2 text-sm leading-5 text-ink-2">
+                    <StatusDot status={site.status} />
+                    <StatusText site={site} />
+                  </span>
+                </TableCell>
+                <TableCell>
+                  <span className="block truncate text-sm leading-5 text-ink-2">
+                    {site.address}
+                  </span>
+                </TableCell>
+                <TableCell className="text-sm leading-5 whitespace-nowrap text-ink-3">
+                  <LocalDate iso={site.lastEditedAt} format="last-edited" />
+                </TableCell>
+                <TableCell className="relative z-10 text-center">
+                  <SiteRowMenu
+                    siteId={site.id}
+                    name={site.name}
+                    live={site.status === "live"}
+                    url={site.url}
+                    hasDomain={site.hasDomain}
+                  />
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       </div>
 
       <ul className="min-[900px]:hidden">

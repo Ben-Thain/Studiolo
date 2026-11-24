@@ -516,6 +516,18 @@ test.describe("deep links and 404", () => {
     await expect(page.getByText("Old Studio")).toHaveCount(0);
     const response = await page.goto(`/sites/${deletedId}`);
     expect(response?.status()).toBe(404);
+    for (const sub of [
+      `/sites/${deletedId}/pages`,
+      `/sites/${deletedId}/settings`,
+      `/sites/${deletedId}/stats`,
+    ]) {
+      const subResponse = await page.goto(sub);
+      expect(subResponse?.status(), sub).toBe(404);
+      await expect(page.locator('meta[name="robots"]').first()).toHaveAttribute(
+        "content",
+        /noindex/,
+      );
+    }
   });
 });
 

@@ -16,7 +16,7 @@ export function RecentlyDeletedLink({
     <Link
       href="/sites/deleted"
       className={cn(
-        "inline-flex h-10 items-center gap-2 text-[13px] leading-5 text-ink-2",
+        "inline-flex min-h-11 items-center gap-2 text-[13px] leading-5 text-ink-2 min-[900px]:h-10 min-[900px]:min-h-0",
         className,
       )}
     >

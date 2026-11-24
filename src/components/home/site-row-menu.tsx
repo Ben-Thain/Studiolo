@@ -62,70 +62,62 @@ export function SiteRowMenu({
 
   return (
     <>
-    <Menu
-      align="end"
-      trigger={
-        <IconButton
-          label={menuLabel}
-          size="desktop"
-          className="size-8"
-          aria-busy={busy || undefined}
-          data-site-menu={siteId}
-        >
-          <Icon name="ellipsis" size={16} />
-        </IconButton>
-      }
-      items={[
-        {
-          id: "duplicate",
-          label: HOME_COPY.menu.duplicate,
-          icon: <Icon name="duplicate" size={16} />,
-          disabled: busy,
-          onSelect: duplicate,
-        },
-        ...(live
-          ? [
-              {
-                id: "view-live",
-                label: HOME_COPY.menu.viewLive,
-                icon: <Icon name="external" size={16} />,
-                onSelect: () => {
-                  window.open(url, "_blank", "noopener");
+      <Menu
+        align="end"
+        trigger={
+          <IconButton
+            label={menuLabel}
+            size="desktop"
+            className="size-8"
+            aria-busy={busy || undefined}
+            data-site-menu={siteId}
+          >
+            <Icon name="ellipsis" size={16} />
+          </IconButton>
+        }
+        items={[
+          {
+            id: "duplicate",
+            label: HOME_COPY.menu.duplicate,
+            icon: <Icon name="duplicate" size={16} />,
+            disabled: busy,
+            onSelect: duplicate,
+          },
+          ...(live
+            ? [
+                {
+                  id: "view-live",
+                  label: HOME_COPY.menu.viewLive,
+                  icon: <Icon name="external" size={16} />,
+                  onSelect: () => {
+                    window.open(url, "_blank", "noopener");
+                  },
                 },
-              },
-            ]
-          : []),
-        { type: "separator", id: "sep" },
-        {
-          id: "delete",
-          label: HOME_COPY.menu.delete,
-          icon: <Icon name="trash" size={16} />,
-          destructive: true,
-          disabled: busy,
-          onSelect: () => setDeleteOpen(true),
-        },
-      ]}
-    />
-    <DeleteSiteDialog
-      siteId={siteId}
-      name={name}
-      hasDomain={hasDomain}
-      open={deleteOpen}
-      onClose={() => setDeleteOpen(false)}
-      returnFocus={() =>
-        document.querySelector<HTMLElement>(
-          `[data-site-menu="${siteId}"]`,
-        ) ?? undefined
-      }
-      onDeleted={() => {
-        onDeleteComplete?.();
-        requestAnimationFrame(() => {
-          document
-            .querySelector<HTMLElement>("[data-sites-focus]")
-            ?.focus();
-        });
-      }}
-    />
+              ]
+            : []),
+          { type: "separator", id: "sep" },
+          {
+            id: "delete",
+            label: HOME_COPY.menu.delete,
+            icon: <Icon name="trash" size={16} />,
+            destructive: true,
+            disabled: busy,
+            onSelect: () => setDeleteOpen(true),
+          },
+        ]}
+      />
+      <DeleteSiteDialog
+        siteId={siteId}
+        name={name}
+        hasDomain={hasDomain}
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        returnFocus={() =>
+          document.querySelector<HTMLElement>(`[data-site-menu="${siteId}"]`) ??
+          undefined
+        }
+        onDeleted={() => onDeleteComplete?.()}
+      />
     </>
   );
 }

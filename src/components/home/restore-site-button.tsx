@@ -26,8 +26,17 @@ export function RestoreSiteButton({ siteId }: { siteId: string }) {
       else router.refresh();
       return;
     }
+    if (result.alreadyActive) {
+      toast({
+        message: SITES_COPY.restoreAlready(result.name),
+        region: "home",
+      });
+      router.replace("/sites");
+      router.refresh();
+      return;
+    }
     const message = result.slugChanged
-      ? SITES_COPY.restoredRenamed(result.name, result.address)
+      ? SITES_COPY.restoredRenamed(result.name, result.address!)
       : SITES_COPY.restored(result.name);
     router.push(`/sites?highlight=${result.siteId}`);
     router.refresh();
@@ -44,7 +53,7 @@ export function RestoreSiteButton({ siteId }: { siteId: string }) {
   return (
     <Button
       variant="secondary"
-      size="sm"
+      size="touch-sm"
       loading={busy}
       onClick={restore}
     >

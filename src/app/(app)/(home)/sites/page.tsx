@@ -33,7 +33,10 @@ export default async function SitesPage({
         action={<NewSiteButton parts={parts} requested={params.new === "1"} />}
       />
       <SitesList sites={sites} highlightId={params.highlight} />
-      <RecentlyDeletedLink count={restorableCount} className="max-w-[944px]" />
+      <RecentlyDeletedLink
+        count={restorableCount}
+        className="mt-2 max-w-[944px]"
+      />
     </>
   );
 }

@@ -61,6 +61,12 @@ export function DeleteSiteDialog({
     onDeleted?.();
     router.push("/sites");
     router.refresh();
+    requestAnimationFrame(() => {
+      const name =
+        document.querySelector<HTMLElement>("[data-first-site-name]") ??
+        document.querySelector<HTMLElement>("[data-sites-focus]");
+      name?.focus();
+    });
     toast({
       message: SITES_COPY.deleted(result.name),
       duration: UNDO_MS,
@@ -74,10 +80,20 @@ export function DeleteSiteDialog({
               router.refresh();
               return;
             }
+            if (restored.alreadyActive) {
+              toast({
+                message: SITES_COPY.restoreAlready(restored.name),
+                region: "home",
+              });
+              router.refresh();
+              return;
+            }
             const message = restored.slugChanged
-              ? SITES_COPY.restoredRenamed(restored.name, restored.address)
+              ? SITES_COPY.restoredRenamed(restored.name, restored.address!)
               : SITES_COPY.restored(restored.name);
-            router.push(`/sites?highlight=${restored.siteId}`, { scroll: false });
+            router.push(`/sites?highlight=${restored.siteId}`, {
+              scroll: false,
+            });
             router.refresh();
             toast({
               message,
@@ -102,11 +118,17 @@ export function DeleteSiteDialog({
       lead={lead}
       actions={
         <>
-          <Button variant="secondary" onClick={dismiss} disabled={busy}>
+          <Button
+            variant="secondary"
+            size="touch-sm"
+            onClick={dismiss}
+            disabled={busy}
+          >
             {SITES_COPY.cancel}
           </Button>
           <Button
             variant="destructive"
+            size="touch-sm"
             disabled={typed.trim() !== name || busy}
             loading={busy}
             onClick={confirm}
@@ -116,7 +138,7 @@ export function DeleteSiteDialog({
         </>
       }
     >
-      <div className="mt-4">
+      <div className="mt-6">
         <Field label={SITES_COPY.deleteConfirmLabel(name)}>
           <Input
             value={typed}

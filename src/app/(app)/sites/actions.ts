@@ -5,10 +5,7 @@ import { z } from "zod";
 import { studioloAddress } from "@/lib/addresses";
 import { requireUser } from "@/lib/auth/session";
 import { SITES_COPY } from "@/lib/sites/copy";
-import {
-  detachSiteDomain,
-  invalidateSiteCaches,
-} from "@/lib/sites/hooks";
+import { detachSiteDomain, invalidateSiteCaches } from "@/lib/sites/hooks";
 import { isValidSlug } from "@/lib/sites/slug";
 import { starterChanges } from "@/lib/sites/starter";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -287,19 +284,23 @@ export async function duplicateSite(
 }
 
 export type DeleteSiteResult =
-  | { ok: true; siteId: string; name: string }
-  | { ok: false; error: string };
+  { ok: true; siteId: string; name: string } | { ok: false; error: string };
 
 export type RestoreSiteResult =
   | {
       ok: true;
       siteId: string;
       name: string;
-      slug: string;
-      slugChanged: boolean;
-      address: string;
+      slug?: string;
+      slugChanged?: boolean;
+      address?: string;
+      alreadyActive?: boolean;
     }
   | { ok: false; error: string; expired?: boolean };
+
+function logHookError(phase: string, siteId: string, error: unknown) {
+  console.error(`[sites] ${phase} hook failed for ${siteId}`, error);
+}
 
 /**
  * Soft-deletes a site (service role after an ownership check): offline at once,
@@ -327,34 +328,33 @@ export async function deleteSite(siteId: string): Promise<DeleteSiteResult> {
     return { ok: false, error: SITES_COPY.deleteFailed };
   }
 
-  const purgeAfter = new Date();
-  purgeAfter.setDate(purgeAfter.getDate() + 30);
-  const { data: updated, error: deleteError } = await admin
-    .from("sites")
-    .update({
-      deleted_at: new Date().toISOString(),
-      purge_after: purgeAfter.toISOString(),
-      live_publish_id: null,
-    })
-    .eq("id", siteId)
-    .eq("owner_id", user.id)
-    .is("deleted_at", null)
-    .select("id")
-    .maybeSingle();
-  if (deleteError || !updated) {
+  const { data: deleted, error: deleteError } = await admin.rpc(
+    "soft_delete_site",
+    { p_site: siteId, p_owner: user.id },
+  );
+  const row = deleted?.[0];
+  if (deleteError || !row?.site_name) {
+    if (deleteError?.code === "ST001") {
+      return { ok: false, error: SITES_COPY.siteGone };
+    }
     return { ok: false, error: SITES_COPY.deleteFailed };
   }
 
   try {
+    // prompt 11 TODO: detach the custom domain from the Vercel project.
     await detachSiteDomain(siteId);
+  } catch (error) {
+    logHookError("detachSiteDomain", siteId, error);
+  }
+  try {
     await invalidateSiteCaches(siteId);
-  } catch {
-    return { ok: false, error: SITES_COPY.deleteFailed };
+  } catch (error) {
+    logHookError("invalidateSiteCaches", siteId, error);
   }
 
   revalidatePath("/sites");
   revalidatePath("/sites/deleted");
-  return { ok: true, siteId, name: site.name };
+  return { ok: true, siteId, name: row.site_name };
 }
 
 /**
@@ -369,17 +369,13 @@ export async function restoreSite(siteId: string): Promise<RestoreSiteResult> {
   const supabase = await createClient();
   const { data: site, error: readError } = await supabase
     .from("sites")
-    .select("id, name, deleted_at, purge_after")
+    .select("id, name, slug, deleted_at, purge_after")
     .eq("id", siteId)
     .maybeSingle();
   if (readError) return { ok: false, error: SITES_COPY.restoreFailed };
-  if (!site?.deleted_at) return { ok: false, error: SITES_COPY.siteGone };
-  if (!site.purge_after || new Date(site.purge_after) <= new Date()) {
-    return {
-      ok: false,
-      error: SITES_COPY.restoreExpired,
-      expired: true,
-    };
+  if (!site) return { ok: false, error: SITES_COPY.siteGone };
+  if (!site.deleted_at) {
+    return { ok: true, siteId, name: site.name, alreadyActive: true };
   }
 
   let admin: ReturnType<typeof createAdminClient>;
@@ -389,13 +385,26 @@ export async function restoreSite(siteId: string): Promise<RestoreSiteResult> {
     return { ok: false, error: SITES_COPY.restoreFailed };
   }
 
+  const { data: restorable, error: restorableError } = await admin.rpc(
+    "is_site_restorable",
+    { p_site: siteId, p_owner: user.id },
+  );
+  if (restorableError) return { ok: false, error: SITES_COPY.restoreFailed };
+  if (!restorable) {
+    return {
+      ok: false,
+      error: SITES_COPY.restoreExpired,
+      expired: true,
+    };
+  }
+
   const { data: rows, error: restoreError } = await admin.rpc("restore_site", {
     p_site: siteId,
     p_owner: user.id,
   });
   const row = rows?.[0];
-  if (restoreError || !row) {
-    if (restoreError?.code === "ST404") {
+  if (restoreError) {
+    if (restoreError.code === "ST404") {
       return {
         ok: false,
         error: SITES_COPY.restoreExpired,
@@ -404,11 +413,18 @@ export async function restoreSite(siteId: string): Promise<RestoreSiteResult> {
     }
     return { ok: false, error: SITES_COPY.restoreFailed };
   }
+  if (!row) {
+    return {
+      ok: false,
+      error: SITES_COPY.restoreExpired,
+      expired: true,
+    };
+  }
 
   try {
     await invalidateSiteCaches(siteId);
-  } catch {
-    return { ok: false, error: SITES_COPY.restoreFailed };
+  } catch (error) {
+    logHookError("invalidateSiteCaches", siteId, error);
   }
 
   revalidatePath("/sites");

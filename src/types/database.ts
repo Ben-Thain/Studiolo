@@ -655,6 +655,22 @@ export type Database = {
           slug_changed: boolean;
         }[];
       };
+      soft_delete_site: {
+        Args: {
+          p_site: string;
+          p_owner: string;
+        };
+        Returns: {
+          site_name: string;
+        }[];
+      };
+      is_site_restorable: {
+        Args: {
+          p_site: string;
+          p_owner: string;
+        };
+        Returns: boolean;
+      };
       duplicate_site: {
         Args: {
           p_site: string;

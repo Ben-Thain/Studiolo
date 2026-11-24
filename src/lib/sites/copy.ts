@@ -29,6 +29,7 @@ export const SITES_COPY = {
   deleteFailed: "We couldn't delete that site. Try again.",
   restoreFailed: "We couldn't restore that site. Try again.",
   restoreExpired: "This site can't be restored any more.",
+  restoreAlready: (name: string) => `${name} is already in Sites.`,
   deleted: (name: string) => `${name} deleted`,
   restored: (name: string) => `${name} restored as a draft`,
   restoredRenamed: (name: string, address: string) =>
@@ -39,8 +40,7 @@ export const SITES_COPY = {
   deleteConfirmLabel: (name: string) => `Type ${name} to confirm`,
   deleteLead: (name: string) =>
     `${name} will go offline straight away. You can restore it from Recently deleted for 30 days.`,
-  deleteLeadDomain:
-    "Its custom domain will be disconnected.",
+  deleteLeadDomain: "Its custom domain will be disconnected.",
   recentlyDeletedTitle: "Recently deleted",
   recentlyDeleted: "Recently deleted",
   recentlyDeletedLead:
