@@ -1,7 +1,8 @@
 "use server";
 
-import { draftChangesSchema, type DraftChanges } from "@/editor/schema";
 import { sanitizeChangesLinks } from "@/editor/links";
+import { allowedPageIds } from "@/editor/page-ids";
+import { draftChangesSchema, type DraftChanges } from "@/editor/schema";
 import { requireUser } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { SITE_OWNER_SELECT } from "@/types/database";
@@ -16,19 +17,6 @@ export type SaveDraftResult =
       message?: string;
       revision?: number;
     };
-
-/** Page ids a link may target: rows already stored, plus pages in this payload. */
-export function allowedPageIds(
-  storedIds: Iterable<string>,
-  changes: {
-    pages?: { upsert?: { id: string }[]; delete?: string[] };
-  },
-): Set<string> {
-  const ids = new Set(storedIds);
-  for (const id of changes.pages?.delete ?? []) ids.delete(id);
-  for (const row of changes.pages?.upsert ?? []) ids.add(row.id);
-  return ids;
-}
 
 /** Persist a draft revision through save_draft (owner-only). */
 export async function saveSiteDraft(args: {

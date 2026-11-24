@@ -122,7 +122,10 @@ export function SiteShell({
                 data-layers-slot=""
                 className="-mx-2 mt-2 border-t border-line px-2 pt-2"
               >
-                <div className="flex h-8 items-center gap-2 px-2 text-xs leading-4 text-ink-3">
+                <div
+                  data-layers-fallback=""
+                  className="flex h-8 items-center gap-2 px-2 text-xs leading-4 text-ink-3"
+                >
                   <span>Layers</span>
                   {pageTitle ? (
                     <span className="text-ink-2">{pageTitle}</span>
@@ -158,15 +161,25 @@ export function SiteShell({
         <div className="sticky top-0 z-20 hidden min-[900px]:block">
           <TopBar
             left={
-              <SiteStatus
-                name={site.name}
-                status={site.status}
-                locked={site.passwordOn}
-              />
+              <>
+                <SiteStatus
+                  name={site.name}
+                  status={site.status}
+                  locked={site.passwordOn}
+                />
+                {area === "editor" ? (
+                  <div data-editor-add="" className="flex items-center gap-2" />
+                ) : null}
+              </>
             }
             right={
               <>
-                {area === "editor" ? null : (
+                {area === "editor" ? (
+                  <div
+                    data-editor-status=""
+                    className="flex items-center gap-2"
+                  />
+                ) : (
                   <Button
                     variant="secondary"
                     size="sm"
@@ -217,7 +230,7 @@ export function SiteShell({
             className={cn(
               "min-w-0 flex-1",
               area === "editor"
-                ? "bg-fill-hover px-4 py-6 min-[900px]:px-12 min-[900px]:pt-6"
+                ? "flex bg-surface-2 p-0"
                 : "px-6 pt-4 pb-10 min-[900px]:px-12 min-[900px]:pt-8",
             )}
           >

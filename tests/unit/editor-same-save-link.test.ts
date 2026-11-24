@@ -1,6 +1,6 @@
 import pg from "pg";
 import { describe, expect, it } from "vitest";
-import { allowedPageIds } from "@/lib/editor/save";
+import { allowedPageIds } from "@/editor/page-ids";
 import { sanitizeChangesLinks } from "@/editor/links";
 import type { DraftChanges } from "@/editor/schema";
 
