@@ -275,7 +275,7 @@ export function snapshotDoc(doc: EditorDoc): DocSnapshot {
     sections: doc.sections.map((s) => ({ ...s })),
     elements: doc.elements.map((e) => ({
       ...e,
-      content: { ...e.content },
+      content: structuredClone(e.content),
     })),
     layouts: doc.layouts.map((l) => ({ ...l })),
     revision: doc.revision,
@@ -290,7 +290,7 @@ export function restoreDoc(doc: EditorDoc, snapshot: DocSnapshot): EditorDoc {
     sections: snapshot.sections.map((s) => ({ ...s })),
     elements: snapshot.elements.map((e) => ({
       ...e,
-      content: { ...e.content },
+      content: structuredClone(e.content),
     })),
     layouts: snapshot.layouts.map((l) => ({ ...l })),
   };
@@ -321,7 +321,7 @@ export function cloneDoc(doc: EditorDoc): EditorDoc {
     sections: doc.sections.map((s) => ({ ...s })),
     elements: doc.elements.map((e) => ({
       ...e,
-      content: { ...e.content },
+      content: structuredClone(e.content),
     })),
     layouts: doc.layouts.map((l) => ({ ...l })),
     assets: doc.assets

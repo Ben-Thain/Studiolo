@@ -210,13 +210,15 @@ describe("persist", () => {
     let calls = 0;
     const save = vi.fn(
       async (payload: {
-        changes: { pages?: { upsert?: { title: string }[] } };
+        changes: { pages?: { upsert?: { id: string; title: string }[] } };
       }) => {
         calls += 1;
         await gate;
-        const title = payload.changes.pages?.upsert?.[0]?.title;
+        const titles = (payload.changes.pages?.upsert ?? []).map(
+          (row) => row.title,
+        );
         if (calls === 1) throw new Error("stale_revision ST409");
-        return title === "second" ? 7 : 6;
+        return titles.includes("second") && titles.includes("first") ? 7 : 6;
       },
     );
     const persister = createPersister({
@@ -230,7 +232,7 @@ describe("persist", () => {
       pages: {
         upsert: [
           {
-            id: "p",
+            id: "11111111-1111-4111-8111-111111111111",
             title: "first",
             slug: "first",
             sort_order: 0,
@@ -248,7 +250,7 @@ describe("persist", () => {
       pages: {
         upsert: [
           {
-            id: "p",
+            id: "22222222-2222-4222-8222-222222222222",
             title: "second",
             slug: "second",
             sort_order: 0,
@@ -260,11 +262,26 @@ describe("persist", () => {
     });
     release();
     await expect(flight).rejects.toBeInstanceOf(StaleRevisionError);
-    expect(persister.getState().pending.pages?.upsert?.[0]?.title).toBe(
-      "second",
+    const pendingIds = (persister.getState().pending.pages?.upsert ?? []).map(
+      (row) => row.id,
+    );
+    expect(pendingIds).toEqual(
+      expect.arrayContaining([
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+      ]),
     );
     await persister.flush();
     expect(save).toHaveBeenCalledTimes(2);
+    const secondIds = (save.mock.calls[1]?.[0].changes.pages?.upsert ?? []).map(
+      (row: { id: string }) => row.id,
+    );
+    expect(secondIds).toEqual(
+      expect.arrayContaining([
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+      ]),
+    );
     expect(persister.getState().revision).toBe(7);
   });
 

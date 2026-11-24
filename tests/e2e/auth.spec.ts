@@ -336,6 +336,7 @@ test.describe("accessibility", () => {
   for (const path of ["/", "/login", "/signup", "/auth/expired"]) {
     test(`${path} has no axe violations`, async ({ page }) => {
       await page.goto(path);
+      await expect(page).toHaveTitle(/Studiolo/);
       const results = await new AxeBuilder({ page }).analyze();
       expect(results.violations).toEqual([]);
     });
@@ -348,6 +349,7 @@ test.describe("accessibility", () => {
     await expect(
       page.getByRole("heading", { name: "Check your inbox" }),
     ).toBeVisible();
+    await expect(page).toHaveTitle(/Studiolo/);
     const results = await new AxeBuilder({ page }).analyze();
     expect(results.violations).toEqual([]);
   });

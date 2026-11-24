@@ -74,6 +74,30 @@ export function normalizeEmail(raw: string): string | null {
   return trimmed.toLowerCase();
 }
 
+/** Page links whose target is not in the document. Format is still valid. */
+export function missingPageLinks(
+  doc: EditorDoc,
+): { elementId: string; pageId: string }[] {
+  const ids = new Set(doc.pages.map((page) => page.id));
+  const missing: { elementId: string; pageId: string }[] = [];
+  for (const element of doc.elements) {
+    const link = element.content.link;
+    if (
+      link &&
+      typeof link === "object" &&
+      (link as ElementLink).kind === "page" &&
+      typeof (link as ElementLink).value === "string" &&
+      !ids.has((link as ElementLink).value)
+    ) {
+      missing.push({
+        elementId: element.id,
+        pageId: (link as ElementLink).value,
+      });
+    }
+  }
+  return missing;
+}
+
 export function validateLink(
   link: unknown,
   pageIds?: Set<string>,
@@ -83,6 +107,7 @@ export function validateLink(
   const parsed = shaped.data;
   switch (parsed.kind) {
     case "page":
+      if (!z.uuid().safeParse(parsed.value).success) return null;
       if (pageIds && !pageIds.has(parsed.value)) return null;
       return parsed;
     case "url": {

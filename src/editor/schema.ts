@@ -32,10 +32,17 @@ export const imageContentSchema = z.object({
   link: elementLinkSchema.optional(),
 });
 
-export const formContentSchema = z.object({
-  fields: z.array(z.enum(["name", "email", "message"])),
-  buttonLabel: z.string(),
-});
+export const formContentSchema = z
+  .object({
+    fields: z.array(z.enum(["name", "email", "message"])),
+    buttonLabel: z.string(),
+  })
+  .strict();
+
+export const navContentSchema = z.object({}).strict();
+
+const strictTextContentSchema = textContentSchema.strict();
+const strictImageContentSchema = imageContentSchema.strict();
 
 export const gridBoxSchema = z
   .object({
@@ -56,15 +63,36 @@ export const elementLayoutSchema = gridBoxSchema.extend({
   placementSource: placementSourceSchema,
 });
 
-export const editorElementSchema = z.object({
+const elementIdentity = {
   id: uuid,
   pageId: uuid.nullable(),
   sectionId: uuid,
-  type: elementTypeSchema,
   name: z.string().min(1).max(60),
-  content: z.record(z.string(), z.unknown()),
   sortOrder: z.number().int(),
-});
+};
+
+export const editorElementSchema = z.discriminatedUnion("type", [
+  z.object({
+    ...elementIdentity,
+    type: z.literal("text"),
+    content: strictTextContentSchema,
+  }),
+  z.object({
+    ...elementIdentity,
+    type: z.literal("image"),
+    content: strictImageContentSchema,
+  }),
+  z.object({
+    ...elementIdentity,
+    type: z.literal("nav"),
+    content: navContentSchema,
+  }),
+  z.object({
+    ...elementIdentity,
+    type: z.literal("form"),
+    content: formContentSchema,
+  }),
+]);
 
 export const editorSectionSchema = z.object({
   id: uuid,
@@ -98,11 +126,10 @@ export const editorDocSchema = z
     assets: z.record(z.string(), editorAssetSchema).optional(),
   })
   .superRefine((doc, ctx) => {
-    const pageIds = new Set(doc.pages.map((p) => p.id));
     for (const [index, element] of doc.elements.entries()) {
       const link = (element.content as { link?: unknown }).link;
       if (link === undefined) continue;
-      if (!validateLink(link, pageIds)) {
+      if (!validateLink(link)) {
         ctx.addIssue({
           code: "custom",
           message: "Invalid link",
@@ -119,49 +146,81 @@ const tablePatchSchema = <T extends z.ZodType>(row: T) =>
   });
 
 /** save_draft changes document (snake_case row fields). */
-export const draftChangesSchema = z.object({
-  pages: tablePatchSchema(
-    z.object({
-      id: uuid,
-      title: z.string(),
-      slug: z.string(),
-      sort_order: z.number().int(),
-      in_nav: z.boolean(),
-      is_home: z.boolean(),
-    }),
-  ).optional(),
-  sections: tablePatchSchema(
-    z.object({
-      id: uuid,
-      page_id: uuid.nullable(),
-      name: z.string(),
-      sort_order: z.number().int(),
-    }),
-  ).optional(),
-  elements: tablePatchSchema(
-    z.object({
-      id: uuid,
-      page_id: uuid.nullable(),
-      section_id: uuid,
-      type: elementTypeSchema,
-      name: z.string(),
-      content: z.record(z.string(), z.unknown()),
-      sort_order: z.number().int(),
-    }),
-  ).optional(),
-  element_layouts: tablePatchSchema(
-    z.object({
-      id: uuid,
-      element_id: uuid,
-      breakpoint: breakpointSchema,
-      col_start: z.number().int(),
-      col_span: z.number().int(),
-      row_start: z.number().int(),
-      row_span: z.number().int(),
-      hidden: z.boolean(),
-      placement_source: placementSourceSchema,
-    }),
-  ).optional(),
-});
+export const draftChangesSchema = z
+  .object({
+    pages: tablePatchSchema(
+      z.object({
+        id: uuid,
+        title: z.string(),
+        slug: z.string(),
+        sort_order: z.number().int(),
+        in_nav: z.boolean(),
+        is_home: z.boolean(),
+      }),
+    ).optional(),
+    sections: tablePatchSchema(
+      z.object({
+        id: uuid,
+        page_id: uuid.nullable(),
+        name: z.string(),
+        sort_order: z.number().int(),
+      }),
+    ).optional(),
+    elements: tablePatchSchema(
+      z.object({
+        id: uuid,
+        page_id: uuid.nullable(),
+        section_id: uuid,
+        type: elementTypeSchema,
+        name: z.string(),
+        content: z.record(z.string(), z.unknown()),
+        sort_order: z.number().int(),
+      }),
+    ).optional(),
+    element_layouts: tablePatchSchema(
+      z.object({
+        id: uuid,
+        element_id: uuid,
+        breakpoint: breakpointSchema,
+        col_start: z.number().int(),
+        col_span: z.number().int(),
+        row_start: z.number().int(),
+        row_span: z.number().int(),
+        hidden: z.boolean(),
+        placement_source: placementSourceSchema,
+      }),
+    ).optional(),
+  })
+  .superRefine((changes, ctx) => {
+    changes.elements?.upsert?.forEach((row, index) => {
+      const parsed = storedDraftElementSchema.safeParse(row);
+      if (!parsed.success) {
+        ctx.addIssue({
+          code: "custom",
+          message: "invalid_content",
+          path: ["elements", "upsert", index],
+        });
+      }
+    });
+  });
+
+const storedDraftElementSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("text"),
+    content: strictTextContentSchema,
+  }),
+  z.object({
+    type: z.literal("image"),
+    content: strictImageContentSchema,
+  }),
+  z.object({
+    type: z.literal("nav"),
+    content: navContentSchema,
+  }),
+  z.object({
+    type: z.literal("form"),
+    content: formContentSchema,
+  }),
+]);
 
 export type DraftChanges = z.infer<typeof draftChangesSchema>;

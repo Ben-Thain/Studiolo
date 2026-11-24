@@ -8,7 +8,6 @@ import { defineConfig } from "@playwright/test";
 const MOCK_AUTH_PORT = 54399;
 const POSTGREST_PORT = 54398;
 const APP_URL = "http://127.0.0.1:3000";
-const PGHOST = process.env.PGHOST ?? "/var/run/postgresql";
 
 // A service-role token for the local stack only, signed with the test-only
 // key shared with scripts/e2e-stack.sh and the mock. Not a secret: it opens

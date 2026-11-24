@@ -78,7 +78,6 @@ export type EditorCommand =
       patch: Partial<{
         title: string;
         slug: string;
-        sortOrder: number;
         inNav: boolean;
         isHome: boolean;
       }>;

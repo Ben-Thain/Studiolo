@@ -6,14 +6,29 @@ import { requireUser } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { SITE_OWNER_SELECT } from "@/types/database";
 
+export type SaveDraftCode = "stale" | "auth" | "gone" | "invalid" | "error";
+
 export type SaveDraftResult =
   | { ok: true; revision: number }
   | {
       ok: false;
-      code: "stale" | "auth" | "error";
+      code: SaveDraftCode;
       message?: string;
       revision?: number;
     };
+
+/** Page ids a link may target: rows already stored, plus pages in this payload. */
+export function allowedPageIds(
+  storedIds: Iterable<string>,
+  changes: {
+    pages?: { upsert?: { id: string }[]; delete?: string[] };
+  },
+): Set<string> {
+  const ids = new Set(storedIds);
+  for (const id of changes.pages?.delete ?? []) ids.delete(id);
+  for (const row of changes.pages?.upsert ?? []) ids.add(row.id);
+  return ids;
+}
 
 /** Persist a draft revision through save_draft (owner-only). */
 export async function saveSiteDraft(args: {
@@ -30,9 +45,8 @@ export async function saveSiteDraft(args: {
   let parsed: DraftChanges;
   try {
     parsed = draftChangesSchema.parse(args.changes);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "invalid_changes";
-    return { ok: false, code: "error", message };
+  } catch {
+    return { ok: false, code: "invalid" };
   }
 
   const supabase = await createClient();
@@ -43,7 +57,7 @@ export async function saveSiteDraft(args: {
     .is("deleted_at", null)
     .maybeSingle();
   if (siteError || !site) {
-    return { ok: false, code: "auth", message: "site_gone" };
+    return { ok: false, code: "gone" };
   }
 
   const { data: pageRows, error: pagesError } = await supabase
@@ -53,7 +67,10 @@ export async function saveSiteDraft(args: {
   if (pagesError) {
     return { ok: false, code: "error", message: pagesError.message };
   }
-  const pageIds = new Set((pageRows ?? []).map((row) => row.id));
+  const pageIds = allowedPageIds(
+    (pageRows ?? []).map((row) => row.id),
+    parsed,
+  );
   const safe = sanitizeChangesLinks(parsed, pageIds);
 
   const { data, error } = await supabase.rpc("save_draft", {

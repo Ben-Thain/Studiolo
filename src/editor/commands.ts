@@ -534,7 +534,6 @@ function updatePage(
   if (!page) throw new Error("Unknown page");
   if (patch.title !== undefined) page.title = patch.title;
   if (patch.slug !== undefined) page.slug = patch.slug;
-  if (patch.sortOrder !== undefined) page.sortOrder = patch.sortOrder;
   if (patch.inNav !== undefined) page.inNav = patch.inNav;
   if (patch.isHome !== undefined) {
     if (patch.isHome) {

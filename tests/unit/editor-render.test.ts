@@ -41,26 +41,34 @@ describe("render", () => {
   it("rejects hostile asset paths", () => {
     const doc = createDoc(SITE);
     const evil = `${SITE}/../other/x.png`;
-    const makeImage = (path: string) => ({
-      id: "60000000-0000-4000-8000-000000000002",
-      pageId: null,
-      sectionId: "70000000-0000-4000-8000-000000000001",
-      type: "image" as const,
-      name: "Evil",
-      content: {
-        assetId: ASSET,
-        alt: "x",
-        aspectLocked: true,
-      },
-      sortOrder: 0,
-    });
-    doc.assets = { [ASSET]: { path: `https://evil.com/${SITE}/x.png` } };
-    expect(renderElement(doc, makeImage("https"))).toContain("missing-asset");
-    doc.assets = { [ASSET]: { path: `javascript:alert(1)//${SITE}/x.png` } };
-    expect(renderElement(doc, makeImage("javascript"))).toContain(
+    const makeImage = (path: string) => {
+      doc.assets = { [ASSET]: { path } };
+      return {
+        id: "60000000-0000-4000-8000-000000000002",
+        pageId: null,
+        sectionId: "70000000-0000-4000-8000-000000000001",
+        type: "image" as const,
+        name: "Evil",
+        content: {
+          assetId: ASSET,
+          alt: "x",
+          aspectLocked: true,
+        },
+        sortOrder: 0,
+      };
+    };
+    expect(
+      renderElement(doc, makeImage(`https://evil.com/${SITE}/x.png`)),
+    ).toContain("missing-asset");
+    expect(
+      renderElement(doc, makeImage(`javascript:alert(1)//${SITE}/x.png`)),
+    ).toContain("missing-asset");
+    expect(renderElement(doc, makeImage(evil))).toContain("missing-asset");
+    expect(
+      renderElement(doc, makeImage(`${SITE}/%2e%2e/other/x.png`)),
+    ).toContain("missing-asset");
+    expect(renderElement(doc, makeImage(`${SITE}/..\\other/x.png`))).toContain(
       "missing-asset",
     );
-    doc.assets = { [ASSET]: { path: evil } };
-    expect(renderElement(doc, makeImage("dotdot"))).toContain("missing-asset");
   });
 });

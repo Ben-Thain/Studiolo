@@ -14,17 +14,50 @@ export function escapeHtml(raw: string): string {
     .replaceAll("'", "&#39;");
 }
 
+const STORAGE_BASE = "https://storage.studiolo.invalid/site-assets/";
+
+/** Public URL for a site-owned asset path, or null when the path is unsafe. */
+export function resolveAssetUrl(
+  siteId: string,
+  rawPath: string,
+): string | null {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(rawPath.trim());
+  } catch {
+    return null;
+  }
+  if (decoded.includes("\\")) return null;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(decoded) || decoded.includes("//")) {
+    return null;
+  }
+  if (!/^[A-Za-z0-9._/-]+$/.test(decoded)) return null;
+  const normalized = decoded.replace(/^\/+/, "");
+  const segments = normalized.split("/");
+  if (
+    segments.some(
+      (segment) => segment === "" || segment === "." || segment === "..",
+    )
+  ) {
+    return null;
+  }
+  if (!normalized.startsWith(`${siteId}/`)) return null;
+  let url: URL;
+  try {
+    url = new URL(normalized, STORAGE_BASE);
+  } catch {
+    return null;
+  }
+  const prefix = new URL(`${siteId}/`, STORAGE_BASE).href;
+  if (!url.href.startsWith(prefix)) return null;
+  return url.href;
+}
+
 function assetPath(doc: EditorDoc, assetId: string | null): string | null {
   if (!assetId) return null;
   const asset = doc.assets?.[assetId];
   if (!asset) return null;
-  const raw = asset.path.trim();
-  if (/^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("//")) return null;
-  const normalized = raw.replace(/^\/+/, "");
-  const prefix = `${doc.siteId}/`;
-  if (!normalized.startsWith(prefix)) return null;
-  if (normalized.split("/").includes("..")) return null;
-  return normalized;
+  return resolveAssetUrl(doc.siteId, asset.path);
 }
 
 function renderLink(

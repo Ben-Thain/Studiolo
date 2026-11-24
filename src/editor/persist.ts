@@ -15,6 +15,55 @@ export class StaleRevisionError extends Error {
   }
 }
 
+export class RetryableSaveError extends Error {
+  readonly code = "error";
+  constructor(message = "save_failed") {
+    super(message);
+    this.name = "RetryableSaveError";
+  }
+}
+
+export class OfflineSaveError extends Error {
+  readonly code = "offline";
+  constructor() {
+    super("network");
+    this.name = "OfflineSaveError";
+  }
+}
+
+export class InvalidSaveError extends Error {
+  readonly code = "invalid";
+  constructor() {
+    super("invalid_changes");
+    this.name = "InvalidSaveError";
+  }
+}
+
+export class GoneSaveError extends Error {
+  readonly code = "gone";
+  constructor() {
+    super("site_gone");
+    this.name = "GoneSaveError";
+  }
+}
+
+export class AuthExpiredError extends Error {
+  readonly code = "auth";
+  constructor() {
+    super("session_expired");
+    this.name = "AuthExpiredError";
+  }
+}
+
+export const SAVE_ERROR_BACKOFF_SECONDS = [2, 5, 10, 30] as const;
+
+export function saveErrorRetryDelayMs(
+  errorAttempt: number,
+  backoff: readonly number[] = SAVE_ERROR_BACKOFF_SECONDS,
+): number {
+  return (errorAttempt < backoff.length ? backoff[errorAttempt] : 30) * 1000;
+}
+
 export type SaveDraftFn = (args: {
   siteId: string;
   expectedRevision: number;
@@ -151,6 +200,11 @@ export type CreatePersisterOptions = {
   isOffline?: () => boolean;
   onStatus?: (state: PersistState) => void;
   persistDraft?: (row: DraftRow) => Promise<void>;
+  /** Test seam: replace IndexedDB so fake timers are not blocked on it. */
+  draftStore?: {
+    write: (row: DraftRow) => Promise<void>;
+    clear: (siteId: string) => Promise<void>;
+  };
 };
 
 export type Persister = {
@@ -182,6 +236,8 @@ export function createPersister(options: CreatePersisterOptions): Persister {
   let inFlight: Promise<void> | null = null;
   let queuedDuringFlight = false;
   let persistChain: Promise<void> = Promise.resolve();
+  let errorAttempt = 0;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
   const notify = () => options.onStatus?.(state);
 
@@ -199,7 +255,24 @@ export function createPersister(options: CreatePersisterOptions): Persister {
       pending: state.pending,
     };
     await options.persistDraft?.(row);
-    await writeDraftRow(row);
+    await (options.draftStore?.write ?? writeDraftRow)(row);
+  };
+
+  const clearRetry = () => {
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+    }
+  };
+
+  const scheduleRetry = () => {
+    clearRetry();
+    const delay = saveErrorRetryDelayMs(errorAttempt);
+    errorAttempt += 1;
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      void runSave().catch(() => undefined);
+    }, delay);
   };
 
   const clearMaxTimer = () => {
@@ -224,7 +297,7 @@ export function createPersister(options: CreatePersisterOptions): Persister {
 
     setStatus("saving");
     await persistChain;
-    await writeDraftRow({
+    await (options.draftStore?.write ?? writeDraftRow)({
       key: draftKey(options.siteId),
       siteId: options.siteId,
       baseRevision: state.revision,
@@ -246,9 +319,11 @@ export function createPersister(options: CreatePersisterOptions): Persister {
           lastError: null,
         };
         doc = { ...doc, revision: nextRevision };
+        errorAttempt = 0;
+        clearRetry();
         setStatus("saved");
         if (!Object.keys(state.pending).length) {
-          await clearDraftRow(options.siteId);
+          await (options.draftStore?.clear ?? clearDraftRow)(options.siteId);
         } else {
           await persistLocal();
         }
@@ -278,11 +353,15 @@ export function createPersister(options: CreatePersisterOptions): Persister {
           pending: mergeChanges(batch, state.pending),
         };
         await persistLocal();
+        const terminal = isTerminalSaveError(error);
         setStatus(
           "error",
           error instanceof Error ? error.message : "save_failed",
         );
         queuedDuringFlight = false;
+        if (!terminal && error instanceof RetryableSaveError) {
+          scheduleRetry();
+        }
         throw error;
       }
     };
@@ -338,6 +417,7 @@ export function createPersister(options: CreatePersisterOptions): Persister {
         timer = null;
       }
       clearMaxTimer();
+      clearRetry();
       await runSave();
     },
     setRevision(revision) {
@@ -358,9 +438,18 @@ function isStale(error: unknown): boolean {
 }
 
 function isOfflineError(error: unknown, isOffline?: () => boolean): boolean {
+  if (error instanceof OfflineSaveError) return true;
   if (isOffline?.()) return true;
   const message = error instanceof Error ? error.message : String(error);
   return message.toLowerCase().includes("network");
+}
+
+function isTerminalSaveError(error: unknown): boolean {
+  return (
+    error instanceof InvalidSaveError ||
+    error instanceof GoneSaveError ||
+    error instanceof AuthExpiredError
+  );
 }
 
 /** Replay any IndexedDB draft after the editor boots, rebasing onto `serverDoc`. */

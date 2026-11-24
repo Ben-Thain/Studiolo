@@ -57,7 +57,10 @@ describe("validateLink", () => {
             type: "text" as const,
             name: "T",
             content: {
-              link: { kind: "page" as const, value: "00000000-0000-0000-0000-000000000099" },
+              link: {
+                kind: "page" as const,
+                value: "00000000-0000-0000-0000-000000000099",
+              },
             },
             sort_order: 0,
           },
