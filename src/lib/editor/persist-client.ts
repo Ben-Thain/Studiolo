@@ -53,7 +53,26 @@ export type EditorPersistHandle = {
   flush: () => Promise<void>;
   /** Clear the one-shot auth notice and try the pending save again. */
   resumeAfterAuth: () => Promise<void>;
+  dispose: () => void;
 };
+
+/** True when a fetch or server-action response looks like an auth redirect or login page. */
+export function detectAuthResponse(response: Response): boolean {
+  if (response.status === 401 || response.status === 403) return true;
+  const location = response.headers.get("location") ?? "";
+  if (
+    response.status >= 300 &&
+    response.status < 400 &&
+    location.includes("/login")
+  ) {
+    return true;
+  }
+  const type = response.headers.get("content-type") ?? "";
+  if (response.status === 200 && type.includes("text/html")) {
+    return true;
+  }
+  return false;
+}
 
 function browserOffline(): boolean {
   return typeof navigator !== "undefined" && navigator.onLine === false;
@@ -77,6 +96,7 @@ export function createEditorPersist(args: {
 }): EditorPersistHandle {
   let doc = args.doc;
   let sessionExpiredFired = false;
+  let onlineHandler: (() => void) | null = null;
   const saveDraft = args.saveDraft ?? persistSiteDraft;
   const fetchDoc = args.fetchDoc ?? fetchEditorDoc;
 
@@ -107,6 +127,13 @@ export function createEditorPersist(args: {
             changes,
           });
         } catch (error) {
+          if (
+            typeof Response !== "undefined" &&
+            error instanceof Response &&
+            detectAuthResponse(error)
+          ) {
+            throw new AuthExpiredError();
+          }
           if (browserOffline()) throw new OfflineSaveError();
           throw new RetryableSaveError(
             error instanceof Error ? error.message : "save_failed",
@@ -148,9 +175,10 @@ export function createEditorPersist(args: {
   });
 
   if (typeof window !== "undefined") {
-    window.addEventListener("online", () => {
+    onlineHandler = () => {
       void persister.flush().catch(() => undefined);
-    });
+    };
+    window.addEventListener("online", onlineHandler);
   }
 
   return {
@@ -163,6 +191,13 @@ export function createEditorPersist(args: {
     resumeAfterAuth: () => {
       sessionExpiredFired = false;
       return persister.flush();
+    },
+    dispose: () => {
+      persister.dispose();
+      if (typeof window !== "undefined" && onlineHandler) {
+        window.removeEventListener("online", onlineHandler);
+        onlineHandler = null;
+      }
     },
   };
 }

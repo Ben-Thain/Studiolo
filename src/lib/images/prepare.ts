@@ -39,20 +39,8 @@ function isRaster(file: File): boolean {
 }
 
 async function convertHeic(file: File): Promise<Blob> {
-  // Resolved at runtime so the editor chunk does not require the package
-  // to exist when the page is compiled.
-  const load = new Function("specifier", "return import(specifier)") as (
-    specifier: string,
-  ) => Promise<{
-    default: (options: {
-      blob: Blob;
-      toType?: string;
-      quality?: number;
-    }) => Promise<Blob | Blob[]>;
-  }>;
-  const result = await (
-    await load("heic2any")
-  ).default({
+  const { default: heic2any } = await import("heic2any");
+  const result = await heic2any({
     blob: file,
     toType: "image/jpeg",
     quality: 0.9,

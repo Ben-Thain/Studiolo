@@ -8,7 +8,13 @@ import {
   sectionFromRow,
 } from "@/editor/doc";
 import type { EditorDoc, EditorAsset, ElementType } from "@/editor/types";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import {
+  buildStoragePublicUrl,
+  validateSiteAssetPath,
+} from "@/lib/storage/asset-path";
+import { siteAssetsPublicBase } from "@/lib/storage/server-base";
 import { SITE_OWNER_SELECT } from "@/types/database";
 
 type LayoutRow = {
@@ -90,9 +96,29 @@ export async function loadEditorDoc(siteId: string): Promise<EditorDoc> {
   doc.layouts = layoutRows.map(layoutFromRow);
 
   if (assets.data?.length) {
+    const admin = createAdminClient();
     const record: Record<string, EditorAsset> = {};
+    const expiresIn = 3600;
+    const expiresAt = Math.floor(Date.now() / 1000) + expiresIn;
     for (const row of assets.data) {
-      record[row.id] = { path: row.path, mime: row.mime ?? undefined };
+      const normalized = validateSiteAssetPath(siteId, row.path);
+      const fallback =
+        normalized && siteAssetsPublicBase()
+          ? buildStoragePublicUrl(siteAssetsPublicBase(), normalized)
+          : undefined;
+      let readUrl = fallback ?? undefined;
+      if (process.env.E2E_STACK !== "1") {
+        const signed = await admin.storage
+          .from("site-assets")
+          .createSignedUrl(row.path, expiresIn);
+        if (signed.data?.signedUrl) readUrl = signed.data.signedUrl;
+      }
+      record[row.id] = {
+        path: row.path,
+        mime: row.mime ?? undefined,
+        readUrl,
+        readUrlExpiresAt: readUrl ? expiresAt : undefined,
+      };
     }
     doc.assets = record;
   }

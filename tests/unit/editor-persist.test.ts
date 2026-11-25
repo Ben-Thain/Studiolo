@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { emptyChanges } from "@/editor/changes";
 import { createDoc } from "@/editor/doc";
 import {
+  OfflineSaveError,
   StaleRevisionError,
   clearDraftRow,
   createPersister,
@@ -288,7 +289,7 @@ describe("persist", () => {
   it("preserves newer offline edits when merging a failed batch", async () => {
     const save = vi
       .fn()
-      .mockRejectedValueOnce(new Error("network error"))
+      .mockRejectedValueOnce(new OfflineSaveError())
       .mockResolvedValueOnce(5);
     const persister = createPersister({
       siteId: SITE,
@@ -363,7 +364,7 @@ describe("persist", () => {
   });
 
   it("writes pending doc+changes to IndexedDB when offline", async () => {
-    const save = vi.fn().mockRejectedValue(new Error("network error"));
+    const save = vi.fn().mockRejectedValue(new OfflineSaveError());
     const persister = createPersister({
       siteId: SITE,
       initialRevision: 4,

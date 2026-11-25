@@ -35,6 +35,10 @@ export async function middleware(request: NextRequest) {
   const { response, user } = await updateSession(request);
 
   if (!user && isAuthRoute(pathname)) {
+    const nextAction = request.headers.get("next-action");
+    if (nextAction?.trim()) {
+      return response;
+    }
     const login = new URL("/login", request.url);
     login.search = "";
     login.searchParams.set("next", `${pathname}${search}`);

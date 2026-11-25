@@ -20,6 +20,10 @@ import { SiteStatus, StatusDot } from "@/components/ui/top-bar";
 import { TopBar } from "@/components/ui/top-bar";
 import { SITES_COPY } from "@/lib/sites/copy";
 import { cn } from "@/lib/utils";
+import {
+  EditorShellSlotsProvider,
+  useEditorShellSlots,
+} from "./editor-shell-slots";
 import { useEditorHref } from "./editor-href";
 
 export type SiteArea =
@@ -71,7 +75,7 @@ function PublishButton({ size }: { size: "sm" | "nav" }) {
  * Publish ⌄). Below 900px: the editor nav bar (back to Sites, the site name
  * opening the site menu, Publish).
  */
-export function SiteShell({
+function SiteShellLayout({
   site,
   pages,
   homePageId,
@@ -79,6 +83,7 @@ export function SiteShell({
   initials,
   accountName,
   children,
+  area,
 }: {
   site: ShellSite;
   pages: { id: string; title: string }[];
@@ -87,15 +92,16 @@ export function SiteShell({
   initials: string;
   accountName: string;
   children: ReactNode;
+  area: SiteArea;
 }) {
   const pathname = usePathname();
-  const area = areaOf(pathname, site.id);
   const editorPage = editorPageOf(pathname, site.id);
   const editorHref = useEditorHref(
     site.id,
     homePageId,
     pages.map((page) => page.id),
   );
+  const slots = useEditorShellSlots();
   const [menuOpen, setMenuOpen] = useState(false);
   const hrefOf = (id: SiteArea) =>
     id === "editor" ? editorHref : `/sites/${site.id}/${id}`;
@@ -117,8 +123,8 @@ export function SiteShell({
           }
           extra={
             area === "editor" ? (
-              // Prompt 06 fills the layer tree for the open page.
               <div
+                ref={(node) => slots.bindLayersRef(node)}
                 data-layers-slot=""
                 className="-mx-2 mt-2 border-t border-line px-2 pt-2"
               >
@@ -168,7 +174,14 @@ export function SiteShell({
                   locked={site.passwordOn}
                 />
                 {area === "editor" ? (
-                  <div data-editor-add="" className="flex items-center gap-2" />
+                  <>
+                    <div className="h-6 w-px shrink-0 bg-line" aria-hidden />
+                    <div
+                      ref={(node) => slots.bindAddRef(node)}
+                      data-editor-add=""
+                      className="flex items-center gap-2"
+                    />
+                  </>
                 ) : null}
               </>
             }
@@ -176,6 +189,7 @@ export function SiteShell({
               <>
                 {area === "editor" ? (
                   <div
+                    ref={(node) => slots.bindStatusRef(node)}
                     data-editor-status=""
                     className="flex items-center gap-2"
                   />
@@ -279,4 +293,42 @@ export function SiteShell({
       </Sheet>
     </div>
   );
+}
+
+export function SiteShell({
+  site,
+  pages,
+  homePageId,
+  trialText,
+  initials,
+  accountName,
+  children,
+}: {
+  site: ShellSite;
+  pages: { id: string; title: string }[];
+  homePageId: string;
+  trialText: string;
+  initials: string;
+  accountName: string;
+  children: ReactNode;
+}) {
+  const pathname = usePathname();
+  const area = areaOf(pathname, site.id);
+  const body = (
+    <SiteShellLayout
+      site={site}
+      pages={pages}
+      homePageId={homePageId}
+      trialText={trialText}
+      initials={initials}
+      accountName={accountName}
+      area={area}
+    >
+      {children}
+    </SiteShellLayout>
+  );
+  if (area === "editor") {
+    return <EditorShellSlotsProvider>{body}</EditorShellSlotsProvider>;
+  }
+  return body;
 }

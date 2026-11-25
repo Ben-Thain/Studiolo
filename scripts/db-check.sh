@@ -127,4 +127,7 @@ $$;
 SQL
 echo "ok: seeded account deletion"
 
+echo "== integration: editor same-save page links"
+npm run test -- tests/integration/editor-same-save-link.test.ts
+
 echo "db:check passed"

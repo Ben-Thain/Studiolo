@@ -214,6 +214,7 @@ export type Persister = {
   flush: () => Promise<void>;
   setRevision: (revision: number) => void;
   setDoc: (doc: EditorDoc) => void;
+  dispose: () => void;
 };
 
 const DEFAULT_DEBOUNCE_MS = 800;
@@ -428,6 +429,14 @@ export function createPersister(options: CreatePersisterOptions): Persister {
     setDoc(next) {
       doc = next;
     },
+    dispose() {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      clearMaxTimer();
+      clearRetry();
+    },
   };
 }
 
@@ -439,9 +448,7 @@ function isStale(error: unknown): boolean {
 
 function isOfflineError(error: unknown, isOffline?: () => boolean): boolean {
   if (error instanceof OfflineSaveError) return true;
-  if (isOffline?.()) return true;
-  const message = error instanceof Error ? error.message : String(error);
-  return message.toLowerCase().includes("network");
+  return isOffline?.() === true;
 }
 
 function isTerminalSaveError(error: unknown): boolean {

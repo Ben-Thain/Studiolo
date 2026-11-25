@@ -1,16 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  cancelAssetUpload,
   confirmAssetUpload,
   createAssetUpload,
 } from "@/app/(app)/sites/[siteId]/actions/assets";
@@ -19,18 +13,19 @@ import { Dialog } from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icons";
 import { Menu } from "@/components/ui/menu";
 import { Segmented } from "@/components/ui/segmented";
-import { Toggle } from "@/components/ui/toggle";
 import { applyCommand } from "@/editor/commands";
-import { mobileFontSize } from "@/editor/fonts";
-import { gridPlacement, GRID_AUTO_ROWS } from "@/editor/renderGrid";
+import { hydrateDraft } from "@/editor/persist";
+import { authHref } from "@/lib/auth/next";
+import { EditorInspector } from "./editor-inspector";
+import { EditorStage } from "./editor-stage";
 import {
   createHistory,
   redo as redoHistory,
   undo as undoHistory,
   type HistoryState,
 } from "@/editor/history";
-import { FONT_FAMILIES, SIZE_STEPS } from "@/editor/fonts";
 import { createEditorPersist } from "@/lib/editor/persist-client";
+import { useEditorShellSlots } from "./editor-shell-slots";
 import { prepareImage } from "@/lib/images/prepare";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -82,8 +77,12 @@ export function EditorDesktop({
   const [layout, setLayout] = useState<LayoutName>(initialLayout);
   const [status, setStatus] = useState<SaveStatus>("saved");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [reAuthOpen, setReAuthOpen] = useState(false);
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [renameId, setRenameId] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const replaceRef = useRef(false);
   const persistRef = useRef<ReturnType<typeof createEditorPersist> | null>(
@@ -96,35 +95,36 @@ export function EditorDesktop({
   }, [doc]);
 
   useEffect(() => {
+    let active = true;
     const handle = createEditorPersist({
       siteId,
       doc: initialDoc,
-      onSessionExpired: () => router.push("/login"),
+      onSessionExpired: () => setReAuthOpen(true),
     });
     persistRef.current = handle;
-    return handle.status.subscribe(() => {
+    const unsub = handle.status.subscribe(() => {
       setStatus(handle.persister.getState().status);
     });
-  }, [initialDoc, router, siteId]);
+    void hydrateDraft(handle.persister, initialDoc).then((next) => {
+      if (!active) return;
+      docRef.current = next;
+      setDoc(next);
+    });
+    return () => {
+      active = false;
+      unsub();
+      handle.dispose();
+    };
+  }, [initialDoc, siteId]);
 
-  const addHost =
-    typeof document === "undefined"
-      ? null
-      : document.querySelector<HTMLElement>("[data-editor-add]");
-  const statusHost =
-    typeof document === "undefined"
-      ? null
-      : document.querySelector<HTMLElement>("[data-editor-status]");
-  const layersHost =
-    typeof document === "undefined"
-      ? null
-      : document.querySelector<HTMLElement>("[data-layers-slot]");
+  const { addHost, statusHost, layersHost } = useEditorShellSlots();
 
   useEffect(() => {
+    if (!layersHost) return;
     document
       .querySelector("[data-layers-fallback]")
       ?.setAttribute("hidden", "");
-  }, []);
+  }, [layersHost]);
 
   const run = useCallback((command: EditorCommand) => {
     const result = applyCommand(docRef.current, command);
@@ -191,10 +191,12 @@ export function EditorDesktop({
       if (!file) return;
       setUploading(true);
       setUploadError(null);
+      let pendingAssetId: string | undefined;
       try {
         const prepared = await prepareImage(file);
         const ticket = await createAssetUpload(siteId);
         if (!ticket.ok) throw new Error(ticket.error);
+        pendingAssetId = ticket.assetId;
         const supabase = createClient();
         const uploaded = await supabase.storage
           .from("site-assets")
@@ -208,6 +210,7 @@ export function EditorDesktop({
           bytes: prepared.bytes,
         });
         if (!confirmed.ok) throw new Error(confirmed.error);
+        pendingAssetId = undefined;
         if (replaceRef.current && selectedId) {
           run({
             type: "updateContent",
@@ -231,6 +234,11 @@ export function EditorDesktop({
           }
         }
       } catch (error) {
+        if (pendingAssetId) {
+          await cancelAssetUpload(siteId, pendingAssetId).catch(
+            () => undefined,
+          );
+        }
         setUploadError(
           error instanceof Error
             ? error.message
@@ -247,10 +255,15 @@ export function EditorDesktop({
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      const typing =
+      const inField =
         target?.tagName === "INPUT" ||
         target?.tagName === "TEXTAREA" ||
         target?.isContentEditable;
+      const onCanvas =
+        !target?.closest("[data-editor-add]") &&
+        !target?.closest("[data-editor-status]") &&
+        !target?.closest("button") &&
+        (target?.closest("[data-editor-canvas]") || target === document.body);
       const meta = event.metaKey || event.ctrlKey;
       if (meta && event.key.toLowerCase() === "z") {
         event.preventDefault();
@@ -258,14 +271,19 @@ export function EditorDesktop({
         else undo();
         return;
       }
-      if (typing) return;
+      if (inField) return;
       if (event.key === "Escape") {
         setSelectedId(null);
         setEditingId(null);
         setConfirmDelete(false);
       }
-      if (event.key === "t" || event.key === "T") addText();
-      if (event.key === "i" || event.key === "I") startImage(false);
+      if ((event.key === "t" || event.key === "T") && onCanvas) addText();
+      if ((event.key === "i" || event.key === "I") && onCanvas)
+        startImage(false);
+      if (event.key === "F2" && selectedId) {
+        event.preventDefault();
+        setRenameId(selectedId);
+      }
       if (!selectedId) return;
       if (event.key === "Backspace" || event.key === "Delete") {
         event.preventDefault();
@@ -489,7 +507,7 @@ export function EditorDesktop({
             />
           </div>
         </div>
-        <Stage
+        <EditorStage
           doc={doc}
           pageId={pageId}
           layout={layout}
@@ -497,13 +515,18 @@ export function EditorDesktop({
           label={`${page?.title ?? "Page"} page`}
           selectedId={selectedId}
           editingId={editingId}
+          focusedId={focusedId}
           onSelect={setSelectedId}
+          onFocus={setFocusedId}
           onEdit={setEditingId}
           onCommitText={(elementId, text) =>
             run({ type: "updateContent", elementId, content: { text } })
           }
           onMove={(elementId, col, row) =>
             run({ type: "move", elementId, breakpoint: layout, col, row })
+          }
+          onResize={(elementId, span, rows) =>
+            run({ type: "resize", elementId, breakpoint: layout, span, rows })
           }
         />
         {uploadError ? (
@@ -519,16 +542,27 @@ export function EditorDesktop({
           </p>
         ) : null}
         {uploading ? (
-          <p className="mt-3 text-xs text-ink-3">Uploading…</p>
+          <div className="mt-3 w-48">
+            <p className="text-xs text-ink-3">Uploading…</p>
+            <div
+              className="mt-1 h-1 overflow-hidden rounded bg-surface-2"
+              role="progressbar"
+              aria-valuenow={uploadProgress}
+            >
+              <div
+                className="h-full bg-ink transition-[width]"
+                style={{ width: `${uploadProgress}%` }}
+              />
+            </div>
+          </div>
         ) : null}
       </div>
-      <Inspector
+      <EditorInspector
         doc={doc}
         pageTitle={page?.title ?? "Page"}
         layout={layout}
         element={selected}
         sectionName={selectedSection?.name ?? ""}
-        siteId={siteId}
         onRun={run}
         onReplace={() => startImage(true)}
         onDelete={() => setConfirmDelete(true)}
@@ -562,6 +596,19 @@ export function EditorDesktop({
         : null}
       {layersHost ? createPortal(layers, layersHost) : null}
       <Dialog
+        open={reAuthOpen}
+        onClose={() => undefined}
+        title="Sign in to keep editing"
+        lead="Your session ended. Sign in again to save your changes."
+        actions={
+          <Button
+            href={authHref("/login", `/sites/${siteId}/editor/${pageId}`)}
+          >
+            Sign in
+          </Button>
+        }
+      />
+      <Dialog
         open={confirmDelete}
         onClose={() => setConfirmDelete(false)}
         title="Delete this item?"
@@ -586,381 +633,5 @@ export function EditorDesktop({
         }
       />
     </div>
-  );
-}
-
-function Stage({
-  doc,
-  pageId,
-  layout,
-  navTitles,
-  label,
-  selectedId,
-  editingId,
-  onSelect,
-  onEdit,
-  onCommitText,
-  onMove,
-}: {
-  doc: EditorDoc;
-  pageId: string;
-  layout: LayoutName;
-  navTitles: string[];
-  label: string;
-  selectedId: string | null;
-  editingId: string | null;
-  onSelect: (id: string | null) => void;
-  onEdit: (id: string | null) => void;
-  onCommitText: (id: string, text: string) => void;
-  onMove: (id: string, col: number, row: number) => void;
-}) {
-  return (
-    <div
-      role="region"
-      aria-label={label}
-      className={cn(
-        "relative mx-auto rounded-dialog border border-line bg-bg",
-        layout === "mobile" ? "w-[393px]" : "w-full max-w-[960px]",
-      )}
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) onSelect(null);
-      }}
-    >
-      <div data-preview={layout}>
-        {sectionsForPage(doc, pageId).map((section) => (
-          <div
-            key={section.id}
-            data-section={section.name}
-            className="grid grid-cols-12 gap-x-6 px-8 py-4"
-            style={{ gridAutoRows: GRID_AUTO_ROWS }}
-          >
-            {elementsIn(doc, section.id).map((element) => {
-              const box = doc.layouts.find(
-                (item) =>
-                  item.elementId === element.id && item.breakpoint === layout,
-              );
-              if (!box || box.hidden) return null;
-              return (
-                <CanvasItem
-                  key={element.id}
-                  element={element}
-                  style={gridPlacement(box)}
-                  selected={element.id === selectedId}
-                  editing={element.id === editingId}
-                  layout={layout}
-                  navTitles={navTitles}
-                  onSelect={() => onSelect(element.id)}
-                  onEdit={() => onEdit(element.id)}
-                  onCommitText={(text) => onCommitText(element.id, text)}
-                  onMove={(col, row) => onMove(element.id, col, row)}
-                  origin={{ col: box.col, row: box.row }}
-                />
-              );
-            })}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function CanvasItem({
-  element,
-  style,
-  selected,
-  editing,
-  layout,
-  navTitles,
-  onSelect,
-  onEdit,
-  onCommitText,
-  onMove,
-  origin,
-}: {
-  element: EditorElement;
-  style: CSSProperties;
-  selected: boolean;
-  editing: boolean;
-  layout: LayoutName;
-  navTitles: string[];
-  onSelect: () => void;
-  onEdit: () => void;
-  onCommitText: (text: string) => void;
-  onMove: (col: number, row: number) => void;
-  origin: { col: number; row: number };
-}) {
-  const drag = useRef<{ x: number; y: number } | null>(null);
-  const onPointerDown = (event: ReactPointerEvent) => {
-    onSelect();
-    drag.current = { x: event.clientX, y: event.clientY };
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
-  const onPointerUp = (event: ReactPointerEvent) => {
-    if (!drag.current) return;
-    const dx = event.clientX - drag.current.x;
-    const dy = event.clientY - drag.current.y;
-    drag.current = null;
-    if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
-    const col = origin.col + Math.round(dx / (1440 / 12));
-    const row = origin.row + Math.round(dy / 8);
-    onMove(Math.min(12, Math.max(1, col)), Math.max(1, row));
-  };
-  const text = String(element.content.text ?? "");
-  const size = Number(element.content.fontSize ?? 18);
-  const shown = layout === "mobile" ? mobileFontSize(size) : size;
-  return (
-    <div
-      data-element={element.name}
-      className={cn(
-        "relative min-w-0",
-        selected && "outline outline-1 outline-ink",
-      )}
-      style={{ ...style, touchAction: "none" }}
-      onPointerDown={onPointerDown}
-      onPointerUp={onPointerUp}
-      onDoubleClick={onEdit}
-    >
-      {selected ? (
-        <>
-          <span className="absolute -top-1 -left-1 size-2 bg-ink" />
-          <span className="absolute -top-1 -right-1 size-2 bg-ink" />
-          <span className="absolute -bottom-1 -left-1 size-2 bg-ink" />
-          <span className="absolute -right-1 -bottom-1 size-2 bg-ink" />
-        </>
-      ) : null}
-      {element.type === "text" ? (
-        editing ? (
-          <textarea
-            autoFocus
-            defaultValue={text}
-            className="w-full bg-transparent text-ink outline-none"
-            style={{ fontSize: shown }}
-            onBlur={(event) => onCommitText(event.target.value)}
-          />
-        ) : (
-          <p
-            className="whitespace-pre-line text-ink"
-            style={{
-              fontSize: shown,
-              fontWeight:
-                Number(element.content.fontWeight) === 500 ? 500 : 400,
-              textAlign:
-                (element.content.align as CSSProperties["textAlign"]) ?? "left",
-            }}
-          >
-            {text}
-          </p>
-        )
-      ) : null}
-      {element.type === "image" ? (
-        <div className="flex h-full min-h-16 items-center justify-center rounded-control bg-surface-2 text-xs text-ink-2">
-          {element.name}
-        </div>
-      ) : null}
-      {element.type === "nav" ? (
-        <ul className="flex flex-wrap justify-end gap-x-6 text-sm text-ink-2">
-          {navTitles.map((title) => (
-            <li key={title}>{title}</li>
-          ))}
-        </ul>
-      ) : null}
-      {element.type === "form" ? (
-        <p className="text-sm text-ink">
-          {String(element.content.buttonLabel ?? "Send")}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-function Inspector({
-  doc,
-  pageTitle,
-  layout,
-  element,
-  sectionName,
-  siteId,
-  onRun,
-  onReplace,
-  onDelete,
-}: {
-  doc: EditorDoc;
-  pageTitle: string;
-  layout: LayoutName;
-  element: EditorElement | null;
-  sectionName: string;
-  siteId: string;
-  onRun: (command: EditorCommand) => void;
-  onReplace: () => void;
-  onDelete: () => void;
-}) {
-  const layoutName = layout === "mobile" ? "Mobile" : "Desktop";
-  const box = element
-    ? doc.layouts.find(
-        (item) => item.elementId === element.id && item.breakpoint === layout,
-      )
-    : null;
-  return (
-    <aside className="hidden w-[288px] shrink-0 border-l border-line bg-bg px-4 py-5 min-[900px]:block">
-      {!element ? (
-        <>
-          <h2 className="text-sm font-medium text-ink">{pageTitle}</h2>
-          <p className="mt-1 text-xs text-ink-3">Page · {layoutName} layout</p>
-          <p className="mt-4 text-sm leading-5 text-ink-2">
-            Select something on the page to edit it. Press T for a text box or I
-            for an image.
-          </p>
-        </>
-      ) : (
-        <>
-          <h2 className="text-sm font-medium text-ink">{element.name}</h2>
-          <p className="mt-1 text-xs text-ink-3">
-            {element.type === "image" ? "Image" : "Text box"} · {sectionName}{" "}
-            section
-          </p>
-          {element.type === "image" ? (
-            <div className="mt-4">
-              <div className="mb-3 flex h-24 items-center justify-center rounded-control bg-surface-2 text-xs text-ink-2">
-                {element.name}
-              </div>
-              <Button variant="secondary" size="sm" onClick={onReplace}>
-                Replace image
-              </Button>
-              <label className="mt-4 block text-xs text-ink-3">
-                Alt text
-                <textarea
-                  className="mt-1 w-full rounded-control border border-line p-2 text-sm text-ink"
-                  value={String(element.content.alt ?? "")}
-                  placeholder="Describe the image for screen readers"
-                  onChange={(event) =>
-                    onRun({
-                      type: "updateContent",
-                      elementId: element.id,
-                      content: { alt: event.target.value },
-                    })
-                  }
-                />
-              </label>
-            </div>
-          ) : null}
-          {element.type === "text" ? (
-            <div className="mt-4 flex flex-col gap-3">
-              <label className="text-xs text-ink-3">
-                Font
-                <select
-                  className="mt-1 h-8 w-full rounded-control border border-line px-2 text-sm"
-                  value={String(element.content.fontFamily ?? "Inter")}
-                  onChange={(event) =>
-                    onRun({
-                      type: "updateContent",
-                      elementId: element.id,
-                      content: { fontFamily: event.target.value },
-                    })
-                  }
-                >
-                  {FONT_FAMILIES.map((family) => (
-                    <option key={family}>{family}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-xs text-ink-3">
-                Size
-                <select
-                  className="mt-1 h-8 w-full rounded-control border border-line px-2 text-sm"
-                  value={String(element.content.fontSize ?? 18)}
-                  onChange={(event) =>
-                    onRun({
-                      type: "updateContent",
-                      elementId: element.id,
-                      content: { fontSize: Number(event.target.value) },
-                    })
-                  }
-                >
-                  {SIZE_STEPS.map((step) => (
-                    <option key={step} value={step}>
-                      {step}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <Segmented
-                label="Align"
-                value={String(element.content.align ?? "left")}
-                options={[
-                  { value: "left", label: "Left" },
-                  { value: "center", label: "Centre" },
-                  { value: "right", label: "Right" },
-                ]}
-                onChange={(value) =>
-                  onRun({
-                    type: "updateContent",
-                    elementId: element.id,
-                    content: { align: value },
-                  })
-                }
-              />
-            </div>
-          ) : null}
-          {element.type === "nav" ? (
-            <p className="mt-4 text-sm text-ink-2">
-              Shows pages that are in the menu.{" "}
-              <a className="underline" href={`/sites/${siteId}/pages`}>
-                Change them in Pages.
-              </a>
-            </p>
-          ) : null}
-          {element.type === "form" ? (
-            <>
-              <label className="mt-4 block text-xs text-ink-3">
-                Button label
-                <input
-                  className="mt-1 h-8 w-full rounded-control border border-line px-2 text-sm"
-                  value={String(element.content.buttonLabel ?? "")}
-                  onChange={(event) =>
-                    onRun({
-                      type: "updateContent",
-                      elementId: element.id,
-                      content: { buttonLabel: event.target.value },
-                    })
-                  }
-                />
-              </label>
-              <p className="mt-3 text-sm text-ink-2">
-                Submissions arrive in Submissions.
-              </p>
-            </>
-          ) : null}
-          {element.type === "text" || element.type === "image" ? (
-            <div className="mt-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-ink">Hide on {layout}</span>
-                <Toggle
-                  label={`Hide on ${layout}`}
-                  checked={box?.hidden ?? false}
-                  onChange={(hidden) =>
-                    onRun({
-                      type: "setHidden",
-                      elementId: element.id,
-                      breakpoint: layout,
-                      hidden,
-                    })
-                  }
-                />
-              </div>
-              <p className="mt-2 text-xs text-ink-3">
-                Position and size are per layout. The image is shared.
-              </p>
-              <button
-                type="button"
-                className="mt-6 text-sm text-error"
-                onClick={onDelete}
-              >
-                Delete from both layouts
-              </button>
-            </div>
-          ) : null}
-        </>
-      )}
-    </aside>
   );
 }

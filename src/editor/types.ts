@@ -36,6 +36,8 @@ export type SizeStep =
 export type EditorAsset = {
   path: string;
   mime?: string;
+  readUrl?: string;
+  readUrlExpiresAt?: number;
 };
 
 export type ElementLink = {

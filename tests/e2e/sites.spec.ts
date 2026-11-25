@@ -107,9 +107,7 @@ test.describe("first site", () => {
     await expect(page.getByRole("tooltip")).toHaveText("Publishing comes next");
     await expect(page.getByRole("tooltip")).toBeVisible();
     // The starter content.
-    const canvas = page
-      .getByRole("region", { name: "Home page" })
-      .locator('[data-preview="desktop"]');
+    const canvas = page.getByRole("region", { name: "Home page" });
     await expect(canvas.getByText("Your heading")).toBeVisible();
     await expect(
       canvas.getByText("A line or two about what you do."),
@@ -351,10 +349,7 @@ test.describe("duplicate", () => {
     await expect(page.getByRole("table").getByRole("row")).toHaveCount(3);
     await page.goto(`/sites/${copyId}`);
     await expect(
-      page
-        .getByRole("region", { name: "Home page" })
-        .locator('[data-preview="desktop"]')
-        .getByText("Your heading"),
+      page.getByRole("region", { name: "Home page" }).getByText("Your heading"),
     ).toBeVisible();
   });
 
@@ -771,8 +766,7 @@ test.describe("site areas (seeded account)", () => {
     await expect(
       page
         .getByRole("region", { name: "Home page" })
-        .locator('[data-preview="desktop"]')
-        .getByText("Interiors for old houses, done slowly."),
+        .getByText(/Interiors for old houses, done slowly/),
     ).toBeVisible();
   });
 

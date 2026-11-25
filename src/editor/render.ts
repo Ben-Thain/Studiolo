@@ -2,6 +2,11 @@
  * Server-safe HTML fragments for editor elements (prompt 05).
  */
 
+import {
+  buildStoragePublicUrl,
+  validateSiteAssetPath,
+} from "@/lib/storage/asset-path";
+import { siteAssetsPublicBase } from "@/lib/storage/server-base";
 import { getContentLink, validateLink } from "./links";
 import type { EditorDoc, EditorElement } from "./types";
 
@@ -14,49 +19,29 @@ export function escapeHtml(raw: string): string {
     .replaceAll("'", "&#39;");
 }
 
-const STORAGE_BASE = "https://storage.studiolo.invalid/site-assets/";
-
 /** Public URL for a site-owned asset path, or null when the path is unsafe. */
 export function resolveAssetUrl(
   siteId: string,
   rawPath: string,
+  base: string = siteAssetsPublicBase(),
 ): string | null {
-  let decoded: string;
+  const normalized = validateSiteAssetPath(siteId, rawPath);
+  if (!normalized) return null;
   try {
-    decoded = decodeURIComponent(rawPath.trim());
+    const url = new URL(buildStoragePublicUrl(base, normalized));
+    const prefix = new URL(buildStoragePublicUrl(base, `${siteId}/`)).href;
+    if (!url.href.startsWith(prefix)) return null;
+    return url.href;
   } catch {
     return null;
   }
-  if (decoded.includes("\\")) return null;
-  if (/^[a-z][a-z0-9+.-]*:/i.test(decoded) || decoded.includes("//")) {
-    return null;
-  }
-  if (!/^[A-Za-z0-9._/-]+$/.test(decoded)) return null;
-  const normalized = decoded.replace(/^\/+/, "");
-  const segments = normalized.split("/");
-  if (
-    segments.some(
-      (segment) => segment === "" || segment === "." || segment === "..",
-    )
-  ) {
-    return null;
-  }
-  if (!normalized.startsWith(`${siteId}/`)) return null;
-  let url: URL;
-  try {
-    url = new URL(normalized, STORAGE_BASE);
-  } catch {
-    return null;
-  }
-  const prefix = new URL(`${siteId}/`, STORAGE_BASE).href;
-  if (!url.href.startsWith(prefix)) return null;
-  return url.href;
 }
 
 function assetPath(doc: EditorDoc, assetId: string | null): string | null {
   if (!assetId) return null;
   const asset = doc.assets?.[assetId];
   if (!asset) return null;
+  if (asset.readUrl) return asset.readUrl;
   return resolveAssetUrl(doc.siteId, asset.path);
 }
 

@@ -59,9 +59,7 @@ export function appendMobileStack(
   existing: StackItem[],
   newItem: { id: string; rows: number },
 ): GridBox {
-  const boxes = existing.map((i) =>
-    i.placementSource === "manual" ? i.mobile : i.desktop,
-  );
+  const boxes = existing.map((i) => i.mobile);
   const start = rowBelow(boxes, existing.length ? MOBILE_STACK_GAP_ROWS : 0);
   return snapBox({ col: 1, span: 12, row: start, rows: newItem.rows });
 }

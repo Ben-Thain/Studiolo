@@ -61,7 +61,7 @@ export async function createAssetUpload(
   };
 }
 
-/** Confirm size and MIME, then store width, height and bytes. */
+/** Confirm size and MIME, then store width, height and bytes from storage. */
 export async function confirmAssetUpload(args: {
   siteId: string;
   assetId: string;
@@ -85,7 +85,20 @@ export async function confirmAssetUpload(args: {
     return { ok: false, error: "Could not save the photo." };
   }
   const mime = info.data.contentType ?? info.data.metadata?.mimetype;
-  if (mime && mime !== "image/webp" && mime !== "image/jpeg") {
+  if (!mime) {
+    return { ok: false, error: "Could not save the photo." };
+  }
+  if (mime !== "image/webp" && mime !== "image/jpeg") {
+    return { ok: false, error: "Could not save the photo." };
+  }
+  const rawSize = info.data.size ?? info.data.metadata?.size;
+  const bytes =
+    typeof rawSize === "number"
+      ? rawSize
+      : typeof rawSize === "string"
+        ? Number.parseInt(rawSize, 10)
+        : NaN;
+  if (!Number.isFinite(bytes) || bytes <= 0) {
     return { ok: false, error: "Could not save the photo." };
   }
   const { error } = await admin
@@ -93,7 +106,7 @@ export async function confirmAssetUpload(args: {
     .update({
       width: args.width,
       height: args.height,
-      bytes: args.bytes,
+      bytes,
       mime: mime === "image/jpeg" ? "image/jpeg" : "image/webp",
     })
     .eq("id", args.assetId);
@@ -106,4 +119,25 @@ export async function confirmAssetUpload(args: {
     path: row.path,
     readUrl: read.data?.signedUrl ?? "",
   };
+}
+
+/** Drop a pending asset row (and storage object) after a failed client upload. */
+export async function cancelAssetUpload(
+  siteId: string,
+  assetId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const site = await ownedSite(siteId);
+  if (!site) return { ok: false, error: "This site is not available." };
+  const admin = createAdminClient();
+  const { data: row } = await admin
+    .from("assets")
+    .select("id, path, site_id, bytes")
+    .eq("id", assetId)
+    .maybeSingle();
+  if (!row || row.site_id !== siteId) {
+    return { ok: false, error: "Could not cancel the upload." };
+  }
+  await admin.storage.from(BUCKET).remove([row.path]);
+  await admin.from("assets").delete().eq("id", assetId);
+  return { ok: true };
 }

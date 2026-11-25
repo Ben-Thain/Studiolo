@@ -189,13 +189,174 @@ async function proxyRest(req, res, path, search) {
   req.pipe(upstream);
 }
 
+const pendingUploads = new Map();
+
+function storageObjectName(bucketId, objectPath) {
+  const prefix = `${bucketId}/`;
+  return objectPath.startsWith(prefix)
+    ? objectPath.slice(prefix.length)
+    : objectPath;
+}
+
 // Storage API stand-in (service role only), on the local storage.objects.
-async function storageApi(req, res, path) {
+async function storageApi(req, res, path, search, url) {
   const claims = bearer(req);
+  const body =
+    req.method === "PUT" || req.method === "GET"
+      ? undefined
+      : await readJson(req);
+
+  const uploadSign = path.match(
+    /^\/storage\/v1\/object\/upload\/sign\/([^/]+)$/,
+  );
+  if (uploadSign && req.method === "POST") {
+    if (claims?.role !== "service_role") {
+      return send(res, 403, { statusCode: "403", error: "Unauthorized" });
+    }
+    const objectPath = String(body.path ?? body.name ?? "");
+    const token = b64(`upload.${objectPath}.${Date.now()}`);
+    const signedUrl = `http://127.0.0.1:${PORT}/storage/v1/object/upload/${uploadSign[1]}/${encodeURIComponent(objectPath)}?token=${token}`;
+    pendingUploads.set(token, {
+      bucket: uploadSign[1],
+      path: objectPath,
+    });
+    return send(res, 200, { signedUrl, token, path: objectPath });
+  }
+
+  const uploadPut = path.match(
+    /^\/storage\/v1\/object\/upload\/([^/]+)\/(.+)$/,
+  );
+  if (uploadPut && req.method === "PUT") {
+    const token = url.searchParams.get("token");
+    const pending = pendingUploads.get(token);
+    if (!pending || pending.bucket !== uploadPut[1]) {
+      return send(res, 403, { statusCode: "403", error: "invalid_token" });
+    }
+    let raw = "";
+    for await (const chunk of req) raw += chunk;
+    const name = decodeURIComponent(uploadPut[2]);
+    const size = Buffer.byteLength(raw);
+    await pool.query(
+      `insert into storage.objects (bucket_id, name, metadata)
+       values ($1, $2, $3::jsonb)
+       on conflict (bucket_id, name) do update set metadata = $3::jsonb`,
+      [uploadPut[1], name, JSON.stringify({ mimetype: "image/webp", size })],
+    );
+    pendingUploads.delete(token);
+    return send(res, 200, { Key: `${uploadPut[1]}/${name}` });
+  }
+
+  const objectSignBatch = path.match(/^\/storage\/v1\/object\/sign\/([^/]+)$/);
+  if (objectSignBatch && req.method === "POST" && Array.isArray(body.paths)) {
+    const paths = body.paths;
+    const expiresIn = Number(body.expiresIn ?? 3600);
+    const data = paths.map((objectPath) => ({
+      path: objectPath,
+      signedUrl: `http://127.0.0.1:${PORT}/storage/v1/object/${objectSignBatch[1]}/${encodeURIComponent(objectPath)}?expires=${expiresIn}`,
+    }));
+    return send(res, 200, data);
+  }
+
+  const objectSign = path.match(/^\/storage\/v1\/object\/sign\/(.+)$/);
+  if (objectSign && req.method === "POST") {
+    const full = objectSign[1];
+    const slash = full.indexOf("/");
+    const bucket = slash === -1 ? full : full.slice(0, slash);
+    const objectPath = slash === -1 ? "" : full.slice(slash + 1);
+    const expiresIn = Number(body.expiresIn ?? 3600);
+    return send(res, 200, {
+      signedURL: `/storage/v1/object/${bucket}/${encodeURIComponent(objectPath)}?expires=${expiresIn}`,
+    });
+  }
+
+  const objectPublic = path.match(
+    /^\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/,
+  );
+  if (objectPublic && req.method === "GET") {
+    const name = decodeURIComponent(objectPublic[2]);
+    const { rows } = await pool.query(
+      `select name from storage.objects where bucket_id = $1 and name = $2`,
+      [objectPublic[1], name],
+    );
+    if (!rows[0])
+      return send(res, 404, { statusCode: "404", error: "not_found" });
+    const webp = Buffer.from(
+      "UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAQAcJaQAA3AA/vuUAAA=",
+      "base64",
+    );
+    res.writeHead(200, {
+      "content-type": "image/webp",
+      "content-length": webp.length,
+      "access-control-allow-origin": "*",
+    });
+    res.end(webp);
+    return;
+  }
+
+  const objectInfo = path.match(/^\/storage\/v1\/object\/info\/([^/]+)$/);
+  if (objectInfo && req.method === "GET") {
+    if (claims?.role !== "service_role") {
+      return send(res, 403, { statusCode: "403", error: "Unauthorized" });
+    }
+    const name = storageObjectName(
+      objectInfo[1],
+      String(
+        url.searchParams.get("prefix") ?? url.searchParams.get("path") ?? "",
+      ),
+    );
+    const { rows } = await pool.query(
+      `select name, metadata from storage.objects
+       where bucket_id = $1 and name = $2`,
+      [objectInfo[1], name],
+    );
+    if (!rows[0]) {
+      return send(res, 404, { statusCode: "404", error: "not_found" });
+    }
+    const meta = rows[0].metadata ?? {};
+    const size =
+      typeof meta.size === "number" ? meta.size : Number(meta.size) || 0;
+    return send(res, 200, {
+      name: rows[0].name,
+      contentType: meta.mimetype ?? "image/webp",
+      size,
+      metadata: meta,
+    });
+  }
+
+  const objectGet = path.match(/^\/storage\/v1\/object\/([^/]+)\/(.+)$/);
+  if (
+    objectGet &&
+    req.method === "GET" &&
+    !path.includes("/upload/") &&
+    !path.includes("/sign/") &&
+    !path.includes("/info/") &&
+    !path.includes("/public/")
+  ) {
+    const rawName = objectGet[2].split("?")[0];
+    const name = decodeURIComponent(rawName);
+    const { rows } = await pool.query(
+      `select name from storage.objects where bucket_id = $1 and name = $2`,
+      [objectGet[1], name],
+    );
+    if (!rows[0]) {
+      return send(res, 404, { statusCode: "404", error: "not_found" });
+    }
+    const webp = Buffer.from(
+      "UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAQAcJaQAA3AA/vuUAAA=",
+      "base64",
+    );
+    res.writeHead(200, {
+      "content-type": "image/webp",
+      "content-length": webp.length,
+      "access-control-allow-origin": "*",
+    });
+    res.end(webp);
+    return;
+  }
+
   if (claims?.role !== "service_role") {
     return send(res, 403, { statusCode: "403", error: "Unauthorized" });
   }
-  const body = await readJson(req);
   const list = path.match(/^\/storage\/v1\/object\/list\/([^/]+)$/);
   if (list && req.method === "POST") {
     const prefix = String(body.prefix ?? "").replace(/\/+$/, "");
@@ -329,7 +490,8 @@ createServer(async (req, res) => {
   if (path.startsWith("/rest/v1/"))
     return proxyRest(req, res, path, url.search);
 
-  if (path.startsWith("/storage/v1/")) return storageApi(req, res, path);
+  if (path.startsWith("/storage/v1/"))
+    return storageApi(req, res, path, url.search, url);
   if (path === "/__seed-asset" && req.method === "POST") {
     return send(
       res,
