@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { SitesList } from "@/components/home/sites-list";
 import { FirstSite } from "@/components/sites/first-site";
+import { MobileNewSite } from "@/components/sites/mobile-new-site";
 import { NewSiteButton } from "@/components/sites/new-site-dialog";
 import { PageHead } from "@/components/ui/page-head";
 import { studioloAddressParts } from "@/lib/addresses";
@@ -13,7 +14,14 @@ export const metadata: Metadata = { title: "Sites · Studiolo" };
 export default async function SitesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ new?: string; highlight?: string }>;
+  searchParams: Promise<{
+    new?: string;
+    highlight?: string;
+    template?: string;
+    name?: string;
+    step?: string;
+    focus?: string;
+  }>;
 }) {
   const [sites, restorableCount, params] = await Promise.all([
     listSites(),
@@ -22,7 +30,26 @@ export default async function SitesPage({
   ]);
   const parts = studioloAddressParts();
   if (sites.length === 0) {
-    return <FirstSite parts={parts} restorableCount={restorableCount} />;
+    return (
+      <>
+        <FirstSite
+          key={`${params.template ?? "blank"}:${params.name ?? ""}`}
+          parts={parts}
+          restorableCount={restorableCount}
+          initialTemplate={params.template}
+          initialName={params.name}
+          focusName={params.focus === "name"}
+        />
+        {params.new === "1" ? (
+          <MobileNewSite
+            parts={parts}
+            initialTemplate={params.template}
+            initialName={params.name}
+            initialStep={params.step}
+          />
+        ) : null}
+      </>
+    );
   }
   return (
     <>
@@ -30,7 +57,17 @@ export default async function SitesPage({
         size="responsive"
         title={HOME_COPY.sitesTitle}
         lead={HOME_COPY.sitesLead}
-        action={<NewSiteButton parts={parts} requested={params.new === "1"} />}
+        action={
+          <NewSiteButton
+            key={`${params.template ?? "blank"}:${params.name ?? ""}`}
+            parts={parts}
+            requested={params.new === "1"}
+            initialTemplate={params.template}
+            initialName={params.name}
+            focusName={params.focus === "name"}
+            initialStep={params.step}
+          />
+        }
       />
       <SitesList sites={sites} highlightId={params.highlight} />
       <RecentlyDeletedLink

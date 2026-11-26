@@ -23,4 +23,6 @@ export const siteColumns = [
   "purge_after",
   "created_at",
   "updated_at",
+  "template_id",
+  "template_version",
 ] as const;

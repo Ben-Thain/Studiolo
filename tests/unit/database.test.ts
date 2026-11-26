@@ -46,7 +46,14 @@ describe("sites database types", () => {
       path.join(root, "supabase/migrations/0001_core.sql"),
       "utf8",
     );
-    expect(migrationSiteColumns(sql)).toEqual([...siteColumns]);
+    const added = readFileSync(
+      path.join(root, "supabase/migrations/0010_templates.sql"),
+      "utf8",
+    )
+      .split("\n")
+      .map((line) => /^ {2}add column ([a-z_]+)/.exec(line)?.[1])
+      .filter((name): name is string => Boolean(name));
+    expect([...migrationSiteColumns(sql), ...added]).toEqual([...siteColumns]);
   });
 });
 
@@ -73,9 +80,14 @@ describe("sites owner column grants", () => {
 
   it("lets the owner select every column except password_hash", () => {
     expect(SITE_OWNER_SELECT_COLUMNS).not.toContain("password_hash");
-    expect(grantedSiteColumns(sql, "select")).toEqual([
-      ...SITE_OWNER_SELECT_COLUMNS,
-    ]);
+    const later = readFileSync(
+      path.join(root, "supabase/migrations/0010_templates.sql"),
+      "utf8",
+    );
+    expect([
+      ...grantedSiteColumns(sql, "select"),
+      ...grantedSiteColumns(later, "select"),
+    ]).toEqual([...SITE_OWNER_SELECT_COLUMNS]);
   });
 
   it("limits owner updates to the editable columns", () => {

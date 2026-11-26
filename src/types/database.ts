@@ -80,6 +80,8 @@ export type Database = {
           favicon_asset_id: string | null;
           desktop_layout_seen_at: string | null;
           mobile_layout_seen_at: string | null;
+          template_id: string | null;
+          template_version: number | null;
           deleted_at: string | null;
           purge_after: string | null;
           created_at: string;
@@ -105,6 +107,8 @@ export type Database = {
           favicon_asset_id?: string | null;
           desktop_layout_seen_at?: string | null;
           mobile_layout_seen_at?: string | null;
+          template_id?: string | null;
+          template_version?: number | null;
           deleted_at?: string | null;
           purge_after?: string | null;
           created_at?: string;
@@ -130,6 +134,8 @@ export type Database = {
           favicon_asset_id?: string | null;
           desktop_layout_seen_at?: string | null;
           mobile_layout_seen_at?: string | null;
+          template_id?: string | null;
+          template_version?: number | null;
           deleted_at?: string | null;
           purge_after?: string | null;
           created_at?: string;
@@ -685,8 +691,13 @@ export type Database = {
       };
       create_site: {
         Args: {
+          p_owner: string;
+          p_site: string;
           p_name: string;
           p_slug: string;
+          p_template_id: string;
+          p_template_version: number;
+          p_assets: Json;
           p_changes: Json;
         };
         Returns: string;
@@ -760,6 +771,8 @@ export const SITE_ROW_KEYS = [
   "purge_after",
   "created_at",
   "updated_at",
+  "template_id",
+  "template_version",
 ] as const satisfies readonly (keyof Database["public"]["Tables"]["sites"]["Row"])[];
 
 type SiteColumn = keyof Database["public"]["Tables"]["sites"]["Row"];

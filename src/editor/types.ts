@@ -52,6 +52,7 @@ export type TextContent = {
   fontWeight: 400 | 500;
   align: TextAlign;
   link?: ElementLink;
+  sample?: true;
 };
 
 export type ImageContent = {
@@ -59,6 +60,7 @@ export type ImageContent = {
   alt: string;
   aspectLocked: boolean;
   link?: ElementLink;
+  sample?: true;
 };
 
 export type FormField = "name" | "email" | "message";

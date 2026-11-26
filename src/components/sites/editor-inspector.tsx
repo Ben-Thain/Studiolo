@@ -108,8 +108,9 @@ export function EditorInspector({
           <>
             <h2 className="text-sm font-medium text-ink">{element.name}</h2>
             <p className="mt-1 text-xs text-ink-3">
-              {elementTypeLabel(element.type)} · {sectionName} section ·{" "}
-              {layoutName}
+              {element.type === "image" && element.content.sample === true
+                ? `Sample image · ${sectionName} section`
+                : `${elementTypeLabel(element.type)} · ${sectionName} section · ${layoutName}`}
             </p>
             <hr className="my-4 border-line" />
             {element.type === "image" ? (

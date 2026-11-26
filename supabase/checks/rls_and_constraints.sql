@@ -3390,6 +3390,10 @@ update public.sites
 set deleted_at = now(), purge_after = now() + interval '30 days'
 where id = 'd4000000-0000-4000-8000-000000000012';
 
+update public.sites
+set template_id = 'still', template_version = 1
+where id = 'd4000000-0000-4000-8000-000000000011';
+
 insert into public.pages (id, site_id, title, slug, sort_order, in_nav, is_home)
 values
   ('d4000000-0000-4000-8000-000000000021', 'd4000000-0000-4000-8000-000000000011', 'Home', 'home', 0, true, true),
@@ -3459,6 +3463,13 @@ begin
 
   if copy.name <> 'Copy of Dup Source' or copy.slug <> 'copy-of-dup-src-a-2' then
     raise exception 'duplicate name or slug mismatch: % %', copy.name, copy.slug;
+  end if;
+
+  if not exists (
+    select 1 from public.sites
+    where id = copy.id and template_id = 'still' and template_version = 1
+  ) then
+    raise exception 'duplicate did not copy template provenance';
   end if;
 
   if not exists (
@@ -3623,72 +3634,115 @@ values
   ('e7000000-0000-4000-8000-000000000012', 'e7000000-0000-4000-8000-000000000002', 'Taken', 'e7-taken'),
   ('e7000000-0000-4000-8000-000000000013', 'e7000000-0000-4000-8000-000000000002', 'Taken 2', 'e7-taken-2');
 
-set local role authenticated;
-select set_config('request.jwt.claim.sub', 'e7000000-0000-4000-8000-000000000001', true) \g /dev/null
+set local role service_role;
 
 do $$
 declare
   made uuid;
+  owner constant uuid := 'e7000000-0000-4000-8000-000000000001';
+  site constant uuid := 'e7000000-0000-4000-8000-000000000099';
+  asset constant uuid := 'e7000000-0000-4000-8000-000000000041';
   home constant text := '{"pages":{"upsert":[{"id":"e7000000-0000-4000-8000-000000000021","title":"Home","slug":"","sort_order":0,"in_nav":true,"is_home":true}]}}';
   two_homes constant text := '{"pages":{"upsert":[{"id":"e7000000-0000-4000-8000-000000000031","title":"Home","slug":"","sort_order":0,"in_nav":true,"is_home":true},{"id":"e7000000-0000-4000-8000-000000000032","title":"Also home","slug":"also","sort_order":1,"in_nav":true,"is_home":true}]}}';
+  good_asset constant text := '[{"id":"e7000000-0000-4000-8000-000000000041","path":"e7000000-0000-4000-8000-000000000099/draft/e7000000-0000-4000-8000-000000000041.webp","width":100,"height":80,"mime":"image/webp","bytes":1200}]';
+  bad_asset constant text := '[{"id":"e7000000-0000-4000-8000-000000000042","path":"not/a/draft/path.webp","width":100,"height":80,"mime":"image/webp","bytes":1200}]';
+  copy record;
 begin
-  made := public.create_site('Made Here', 'e7-made-here', home::jsonb);
-  if not exists (
-    select 1 from public.sites
-    where id = made
-      and owner_id = 'e7000000-0000-4000-8000-000000000001'
-      and slug = 'e7-made-here'
-      and draft_revision = 1
-  ) or (select count(*) from public.pages where site_id = made and is_home) <> 1 then
-    raise exception 'create_site did not create the site with its content';
+  made := public.create_site(
+    owner, site, 'Made Here', 'e7-made-here', 'still', 1, good_asset::jsonb, home::jsonb
+  );
+  if made <> site
+    or not exists (
+      select 1 from public.sites
+      where id = made
+        and owner_id = owner
+        and slug = 'e7-made-here'
+        and template_id = 'still'
+        and template_version = 1
+        and draft_revision = 1
+    )
+    or (select count(*) from public.pages where site_id = made and is_home) <> 1
+    or (select count(*) from public.assets where site_id = made and id = asset) <> 1
+  then
+    raise exception 'create_site did not create the site, assets and content together';
   end if;
 
-  -- A failure in the content leaves no site behind.
+  select * into copy from public.duplicate_site(made, owner);
+  if not exists (
+    select 1 from public.sites
+    where id = copy.id and template_id = 'still' and template_version = 1
+  ) then
+    raise exception 'duplicate did not copy template provenance';
+  end if;
+
   perform pg_temp.expect_state(
-    format('select public.create_site(%L, %L, %L::jsonb)', 'Broken', 'e7-broken', two_homes),
+    format(
+      'select public.create_site(%L, %L, %L, %L, %L, %s, %L::jsonb, %L::jsonb)',
+      owner, 'e7000000-0000-4000-8000-000000000098', 'Broken', 'e7-broken', 'blank', 1, '[]', two_homes
+    ),
     'ST010'
   );
   if exists (select 1 from public.sites where slug = 'e7-broken') then
     raise exception 'create_site left a site behind after a content failure';
   end if;
 
-  -- The address race maps to "That address is taken." (23505).
   perform pg_temp.expect_state(
-    format('select public.create_site(%L, %L, %L::jsonb)', 'Again', 'e7-taken', '{}'),
+    format(
+      'select public.create_site(%L, %L, %L, %L, %L, %s, %L::jsonb, %L::jsonb)',
+      owner, 'e7000000-0000-4000-8000-000000000097', 'Bad path', 'e7-bad-path', 'blank', 1, bad_asset, '{}'
+    ),
+    'ST011'
+  );
+  if exists (select 1 from public.sites where slug = 'e7-bad-path')
+    or exists (select 1 from public.assets where id = 'e7000000-0000-4000-8000-000000000042')
+  then
+    raise exception 'create_site left rows behind after a bad asset path';
+  end if;
+
+  perform pg_temp.expect_state(
+    format(
+      'select public.create_site(%L, %L, %L, %L, %L, %s, %L::jsonb, %L::jsonb)',
+      owner, 'e7000000-0000-4000-8000-000000000096', 'Again', 'e7-taken', 'blank', 1, '[]', '{}'
+    ),
     '23505'
   );
+  if exists (select 1 from public.sites where slug = 'e7-taken' and id = 'e7000000-0000-4000-8000-000000000096') then
+    raise exception 'create_site left a site behind after a taken slug';
+  end if;
+
   perform pg_temp.expect_state(
-    format('select public.create_site(%L, %L, %L::jsonb)', 'Reserved', 'admin', '{}'),
+    format(
+      'select public.create_site(%L, %L, %L, %L, %L, %s, %L::jsonb, %L::jsonb)',
+      owner, 'e7000000-0000-4000-8000-000000000095', 'Reserved', 'admin', 'blank', 1, '[]', '{}'
+    ),
     'ST003'
   );
   perform pg_temp.expect_state(
-    format('select public.create_site(%L, %L, %L::jsonb)', '', 'e7-no-name', '{}'),
+    format(
+      'select public.create_site(%L, %L, %L, %L, %L, %s, %L::jsonb, %L::jsonb)',
+      owner, 'e7000000-0000-4000-8000-000000000094', '', 'e7-no-name', 'blank', 1, '[]', '{}'
+    ),
     '23514'
   );
 
-  if public.first_free_slug('e7-taken', 'e7000000-0000-4000-8000-000000000001') <> 'e7-taken-3'
-    or public.first_free_slug('e7-made-here', 'e7000000-0000-4000-8000-000000000001') <> 'e7-made-here-2'
-    or public.first_free_slug(repeat('a', 40), 'e7000000-0000-4000-8000-000000000001') <> repeat('a', 38) || '-2'
+  if public.first_free_slug('e7-taken', owner) <> 'e7-taken-3'
+    or public.first_free_slug('e7-made-here', owner) <> 'e7-made-here-2'
+    or public.first_free_slug(repeat('a', 40), owner) <> repeat('a', 38) || '-2'
   then
     raise exception 'first_free_slug suggestion mismatch';
   end if;
 end
 $$;
 
--- Signed out: no owner, nothing created.
-select set_config('request.jwt.claim.sub', '', true) \g /dev/null
-select pg_temp.expect_state(
-  'select public.create_site(''Nobody'', ''e7-nobody'', ''{}'')',
-  '42501'
-) \g /dev/null
-
 reset role;
 
 do $$
 begin
-  if has_function_privilege('anon', 'public.create_site(text, text, jsonb)', 'execute')
+  if to_regprocedure('public.create_site(text, text, jsonb)') is not null
+    or has_function_privilege('anon', 'public.create_site(uuid, uuid, text, text, text, integer, jsonb, jsonb)', 'execute')
+    or has_function_privilege('authenticated', 'public.create_site(uuid, uuid, text, text, text, integer, jsonb, jsonb)', 'execute')
+    or not has_function_privilege('service_role', 'public.create_site(uuid, uuid, text, text, text, integer, jsonb, jsonb)', 'execute')
     or has_function_privilege('anon', 'public.first_free_slug(text, uuid)', 'execute')
-    or not has_function_privilege('authenticated', 'public.create_site(text, text, jsonb)', 'execute')
     or exists (
       select 1 from pg_proc
       where proname = 'create_site' and prosecdef

@@ -27,7 +27,8 @@ export type IconName =
   | "card"
   | "mail"
   | "sign-out"
-  | "gear";
+  | "gear"
+  | "eye";
 
 type IconProps = {
   name: IconName;
@@ -261,6 +262,12 @@ const glyphs: Record<IconName, ReactNode> = {
         strokeWidth="1.5"
       />
       <Stroke d="M3 4.5 8 8.5l5-4" />
+    </>
+  ),
+  eye: (
+    <>
+      <Stroke d="M1.75 8s2.4-4.25 6.25-4.25S14.25 8 14.25 8s-2.4 4.25-6.25 4.25S1.75 8 1.75 8z" />
+      <Stroke d="M8 9.75a1.75 1.75 0 1 0 0-3.5 1.75 1.75 0 0 0 0 3.5z" />
     </>
   ),
   gear: (

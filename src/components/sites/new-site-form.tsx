@@ -21,8 +21,9 @@ import type { AddressParts } from "@/lib/addresses";
 import { SITES_COPY } from "@/lib/sites/copy";
 import { deriveSlug, isValidSlug } from "@/lib/sites/slug";
 import { cn } from "@/lib/utils";
+import type { TemplateId } from "@/templates/index";
 
-type Variant = "first" | "dialog";
+type Variant = "first" | "dialog" | "mobile";
 
 function slugMessage(check: SlugCheck | null): string | null {
   if (!check) return null;
@@ -45,17 +46,33 @@ export function NewSiteForm({
   parts,
   actions,
   onCancel,
+  templateId = "blank",
+  initialName = "",
+  focusName = false,
+  nameValue,
+  onNameChange,
 }: {
   variant: Variant;
   parts: AddressParts;
   /** Dialog only: rendered before Create site (Cancel). */
   actions?: ReactNode;
   onCancel?: () => void;
+  templateId?: TemplateId;
+  initialName?: string;
+  focusName?: boolean;
+  /** Controlled name, so the picker and the form share one value. */
+  nameValue?: string;
+  onNameChange?: (name: string) => void;
 }) {
   const router = useRouter();
   const slugInputId = useId();
   const slugMessageId = useId();
-  const [name, setName] = useState("");
+  const [ownName, setOwnName] = useState(initialName);
+  const name = nameValue ?? ownName;
+  function setName(next: string) {
+    onNameChange?.(next);
+    if (nameValue === undefined) setOwnName(next);
+  }
   const [nameError, setNameError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [typedSlug, setTypedSlug] = useState<string | null>(null);
@@ -120,12 +137,18 @@ export function NewSiteForm({
       return;
     }
     setPending(true);
-    const result = await createSite({ name: trimmed, slug }).catch(
+    const result = await createSite({
+      name: trimmed,
+      slug,
+      templateId,
+    }).catch(
       () =>
         ({ ok: false, field: "form", error: SITES_COPY.createFailed }) as const,
     );
     if (result.ok) {
-      router.push(`/sites/${result.siteId}/editor/${result.homePageId}`);
+      const from =
+        templateId === "blank" ? "" : `?from=${encodeURIComponent(templateId)}`;
+      router.push(`/sites/${result.siteId}/editor/${result.homePageId}${from}`);
       return;
     }
     setPending(false);
@@ -157,27 +180,45 @@ export function NewSiteForm({
 
   return (
     <form onSubmit={submit} noValidate>
-      <div className={first ? "mt-8" : "mt-6"}>
-        <Field
-          label={SITES_COPY.siteName}
-          layout="stacked"
-          error={nameError ?? undefined}
-        >
-          <Input
-            ref={nameRef}
-            size={first ? "block" : undefined}
-            value={name}
-            maxLength={60}
-            autoComplete="off"
-            autoFocus={first}
-            data-autofocus=""
-            {...(first ? { "data-first-site-name": "" } : {})}
-            onChange={(event) => {
-              setName(event.target.value);
-              if (nameError) setNameError(null);
-            }}
-          />
-        </Field>
+      <div
+        className={
+          first
+            ? "mt-8 flex flex-col min-[900px]:flex-row min-[900px]:items-end min-[900px]:gap-3"
+            : "mt-6"
+        }
+      >
+        <div className={first ? "min-w-0 flex-1" : undefined}>
+          <Field
+            label={SITES_COPY.siteName}
+            layout="stacked"
+            error={nameError ?? undefined}
+          >
+            <Input
+              ref={nameRef}
+              size={variant === "mobile" ? "touch" : "block"}
+              value={name}
+              maxLength={60}
+              autoComplete="off"
+              autoFocus={first || focusName}
+              data-autofocus={focusName ? "" : undefined}
+              {...(first ? { "data-first-site-name": "" } : {})}
+              onChange={(event) => {
+                setName(event.target.value);
+                if (nameError) setNameError(null);
+              }}
+            />
+          </Field>
+        </div>
+        {first ? (
+          <Button
+            type="submit"
+            size="lg"
+            loading={pending}
+            className="hidden w-[200px] shrink-0 min-[900px]:inline-flex"
+          >
+            {SITES_COPY.create}
+          </Button>
+        ) : null}
       </div>
 
       {editing ? (
@@ -284,16 +325,18 @@ export function NewSiteForm({
         </p>
       ) : null}
 
-      {first ? (
-        <Button
-          type="submit"
-          size="block"
-          loading={pending}
-          className="mt-6 w-full"
-        >
-          {SITES_COPY.create}
-        </Button>
-      ) : (
+      {variant === "mobile" ? (
+        <div className="fixed inset-x-0 bottom-0 border-t border-line bg-bg p-4">
+          <Button
+            type="submit"
+            size="touch"
+            loading={pending}
+            className="w-full"
+          >
+            {SITES_COPY.create}
+          </Button>
+        </div>
+      ) : first ? null : (
         <div className="mt-6 flex justify-end gap-2 max-[479px]:flex-col-reverse max-[479px]:items-stretch">
           {actions ?? (
             <Button

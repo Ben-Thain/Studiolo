@@ -23,6 +23,7 @@ export const textContentSchema = z.object({
   fontWeight: z.union([z.literal(400), z.literal(500)]),
   align: z.enum(["left", "center", "right"]),
   link: elementLinkSchema.optional(),
+  sample: z.literal(true).optional(),
 });
 
 export const imageContentSchema = z.object({
@@ -30,6 +31,7 @@ export const imageContentSchema = z.object({
   alt: z.string(),
   aspectLocked: z.boolean(),
   link: elementLinkSchema.optional(),
+  sample: z.literal(true).optional(),
 });
 
 export const formContentSchema = z

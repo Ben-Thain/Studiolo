@@ -162,10 +162,41 @@ async function proxyRest(req, res, path, search) {
   const claims = bearer(req);
   const email = claims?.email ?? "";
   count(email, `${req.method} ${path.split("?")[0]}`);
+  if (path === "/rest/v1/rpc/create_site" && req.method === "POST") {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const raw = Buffer.concat(chunks);
+    if (raw.includes("Broken Site")) {
+      return send(res, 500, { code: "XX000", message: "mock create failure" });
+    }
+    const headers = { ...req.headers, host: `127.0.0.1:${REST_PORT}` };
+    if (!claims) delete headers.authorization;
+    delete headers.apikey;
+    headers["content-length"] = String(raw.length);
+    const upstream = httpRequest(
+      {
+        host: "127.0.0.1",
+        port: REST_PORT,
+        method: req.method,
+        path: path.slice("/rest/v1".length) + search,
+        headers,
+      },
+      (answer) => {
+        res.writeHead(answer.statusCode ?? 502, answer.headers);
+        answer.pipe(res);
+      },
+    );
+    upstream.on("error", () =>
+      send(res, 502, { message: "PostgREST is not running" }),
+    );
+    upstream.end(raw);
+    return;
+  }
   if (email.startsWith("slow.")) await sleep(3000);
   if (
     email.startsWith("fail-data.") ||
-    (email.startsWith("fail-sites.") && path.startsWith("/rest/v1/sites"))
+    (email.startsWith("fail-sites.") && path.startsWith("/rest/v1/sites")) ||
+    (email.startsWith("fail-create.") && path === "/rest/v1/rpc/create_site")
   ) {
     return send(res, 500, { code: "XX000", message: "mock data failure" });
   }
@@ -225,8 +256,56 @@ function serveImage(res, bytes, mime = "image/webp") {
 }
 
 // Storage API stand-in (service role only), on the local storage.objects.
+async function readRaw(req) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  return Buffer.concat(chunks);
+}
+
 async function storageApi(req, res, path, search, url) {
   const claims = bearer(req);
+
+  // Admin upload: POST /storage/v1/object/:bucket/:path (upsert: false).
+  const adminUpload = path.match(/^\/storage\/v1\/object\/([^/]+)\/(.+)$/);
+  if (
+    adminUpload &&
+    req.method === "POST" &&
+    !path.includes("/upload/") &&
+    !path.includes("/sign/") &&
+    !path.includes("/list/") &&
+    !path.includes("/info/") &&
+    path !== "/storage/v1/object/copy"
+  ) {
+    if (claims?.role !== "service_role") {
+      return send(res, 403, { statusCode: "403", error: "Unauthorized" });
+    }
+    const bucket = adminUpload[1];
+    const name = decodeURIComponent(adminUpload[2].split("?")[0]);
+    const upsert = req.headers["x-upsert"] === "true";
+    const existing = await pool.query(
+      `select name from storage.objects where bucket_id = $1 and name = $2`,
+      [bucket, name],
+    );
+    if (existing.rows[0] && !upsert) {
+      return send(res, 400, { statusCode: "409", error: "Duplicate" });
+    }
+    const bytes = await readRaw(req);
+    const mime = String(
+      req.headers["content-type"] ?? "application/octet-stream",
+    )
+      .split(";")[0]
+      .trim();
+    objectBytes.set(`${bucket}/${name}`, { bytes, mime });
+    seededObjects.delete(`${bucket}/${name}`);
+    await pool.query(
+      `insert into storage.objects (bucket_id, name, metadata)
+       values ($1, $2, $3::jsonb)
+       on conflict (bucket_id, name) do update set metadata = excluded.metadata`,
+      [bucket, name, JSON.stringify({ mimetype: mime, size: bytes.length })],
+    );
+    return send(res, 200, { Key: `${bucket}/${name}` });
+  }
+
   const body =
     req.method === "PUT" || req.method === "GET"
       ? undefined

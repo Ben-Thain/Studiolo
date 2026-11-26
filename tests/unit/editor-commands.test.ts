@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { applyCommand, layoutFor } from "@/editor/commands";
 import { createDoc } from "@/editor/doc";
-import { starterChanges } from "@/lib/sites/starter";
+import { instantiateTemplate } from "@/templates/instantiate";
+import { loadTemplate } from "@/templates/index";
 import { RIVERTON_HOME, rivertonHomeDoc } from "../fixtures/riverton-home";
 
 let n = 0;
@@ -32,11 +33,15 @@ describe("riverton fixture", () => {
 
 describe("applyCommand", () => {
   it("addElement defaults text to columns 1–6 and images to 7–12", () => {
-    const { changes, homePageId } = starterChanges("Add test", ids);
-    const header = changes.sections.upsert.find((s) => s.name === "Header")!;
-    const intro = changes.sections.upsert.find((s) => s.name === "Intro")!;
+    const { changes, homePageId } = instantiateTemplate(loadTemplate("blank"), {
+      siteId: "80000000-0000-4000-8000-000000000099",
+      siteName: "Add test",
+      newId: ids,
+    });
+    const header = changes.sections!.upsert!.find((s) => s.name === "Header")!;
+    const intro = changes.sections!.upsert!.find((s) => s.name === "Intro")!;
     const doc = createDoc("80000000-0000-4000-8000-000000000001");
-    doc.pages = changes.pages.upsert.map((p) => ({
+    doc.pages = changes.pages!.upsert!.map((p) => ({
       id: p.id,
       title: p.title,
       slug: p.slug,
@@ -44,13 +49,13 @@ describe("applyCommand", () => {
       inNav: p.in_nav,
       isHome: p.is_home,
     }));
-    doc.sections = changes.sections.upsert.map((s) => ({
+    doc.sections = changes.sections!.upsert!.map((s) => ({
       id: s.id,
       pageId: s.page_id,
       name: s.name,
       sortOrder: s.sort_order,
     }));
-    doc.elements = changes.elements.upsert.map((e) => ({
+    doc.elements = changes.elements!.upsert!.map((e) => ({
       id: e.id,
       pageId: e.page_id,
       sectionId: e.section_id,
@@ -59,7 +64,7 @@ describe("applyCommand", () => {
       content: e.content,
       sortOrder: e.sort_order,
     }));
-    doc.layouts = changes.element_layouts.upsert.map((l) => ({
+    doc.layouts = changes.element_layouts!.upsert!.map((l) => ({
       id: l.id,
       elementId: l.element_id,
       breakpoint: l.breakpoint,

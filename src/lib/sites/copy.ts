@@ -4,7 +4,9 @@ export const SITES_COPY = {
   firstLead:
     "Name it, then add your words and photos. Publish when you're ready.",
   newTitle: "New site",
-  newLead: "Give it a name. You can change the name any time.",
+  newLead:
+    "Start from a Studiolo original or a blank page, then give it a name.",
+  mobileNewLead: "Tap a template to preview it, or start blank.",
   siteName: "Site name",
   address: "Address",
   edit: "Edit",

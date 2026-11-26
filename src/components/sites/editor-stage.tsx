@@ -21,6 +21,7 @@ import {
   pixelsToGridDelta,
   STAGE_PADDING_X,
 } from "@/lib/editor/stage-coords";
+import { Icon } from "@/components/ui/icons";
 import { ensureFontFace } from "@/lib/editor/load-font";
 import { lineHeightForSizeStep } from "@/lib/editor/typography";
 import type { EditorDoc, EditorElement, EditorSection } from "@/editor/types";
@@ -75,6 +76,7 @@ export function EditorStage({
   onCommitText,
   onMove,
   onResize,
+  onReplace,
 }: {
   doc: EditorDoc;
   pageId: string;
@@ -90,6 +92,7 @@ export function EditorStage({
   onCommitText: (elementId: string, text: string) => void;
   onMove: (elementId: string, col: number, row: number) => void;
   onResize: (elementId: string, box: GridBox) => void;
+  onReplace?: () => void;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
@@ -332,6 +335,7 @@ export function EditorStage({
                     }}
                     onEdit={() => onEdit(element.id)}
                     onCommitText={(text) => onCommitText(element.id, text)}
+                    onReplace={onReplace}
                     onStartMove={(startBox, event) =>
                       beginDrag(
                         {
@@ -454,6 +458,7 @@ function CanvasItem({
   onCommitText,
   onStartMove,
   onStartResize,
+  onReplace,
   box,
 }: {
   doc: EditorDoc;
@@ -474,6 +479,7 @@ function CanvasItem({
     event: ReactPointerEvent,
     corner: ResizeCorner,
   ) => void;
+  onReplace?: () => void;
   box: GridBox;
 }) {
   const moveOrigin = useRef<{
@@ -560,6 +566,9 @@ function CanvasItem({
             defaultValue={text}
             className="w-full bg-transparent text-ink outline-none"
             style={{ fontSize: shown, lineHeight }}
+            onFocus={(event) => {
+              if (element.content.sample === true) event.currentTarget.select();
+            }}
             onBlur={(event) => onCommitText(event.target.value)}
           />
         ) : (
@@ -592,6 +601,23 @@ function CanvasItem({
             {element.name}
           </div>
         )
+      ) : null}
+      {selected &&
+      element.type === "image" &&
+      element.content.sample === true &&
+      onReplace ? (
+        <button
+          type="button"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onReplace();
+          }}
+          className="absolute top-4 left-4 inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-bg px-2.5 text-[13px] leading-4 font-medium text-ink shadow-float"
+        >
+          <Icon name="image" size={14} />
+          Replace image
+        </button>
       ) : null}
       {element.type === "nav" ? (
         <ul className="flex flex-wrap justify-end gap-x-6 text-sm text-ink-2">

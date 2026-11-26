@@ -11,6 +11,7 @@ import {
 } from "@/app/(app)/sites/[siteId]/actions/assets";
 import { readUrlRefreshDelayMs } from "@/lib/assets/read-url-refresh";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { Dialog } from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icons";
 import { Menu } from "@/components/ui/menu";
@@ -90,13 +91,19 @@ export function EditorDesktop({
   pageId,
   initialDoc,
   initialLayout = "desktop",
+  fromTemplate,
+  siteName,
 }: {
   siteId: string;
   pageId: string;
   initialDoc: EditorDoc;
   initialLayout?: LayoutName;
+  fromTemplate?: string;
+  siteName?: string;
 }) {
   const router = useRouter();
+  const { toast } = useToast();
+  const toasted = useRef(false);
   const [doc, setDoc] = useState(initialDoc);
   const historyRef = useRef<HistoryState>(createHistory());
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -147,6 +154,20 @@ export function EditorDesktop({
       handle.dispose();
     };
   }, [initialDoc, siteId]);
+
+  useEffect(() => {
+    if (!fromTemplate || toasted.current) return;
+    toasted.current = true;
+    toast({
+      message: `${siteName ?? "Your site"} is ready. Replace the sample photos and words with your own.`,
+      action: { label: "Got it", onClick: () => undefined },
+      duration: 10_000,
+      region: "site",
+    });
+    const url = new URL(window.location.href);
+    url.searchParams.delete("from");
+    router.replace(`${url.pathname}${url.search}`, { scroll: false });
+  }, [fromTemplate, router, siteName, toast]);
 
   const { addHost, statusHost, layersHost } = useEditorShellSlots();
 
@@ -650,6 +671,7 @@ export function EditorDesktop({
           onMove={(elementId, col, row) =>
             run({ type: "move", elementId, breakpoint: layout, col, row })
           }
+          onReplace={() => startImage(true)}
           onResize={(elementId, box) =>
             run({
               type: "resize",

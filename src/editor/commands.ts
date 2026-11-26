@@ -356,22 +356,38 @@ function updateContent(
 ) {
   const element = elementOf(doc, elementId);
   if (element.type === "text") {
+    const previous = String((element.content as { text?: string }).text ?? "");
     const { link, ...rest } = content;
     const parsed = parseTextContent({
       ...(element.content as Record<string, unknown>),
       ...rest,
     });
-    const merged =
+    const merged: Record<string, unknown> =
       link === undefined
-        ? (parsed as unknown as Record<string, unknown>)
+        ? { ...(parsed as unknown as Record<string, unknown>) }
         : { ...(parsed as unknown as Record<string, unknown>), link };
+    if ("text" in content && content.text !== previous) {
+      delete merged.sample;
+    }
     element.content = sanitizeContentLinks(merged, pageIds);
     return;
   }
-  element.content = sanitizeContentLinks(
-    { ...element.content, ...content },
-    pageIds,
-  );
+  const previousAsset =
+    element.type === "image"
+      ? (element.content as { assetId?: string | null }).assetId
+      : undefined;
+  const merged: Record<string, unknown> = {
+    ...element.content,
+    ...content,
+  };
+  if (
+    element.type === "image" &&
+    "assetId" in content &&
+    content.assetId !== previousAsset
+  ) {
+    delete merged.sample;
+  }
+  element.content = sanitizeContentLinks(merged, pageIds);
 }
 
 function updateName(doc: EditorDoc, elementId: string, name: string) {

@@ -1,5 +1,7 @@
 "use server";
 
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { studioloAddress } from "@/lib/addresses";
@@ -7,9 +9,10 @@ import { requireUser } from "@/lib/auth/session";
 import { SITES_COPY } from "@/lib/sites/copy";
 import { detachSiteDomain, invalidateSiteCaches } from "@/lib/sites/hooks";
 import { isValidSlug } from "@/lib/sites/slug";
-import { starterChanges } from "@/lib/sites/starter";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { instantiateTemplate } from "@/templates/instantiate";
+import { isTemplateId, loadTemplate } from "@/templates/index";
 import type { Json } from "@/types/database";
 
 /**
@@ -125,13 +128,23 @@ function slugError(check: SlugCheck): CreateSiteResult | null {
   return null;
 }
 
+const BUCKET = "site-assets";
+
+async function removeUploaded(paths: string[]) {
+  if (paths.length === 0) return;
+  const admin = createAdminClient();
+  await admin.storage.from(BUCKET).remove(paths);
+}
+
 /**
- * Creates a Draft site with the starter pages and content. The client then
- * opens /sites/<id>/editor/<homeId>.
+ * Creates a Draft site from a Studiolo original (or Start blank). Photos are
+ * uploaded first; the site, asset rows and content are one transaction.
+ * A failure removes the objects already uploaded and leaves no site.
  */
 export async function createSite(input: {
   name: string;
   slug: string;
+  templateId?: string;
 }): Promise<CreateSiteResult> {
   const user = await requireUser();
   const parsedName = nameSchema.safeParse(input?.name ?? "");
@@ -144,6 +157,10 @@ export async function createSite(input: {
   }
   const name = parsedName.data;
   const slug = String(input?.slug ?? "");
+  const templateId = input?.templateId || "blank";
+  if (!isTemplateId(templateId)) {
+    return { ok: false, field: "form", error: SITES_COPY.createFailed };
+  }
   const supabase = await createClient();
 
   try {
@@ -153,42 +170,110 @@ export async function createSite(input: {
     return { ok: false, field: "form", error: SITES_COPY.createFailed };
   }
 
-  // One transaction (create_site, 0007): the site row and its starter
-  // content are written together as the user, or not at all.
-  const { changes, homePageId } = starterChanges(name);
-  const { data: siteId, error: createError } = await supabase.rpc(
-    "create_site",
-    { p_name: name, p_slug: slug, p_changes: changes as unknown as Json },
-  );
-  if (createError || !siteId) {
-    const code = createError?.code;
-    // Lost a race for the address between the check and the insert.
-    if (code === "23505" || code === "ST001") {
-      const check = await checkSlugAs(supabase, user.id, slug).catch(
-        () => ({ status: "taken", suggestion: null }) as const,
-      );
-      return (
-        slugError(check) ?? {
-          ok: false,
-          field: "slug",
-          error: SITES_COPY.slugTaken,
-        }
-      );
+  const template = loadTemplate(templateId);
+  const siteId = crypto.randomUUID();
+  const instantiated = instantiateTemplate(template, {
+    siteId,
+    siteName: name,
+  });
+  const uploaded: string[] = [];
+  let admin: ReturnType<typeof createAdminClient>;
+  try {
+    admin = createAdminClient();
+  } catch {
+    return { ok: false, field: "form", error: SITES_COPY.createFailed };
+  }
+
+  try {
+    let cursor = 0;
+    const queue = instantiated.uploads;
+    async function worker() {
+      while (cursor < queue.length) {
+        const item = queue[cursor];
+        cursor += 1;
+        if (!item) return;
+        const filePath = path.join(
+          process.cwd(),
+          "public",
+          "templates",
+          templateId,
+          item.file,
+        );
+        const bytes = await readFile(filePath);
+        const objectPath = `${siteId}/draft/${item.assetId}.webp`;
+        const { error } = await admin.storage
+          .from(BUCKET)
+          .upload(objectPath, bytes, {
+            contentType: "image/webp",
+            upsert: false,
+          });
+        if (error) throw error;
+        uploaded.push(objectPath);
+      }
     }
-    if (code === "ST003") {
-      return { ok: false, field: "slug", error: SITES_COPY.slugReserved };
+    const workers = await Promise.allSettled(
+      Array.from({ length: Math.min(4, Math.max(queue.length, 1)) }, () =>
+        worker(),
+      ),
+    );
+    if (
+      queue.length > 0 &&
+      (workers.some((result) => result.status === "rejected") ||
+        uploaded.length !== queue.length)
+    ) {
+      await removeUploaded(uploaded);
+      return { ok: false, field: "form", error: SITES_COPY.createFailed };
     }
+
+    const { error: createError } = await admin.rpc("create_site", {
+      p_owner: user.id,
+      p_site: siteId,
+      p_name: name,
+      p_slug: slug,
+      p_template_id: template.id,
+      p_template_version: template.version,
+      p_assets: instantiated.assets.map((asset) => ({
+        id: asset.id,
+        path: asset.path,
+        width: asset.width,
+        height: asset.height,
+        mime: asset.mime,
+        bytes: asset.bytes,
+        blur_data_url: asset.blurDataUrl,
+      })) as unknown as Json,
+      p_changes: instantiated.changes as unknown as Json,
+    });
+    if (createError) {
+      await removeUploaded(uploaded);
+      const code = createError.code;
+      if (code === "23505" || code === "ST001") {
+        const check = await checkSlugAs(supabase, user.id, slug).catch(
+          () => ({ status: "taken", suggestion: null }) as const,
+        );
+        return (
+          slugError(check) ?? {
+            ok: false,
+            field: "slug",
+            error: SITES_COPY.slugTaken,
+          }
+        );
+      }
+      if (code === "ST003") {
+        return { ok: false, field: "slug", error: SITES_COPY.slugReserved };
+      }
+      return { ok: false, field: "form", error: SITES_COPY.createFailed };
+    }
+  } catch {
+    await removeUploaded(uploaded).catch(() => undefined);
     return { ok: false, field: "form", error: SITES_COPY.createFailed };
   }
 
   revalidatePath("/sites");
-  return { ok: true, siteId, homePageId };
+  return { ok: true, siteId, homePageId: instantiated.homePageId };
 }
 
 export type DuplicateSiteResult =
   { ok: true; siteId: string; message: string } | { ok: false; error: string };
-
-const BUCKET = "site-assets";
 
 /**
  * Duplicate (d-sites-duplicated.png): the database copy runs in one

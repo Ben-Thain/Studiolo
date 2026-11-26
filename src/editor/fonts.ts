@@ -27,6 +27,39 @@ export const FONT_FAMILIES = [
   "Instrument Serif",
 ] as const satisfies readonly FontFamily[];
 
+/**
+ * One type table for the stage, the template preview and auto-stack.
+ * lineHeight is the CSS ratio (line box px / font size). tracking is em.
+ */
+export const TYPE_METRICS: Record<
+  number,
+  { lineHeight: number; tracking: string }
+> = {
+  12: { lineHeight: 16 / 12, tracking: "0em" },
+  13: { lineHeight: 18 / 13, tracking: "0em" },
+  14: { lineHeight: 20 / 14, tracking: "0em" },
+  16: { lineHeight: 26 / 16, tracking: "0em" },
+  18: { lineHeight: 26 / 18, tracking: "0em" },
+  20: { lineHeight: 30 / 20, tracking: "0em" },
+  22: { lineHeight: 30 / 22, tracking: "0em" },
+  24: { lineHeight: 32 / 24, tracking: "0em" },
+  28: { lineHeight: 36 / 28, tracking: "-0.016em" },
+  32: { lineHeight: 40 / 32, tracking: "-0.016em" },
+  40: { lineHeight: 46 / 40, tracking: "-0.022em" },
+  48: { lineHeight: 54 / 48, tracking: "-0.022em" },
+  64: { lineHeight: 68 / 64, tracking: "-0.03em" },
+  80: { lineHeight: 84 / 80, tracking: "-0.03em" },
+  96: { lineHeight: 100 / 96, tracking: "-0.03em" },
+  108: { lineHeight: 112 / 108, tracking: "-0.03em" },
+};
+
+export function typeMetrics(size: number): {
+  lineHeight: number;
+  tracking: string;
+} {
+  return TYPE_METRICS[size] ?? { lineHeight: 1.5, tracking: "0em" };
+}
+
 /** Map a desktop text size to the mobile canvas size (minimum 16). */
 export function mobileFontSize(desktopSize: number): number {
   if (desktopSize <= 24) return Math.max(16, desktopSize);

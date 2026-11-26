@@ -5,7 +5,10 @@ import { ensureFontFace } from "@/lib/editor/load-font";
 import { Icon } from "@/components/ui/icons";
 import { mobileFontSize } from "@/editor/fonts";
 import type { SizeStep } from "@/editor/types";
-import { lineHeightForSizeStep } from "@/lib/editor/typography";
+import {
+  lineHeightForSizeStep,
+  trackingForSizeStep,
+} from "@/lib/editor/typography";
 import { gridPlacement, GRID_AUTO_ROWS } from "@/editor/renderGrid";
 import type { GridBox } from "@/editor/types";
 import type {
@@ -36,10 +39,16 @@ function Element({
   element,
   navTitles,
   mobile,
+  resolveAsset,
+  onPageLink,
+  navPages,
 }: {
   element: CanvasElement;
   navTitles: string[];
   mobile: boolean;
+  resolveAsset?: (assetId: string | null) => string | undefined;
+  onPageLink?: (pageId: string) => void;
+  navPages?: { id: string; title: string }[];
 }) {
   const c = element.content;
   useEffect(() => {
@@ -50,8 +59,10 @@ function Element({
   if (element.type === "text") {
     const desktopSize = Number(c.fontSize ?? 16);
     const size = mobile ? mobileFontSize(desktopSize) : desktopSize;
-    return (
-      <p
+    const link = c.link as { kind?: string; value?: string } | undefined;
+    const text = String(c.text ?? "");
+    const body = (
+      <span
         className="whitespace-pre-line text-ink"
         style={{
           fontSize: size,
@@ -59,12 +70,24 @@ function Element({
           lineHeight: lineHeightForSizeStep(desktopSize as SizeStep),
           fontWeight: Number(c.fontWeight ?? 400) === 500 ? 500 : 400,
           textAlign: (c.align as CSSProperties["textAlign"]) ?? "left",
-          letterSpacing: size >= 28 ? "-0.02em" : undefined,
+          letterSpacing: trackingForSizeStep(desktopSize as SizeStep),
         }}
       >
-        {String(c.text ?? "")}
-      </p>
+        {text}
+      </span>
     );
+    if (link?.kind === "page" && link.value && onPageLink) {
+      return (
+        <button
+          type="button"
+          className="text-left"
+          onClick={() => onPageLink(link.value!)}
+        >
+          {body}
+        </button>
+      );
+    }
+    return body;
   }
   if (element.type === "nav") {
     return (
@@ -74,13 +97,35 @@ function Element({
           !mobile && "justify-end",
         )}
       >
-        {navTitles.map((title) => (
-          <li key={title}>{title}</li>
-        ))}
+        {(navPages ?? navTitles.map((title) => ({ id: title, title }))).map(
+          (page) => (
+            <li key={page.id}>
+              {onPageLink && navPages ? (
+                <button type="button" onClick={() => onPageLink(page.id)}>
+                  {page.title}
+                </button>
+              ) : (
+                page.title
+              )}
+            </li>
+          ),
+        )}
       </ul>
     );
   }
   if (element.type === "image") {
+    const src = resolveAsset?.(
+      typeof c.assetId === "string" ? c.assetId : null,
+    );
+    if (src) {
+      return (
+        <img
+          src={src}
+          alt={String(c.alt ?? "")}
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      );
+    }
     return (
       <div className="flex h-full min-h-16 flex-col items-center justify-center gap-2 rounded-control bg-surface-2 text-xs leading-4 text-ink-2">
         <Icon name="image" size={20} />
@@ -113,10 +158,16 @@ function SectionGrid({
   section,
   navTitles,
   mobile,
+  resolveAsset,
+  onPageLink,
+  navPages,
 }: {
   section: CanvasSection;
   navTitles: string[];
   mobile: boolean;
+  resolveAsset?: (assetId: string | null) => string | undefined;
+  onPageLink?: (pageId: string) => void;
+  navPages?: { id: string; title: string }[];
 }) {
   const placed = section.elements.filter((element) => {
     const layout = mobile ? element.mobile : element.desktop;
@@ -134,10 +185,17 @@ function SectionGrid({
         <div
           key={element.id}
           data-element={element.name}
-          className="min-w-0"
+          className="relative min-w-0"
           style={place((mobile ? element.mobile : element.desktop)!)}
         >
-          <Element element={element} navTitles={navTitles} mobile={mobile} />
+          <Element
+            element={element}
+            navTitles={navTitles}
+            mobile={mobile}
+            resolveAsset={resolveAsset}
+            onPageLink={onPageLink}
+            navPages={navPages}
+          />
         </div>
       ))}
     </div>
@@ -148,37 +206,57 @@ export function CanvasPreview({
   sections,
   navTitles,
   label,
+  resolveAsset,
+  onPageLink,
+  breakpoint,
+  framed = true,
+  navPages,
 }: {
   sections: CanvasSection[];
   navTitles: string[];
   label: string;
+  resolveAsset?: (assetId: string | null) => string | undefined;
+  onPageLink?: (pageId: string) => void;
+  /** When set, render that layout instead of switching at 900px. */
+  breakpoint?: "desktop" | "mobile";
+  framed?: boolean;
+  navPages?: { id: string; title: string }[];
 }) {
+  const mobile = breakpoint ? breakpoint === "mobile" : undefined;
+  const grids = (useMobile: boolean) =>
+    sections.map((section) => (
+      <SectionGrid
+        key={section.id}
+        section={section}
+        navTitles={navTitles}
+        mobile={useMobile}
+        resolveAsset={resolveAsset}
+        onPageLink={onPageLink}
+        navPages={navPages}
+      />
+    ));
   return (
     <div
       role="region"
       aria-label={label}
-      className="mx-auto w-full max-w-[960px] rounded-dialog border border-line bg-bg px-5 py-4 min-[900px]:px-8 min-[900px]:py-6"
+      className={
+        framed
+          ? "mx-auto w-full max-w-[960px] rounded-dialog border border-line bg-bg px-5 py-4 min-[900px]:px-8 min-[900px]:py-6"
+          : "bg-bg"
+      }
     >
-      <div data-preview="mobile" className="min-[900px]:hidden">
-        {sections.map((section) => (
-          <SectionGrid
-            key={section.id}
-            section={section}
-            navTitles={navTitles}
-            mobile
-          />
-        ))}
-      </div>
-      <div data-preview="desktop" className="hidden min-[900px]:block">
-        {sections.map((section) => (
-          <SectionGrid
-            key={section.id}
-            section={section}
-            navTitles={navTitles}
-            mobile={false}
-          />
-        ))}
-      </div>
+      {mobile === undefined ? (
+        <>
+          <div data-preview="mobile" className="min-[900px]:hidden">
+            {grids(true)}
+          </div>
+          <div data-preview="desktop" className="hidden min-[900px]:block">
+            {grids(false)}
+          </div>
+        </>
+      ) : (
+        <div data-preview={mobile ? "mobile" : "desktop"}>{grids(mobile)}</div>
+      )}
     </div>
   );
 }

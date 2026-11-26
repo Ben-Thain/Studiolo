@@ -11,7 +11,7 @@ export default async function EditorPage({
   searchParams,
 }: {
   params: Promise<{ siteId: string; pageId: string }>;
-  searchParams: Promise<{ layout?: string }>;
+  searchParams: Promise<{ layout?: string; from?: string }>;
 }) {
   const { siteId, pageId } = await params;
   const query = await searchParams;
@@ -29,6 +29,8 @@ export default async function EditorPage({
         pageId={page.id}
         initialDoc={doc}
         initialLayout={query.layout === "mobile" ? "mobile" : "desktop"}
+        fromTemplate={query.from}
+        siteName={site.name}
       />
     </>
   );

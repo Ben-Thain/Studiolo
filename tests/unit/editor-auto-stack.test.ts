@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { autoStack } from "@/editor/autoStack";
 import { applyCommand } from "@/editor/commands";
 import { createDoc } from "@/editor/doc";
-import { starterChanges } from "@/lib/sites/starter";
+import { instantiateTemplate } from "@/templates/instantiate";
+import { loadTemplate } from "@/templates/index";
 
 describe("autoStack", () => {
   it("stacks full width with a 3-row gap, stable and non-overlapping", () => {
@@ -33,10 +34,15 @@ describe("autoStack", () => {
     let n = 0;
     const ids = () =>
       `10000000-0000-4000-8000-${String(++n).padStart(12, "0")}`;
-    const { changes } = starterChanges("Test", ids);
-    const home = changes.pages.upsert.find((p) => p.is_home)!;
-    const intro = changes.sections.upsert.find((s) => s.name === "Intro")!;
-    const { elements, element_layouts: layouts } = changes;
+    const { changes } = instantiateTemplate(loadTemplate("blank"), {
+      siteId: "20000000-0000-4000-8000-000000000099",
+      siteName: "Test",
+      newId: ids,
+    });
+    const home = changes.pages!.upsert!.find((p) => p.is_home)!;
+    const intro = changes.sections!.upsert!.find((s) => s.name === "Intro")!;
+    const elements = changes.elements!;
+    const layouts = changes.element_layouts!;
     const doc = createDoc("20000000-0000-4000-8000-000000000001");
     doc.pages.push({
       id: home.id,
@@ -52,7 +58,7 @@ describe("autoStack", () => {
       name: intro.name,
       sortOrder: intro.sort_order,
     });
-    for (const row of elements.upsert.filter(
+    for (const row of elements.upsert!.filter(
       (e) => e.section_id === intro.id,
     )) {
       doc.elements.push({
@@ -65,8 +71,8 @@ describe("autoStack", () => {
         sortOrder: row.sort_order,
       });
     }
-    for (const row of layouts.upsert) {
-      if (!elements.upsert.some((e) => e.id === row.element_id)) continue;
+    for (const row of layouts.upsert!) {
+      if (!elements.upsert!.some((e) => e.id === row.element_id)) continue;
       doc.layouts.push({
         id: row.id,
         elementId: row.element_id,

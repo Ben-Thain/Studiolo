@@ -50,8 +50,8 @@ test.describe("first site", () => {
       level: 1,
       name: "Create your first site",
     });
-    await expect(title).toHaveCSS("font-size", "20px");
-    await expect(title).toHaveCSS("line-height", "28px");
+    await expect(title).toHaveCSS("font-size", "24px");
+    await expect(title).toHaveCSS("line-height", "32px");
     await expect(
       page.getByText(
         "Name it, then add your words and photos. Publish when you're ready.",
@@ -61,7 +61,7 @@ test.describe("first site", () => {
     const name = page.getByRole("textbox", { name: "Site name" });
     await expect(name).toBeFocused();
     const column = await page.locator("section").first().boundingBox();
-    expect(column!.width).toBe(480);
+    expect(column!.width).toBe(816);
     expect(column!.x + column!.width / 2).toBe(240 + (1280 - 240) / 2);
     await expect(
       page.getByText(
@@ -70,7 +70,7 @@ test.describe("first site", () => {
     ).toBeVisible();
     const create = page.getByRole("button", { name: "Create site" });
     expect((await create.boundingBox())!.height).toBe(40);
-    expect((await create.boundingBox())!.width).toBe(480);
+    expect((await create.boundingBox())!.width).toBe(200);
 
     const siteName = uniqueName("Hollin Field");
     const slug = siteName.toLowerCase().replace(/ /g, "-");
@@ -192,20 +192,21 @@ test.describe("new site dialog", () => {
     const dialog = page.getByRole("dialog", { name: "New site" });
     await expect(dialog).toBeVisible();
     await expect(
-      dialog.getByText("Give it a name. You can change the name any time."),
+      dialog.getByText(
+        "Start from a Studiolo original or a blank page, then give it a name.",
+      ),
     ).toBeVisible();
-    const box = await dialog.boundingBox();
-    expect(box!.width).toBe(440);
-    expect(box!.y).toBe(200);
-    await expect(dialog).toHaveCSS("border-radius", "12px");
     await expect(
-      dialog.getByRole("textbox", { name: "Site name" }),
-    ).toBeFocused();
-    await expect(dialog.getByRole("button")).toHaveText([
-      "Edit",
-      "Cancel",
-      "Create site",
-    ]);
+      dialog.getByRole("radio", { name: /Start blank/ }),
+    ).toBeChecked();
+    const box = await dialog.boundingBox();
+    expect(box!.width).toBe(760);
+    expect(box!.y).toBe(40);
+    await expect(dialog).toHaveCSS("border-radius", "12px");
+    await expect(dialog.getByRole("button", { name: "Cancel" })).toBeVisible();
+    await expect(
+      dialog.getByRole("button", { name: "Create site" }),
+    ).toBeVisible();
     // The actions are the small (13px, 32px) buttons of d-new-site.png.
     for (const label of ["Cancel", "Create site"]) {
       const action = dialog.getByRole("button", { name: label });
@@ -914,10 +915,21 @@ test.describe("mobile site areas", () => {
     await expect(sheet).toBeHidden();
   });
 
-  test("first site on mobile: 16px inputs and 48px targets", async ({
+  test("first site on mobile: picker, then a 48px name step", async ({
     page,
   }) => {
     await signInAs(page, uniqueEmail("mfirst"));
+    await expect(
+      page.getByRole("heading", { name: "Create your first site" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("radio", { name: /Start blank/ }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(393);
+    await page.getByRole("radio", { name: /Start blank/ }).click();
+    await expect(page.getByText("Step 2 of 2")).toBeVisible();
     const name = page.getByRole("textbox", { name: "Site name" });
     await expect(name).toHaveCSS("font-size", "16px");
     expect((await name.boundingBox())!.height).toBe(48);
@@ -925,30 +937,15 @@ test.describe("mobile site areas", () => {
     expect((await create.boundingBox())!.height).toBe(48);
     const edit = page.getByRole("button", { name: "Edit address" });
     expect((await edit.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-    await createFirstSite(page, uniqueName("Pier View"));
+    await name.fill(uniqueName("Pier View"));
+    await create.click();
+    await expect(page).toHaveURL(new RegExp(`/sites/${UUID}/editor/${UUID}$`));
     await page.goto("/sites");
     await page.getByRole("link", { name: "New site" }).click();
     await expect(page).toHaveURL("/sites?new=1");
-    const dialog = page.getByRole("dialog", { name: "New site" });
-    await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole("textbox", { name: "Site name" })).toHaveCSS(
-      "font-size",
-      "16px",
-    );
-    for (const button of await dialog.getByRole("button").all()) {
-      expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-    }
-    for (const label of ["Cancel", "Create site"]) {
-      const action = dialog.getByRole("button", { name: label });
-      expect((await action.boundingBox())!.height).toBe(48);
-      await expect(action).toHaveCSS("font-size", "16px");
-    }
-    // Loaded straight from the URL, Escape returns to the nav bar's +.
-    await page.goto("/sites?new=1");
-    await expect(dialog).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(dialog).toBeHidden();
-    await expect(page.getByRole("link", { name: "New site" })).toBeFocused();
+    await expect(page.getByText("Step 1 of 2")).toBeVisible();
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(page).toHaveURL("/sites");
   });
 });
 
@@ -979,7 +976,11 @@ test.describe("sites accessibility", () => {
     test(`create flows (${label}) have no axe violations`, async ({ page }) => {
       await page.setViewportSize(viewport);
       await signInAs(page, uniqueEmail(`axe-${label}`));
-      await page.getByRole("textbox", { name: "Site name" }).fill("Studio");
+      const nameBox = page.getByRole("textbox", { name: "Site name" });
+      if (viewport.width < 900) {
+        await page.getByRole("radio", { name: /Start blank/ }).click();
+      }
+      await nameBox.fill("Studio");
       await expect(page.getByText("That address is reserved.")).toBeVisible();
       expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
       await page.getByRole("button", { name: "Edit address" }).click();

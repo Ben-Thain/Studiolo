@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, type ReactNode, type Ref } from "react";
 import { createPortal } from "react-dom";
+import { cn } from "@/lib/utils";
 import { focusableElements, trapTab } from "./focus";
 import { useClient } from "./use-client";
 
@@ -18,6 +19,10 @@ type DialogProps = {
    * dialog opened by the URL, e.g. /sites?new=1), instead of the page body.
    */
   returnFocus?: () => HTMLElement | null | undefined;
+  /** Extra classes on the panel (width). The default panel is 440px. */
+  panelClassName?: string;
+  /** Desktop top offset. Default is 200px, matching the smaller dialogs. */
+  topClassName?: string;
 };
 
 function DialogPanel({
@@ -28,6 +33,7 @@ function DialogPanel({
   labelledBy,
   inline,
   panelRef,
+  panelClassName,
 }: {
   title: string;
   lead?: string;
@@ -36,6 +42,7 @@ function DialogPanel({
   labelledBy: string;
   inline?: boolean;
   panelRef?: Ref<HTMLDivElement>;
+  panelClassName?: string;
 }) {
   const descriptionId = useId();
   return (
@@ -46,7 +53,10 @@ function DialogPanel({
       aria-labelledby={labelledBy}
       aria-describedby={lead ? descriptionId : undefined}
       data-inline={inline ? "dialog" : undefined}
-      className="relative w-[440px] max-w-full rounded-dialog bg-bg p-6 shadow-dialog max-[479px]:w-[calc(100vw-32px)]"
+      className={cn(
+        "relative w-[440px] max-w-full rounded-dialog bg-bg p-6 shadow-dialog max-[479px]:w-[calc(100vw-32px)]",
+        panelClassName,
+      )}
     >
       <h2 id={labelledBy} className="text-lg leading-6 font-medium text-ink">
         {title}
@@ -75,6 +85,8 @@ export function Dialog({
   actions,
   inline = false,
   returnFocus,
+  panelClassName,
+  topClassName = "[@media(min-width:900px)_and_(min-height:720px)]:pt-[200px]",
 }: DialogProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
@@ -145,7 +157,12 @@ export function Dialog({
   return createPortal(
     // Centred; on desktop-sized screens the panel's top sits 200px down
     // (d-new-site.png, d-delete-site.png), so it doesn't jump as it grows.
-    <div className="fixed inset-0 z-40 flex items-center justify-center p-4 [@media(min-width:900px)_and_(min-height:720px)]:items-start [@media(min-width:900px)_and_(min-height:720px)]:pt-[200px]">
+    <div
+      className={cn(
+        "fixed inset-0 z-40 flex items-center justify-center p-4 [@media(min-width:900px)_and_(min-height:720px)]:items-start",
+        topClassName,
+      )}
+    >
       <div
         className="absolute inset-0 bg-[var(--scrim)]"
         onMouseDown={() => onClose?.()}
@@ -156,6 +173,7 @@ export function Dialog({
         labelledBy={titleId}
         actions={actions}
         panelRef={panelRef}
+        panelClassName={panelClassName}
       >
         {children}
       </DialogPanel>
