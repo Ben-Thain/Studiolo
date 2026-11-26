@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
 import { useClient } from "@/components/ui/use-client";
 import { CanvasPreview } from "@/components/sites/canvas-preview";
+import { legacy12To96 } from "@/editor/grid";
 import type { CanvasSection } from "@/lib/sites/data";
 import { cn } from "@/lib/utils";
 import type { TemplateFile } from "@/templates/schema";
@@ -48,16 +49,20 @@ function sectionsFor(
             delete content.assetKey;
           }
           const boxes = template.layouts[element.id];
-          const toBox = (box: (typeof boxes)["desktop"] | undefined) =>
-            box
-              ? {
-                  col: box.colStart,
-                  span: box.colSpan,
-                  row: box.rowStart,
-                  rows: box.rowSpan,
-                  hidden: box.hidden,
-                }
-              : null;
+          const toBox = (box: (typeof boxes)["desktop"] | undefined) => {
+            if (!box) return null;
+            const columns = legacy12To96({
+              col: box.colStart,
+              span: box.colSpan,
+            });
+            return {
+              col: columns.col,
+              span: columns.span,
+              row: box.rowStart,
+              rows: box.rowSpan,
+              hidden: box.hidden,
+            };
+          };
           return {
             id: element.id,
             type: element.type,

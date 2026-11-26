@@ -22,6 +22,7 @@ type LayoutRow = {
   row_span: number;
   hidden: boolean;
   placement_source: "auto" | "manual";
+  z_index?: number;
 };
 
 /** Fetch an EditorDoc for one site after verifying ownership. */
@@ -52,7 +53,7 @@ export async function loadEditorDoc(siteId: string): Promise<EditorDoc> {
     supabase
       .from("elements")
       .select(
-        "id, page_id, section_id, type, name, content, sort_order, element_layouts (id, element_id, breakpoint, col_start, col_span, row_start, row_span, hidden, placement_source)",
+        "id, page_id, section_id, type, name, content, sort_order, element_layouts (id, element_id, breakpoint, col_start, col_span, row_start, row_span, hidden, placement_source, z_index)",
       )
       .eq("site_id", siteId)
       .order("sort_order", { ascending: true }),

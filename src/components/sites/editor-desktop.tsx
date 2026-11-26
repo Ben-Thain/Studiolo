@@ -16,6 +16,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icons";
 import { Menu } from "@/components/ui/menu";
 import { Segmented } from "@/components/ui/segmented";
+import { inverseChanges, snapshotDoc } from "@/editor/changes";
 import { applyCommand } from "@/editor/commands";
 import { hydrateDraft } from "@/editor/persist";
 import { authHref } from "@/lib/auth/next";
@@ -178,15 +179,47 @@ export function EditorDesktop({
       ?.setAttribute("hidden", "");
   }, [layersHost]);
 
-  const run = useCallback((command: EditorCommand) => {
+  const beforeLast = useRef<ReturnType<typeof snapshotDoc> | null>(null);
+
+  const run = useCallback(
+    (command: EditorCommand, options?: { coalesce?: boolean }) => {
+      const before = snapshotDoc(docRef.current);
+      const result = applyCommand(docRef.current, command);
+      docRef.current = result.doc;
+      setDoc(result.doc);
+      const current = historyRef.current;
+      if (options?.coalesce && current.past.length > 0) {
+        persistRef.current?.queue(result.changes);
+        return;
+      }
+      beforeLast.current = before;
+      historyRef.current = {
+        past: [...current.past, { inverse: result.inverse }].slice(-50),
+        future: [],
+      };
+      persistRef.current?.queue(result.changes);
+    },
+    [],
+  );
+
+  const amend = useCallback((command: EditorCommand) => {
+    const before = beforeLast.current;
     const result = applyCommand(docRef.current, command);
     docRef.current = result.doc;
     setDoc(result.doc);
-    const current = historyRef.current;
-    historyRef.current = {
-      past: [...current.past, { inverse: result.inverse }].slice(-50),
-      future: [],
-    };
+    if (before && historyRef.current.past.length > 0) {
+      const inverse = inverseChanges(result.doc, before);
+      const past = historyRef.current.past.slice(0, -1);
+      historyRef.current = { past: [...past, { inverse }], future: [] };
+    } else {
+      beforeLast.current = snapshotDoc(result.doc);
+      historyRef.current = {
+        past: [...historyRef.current.past, { inverse: result.inverse }].slice(
+          -50,
+        ),
+        future: [],
+      };
+    }
     persistRef.current?.queue(result.changes);
   }, []);
 
@@ -390,11 +423,28 @@ export function EditorDesktop({
         event.preventDefault();
         run({ type: "duplicateElement", elementId: selectedId });
       }
+      if (meta && (event.key === "]" || event.key === "[")) {
+        event.preventDefault();
+        const forward = event.key === "]";
+        run({
+          type: "arrange",
+          elementId: selectedId,
+          breakpoint: layout,
+          to: event.altKey
+            ? forward
+              ? "front"
+              : "back"
+            : forward
+              ? "forward"
+              : "backward",
+        });
+        return;
+      }
       const deltas: Record<string, [number, number]> = {
         ArrowLeft: [-1, 0],
         ArrowRight: [1, 0],
-        ArrowUp: [0, event.altKey ? 0 : event.shiftKey ? -4 : -1],
-        ArrowDown: [0, event.altKey ? 0 : event.shiftKey ? 4 : 1],
+        ArrowUp: [0, event.altKey ? 0 : -1],
+        ArrowDown: [0, event.altKey ? 0 : 1],
       };
       const delta = deltas[event.key];
       if (!delta) return;
@@ -424,13 +474,22 @@ export function EditorDesktop({
       );
       if (!box) return;
       event.preventDefault();
-      run({
-        type: "move",
-        elementId: selectedId,
-        breakpoint: layout,
-        col: Math.min(12, Math.max(1, box.col + delta[0])),
-        row: Math.max(1, box.row + delta[1]),
-      });
+      run(
+        {
+          type: "move",
+          elementId: selectedId,
+          breakpoint: layout,
+          col: Math.min(
+            96,
+            Math.max(1, box.col + (event.shiftKey ? delta[0] * 8 : delta[0])),
+          ),
+          row: Math.max(
+            1,
+            box.row + (event.shiftKey ? delta[1] * 8 : delta[1]),
+          ),
+        },
+        { coalesce: event.repeat },
+      );
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -545,48 +604,57 @@ export function EditorDesktop({
               {section.name}
             </div>
             <ul>
-              {elementsIn(doc, section.id).map((element) => (
-                <li key={element.id}>
-                  <button
-                    type="button"
-                    className={cn(
-                      "flex h-8 w-full items-center gap-2 rounded-control py-0 pr-2 pl-6 text-left text-sm text-ink",
-                      element.id === selectedId && "bg-fill-selected",
-                    )}
-                    onClick={() => setSelectedId(element.id)}
-                    onDoubleClick={() => setRenameId(element.id)}
-                  >
-                    <Icon
-                      name={element.type === "image" ? "image" : "text"}
-                      size={16}
-                      className="text-ink-2"
-                    />
-                    {renameId === element.id ? (
-                      <input
-                        autoFocus
-                        aria-label={`Rename ${element.name}`}
-                        defaultValue={element.name}
-                        className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-                        onClick={(event) => event.stopPropagation()}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            run({
-                              type: "renameLayer",
-                              elementId: element.id,
-                              name: event.currentTarget.value,
-                            });
-                            setRenameId(null);
-                          }
-                          if (event.key === "Escape") setRenameId(null);
-                        }}
-                        onBlur={() => setRenameId(null)}
+              {[...elementsIn(doc, section.id)]
+                .sort((a, b) => {
+                  const zOf = (id: string) =>
+                    doc.layouts.find(
+                      (item) =>
+                        item.elementId === id && item.breakpoint === layout,
+                    )?.z ?? 0;
+                  return zOf(b.id) - zOf(a.id);
+                })
+                .map((element) => (
+                  <li key={element.id}>
+                    <button
+                      type="button"
+                      className={cn(
+                        "flex h-8 w-full items-center gap-2 rounded-control py-0 pr-2 pl-6 text-left text-sm text-ink",
+                        element.id === selectedId && "bg-fill-selected",
+                      )}
+                      onClick={() => setSelectedId(element.id)}
+                      onDoubleClick={() => setRenameId(element.id)}
+                    >
+                      <Icon
+                        name={element.type === "image" ? "image" : "text"}
+                        size={16}
+                        className="text-ink-2"
                       />
-                    ) : (
-                      <span className="truncate">{element.name}</span>
-                    )}
-                  </button>
-                </li>
-              ))}
+                      {renameId === element.id ? (
+                        <input
+                          autoFocus
+                          aria-label={`Rename ${element.name}`}
+                          defaultValue={element.name}
+                          className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                          onClick={(event) => event.stopPropagation()}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              run({
+                                type: "renameLayer",
+                                elementId: element.id,
+                                name: event.currentTarget.value,
+                              });
+                              setRenameId(null);
+                            }
+                            if (event.key === "Escape") setRenameId(null);
+                          }}
+                          onBlur={() => setRenameId(null)}
+                        />
+                      ) : (
+                        <span className="truncate">{element.name}</span>
+                      )}
+                    </button>
+                  </li>
+                ))}
             </ul>
           </li>
         ))}
@@ -672,7 +740,10 @@ export function EditorDesktop({
             run({ type: "move", elementId, breakpoint: layout, col, row })
           }
           onReplace={() => startImage(true)}
-          onResize={(elementId, box) =>
+          onResize={(elementId, box) => {
+            const element = docRef.current.elements.find(
+              (item) => item.id === elementId,
+            );
             run({
               type: "resize",
               elementId,
@@ -681,7 +752,35 @@ export function EditorDesktop({
               row: box.row,
               span: box.span,
               rows: box.rows,
-            })
+            });
+            toast({
+              message:
+                element?.type === "image"
+                  ? "Image resized"
+                  : "Text box resized",
+              action: { label: "Undo", onClick: () => undo() },
+              region: "site",
+            });
+          }}
+          onAutofit={(elementId, rows) => {
+            if (historyRef.current.past.length === 0) return;
+            const current = docRef.current.layouts.find(
+              (item) =>
+                item.elementId === elementId && item.breakpoint === layout,
+            );
+            if (!current || rows <= current.rows) return;
+            amend({
+              type: "resize",
+              elementId,
+              breakpoint: layout,
+              col: current.col,
+              row: current.row,
+              span: current.span,
+              rows,
+            });
+          }}
+          onMoveToSection={(elementId, sectionId, col, row) =>
+            run({ type: "moveToSection", elementId, sectionId, col, row })
           }
         />
         {uploadError ? (

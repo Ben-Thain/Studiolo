@@ -1,11 +1,15 @@
 /**
- * The editor grid: 12 columns, 8px row units (prompt 05).
+ * The editor grid: 96 columns, 8px row units (prompt 06c).
+ * Design-column guides are every 8 units (the old 12-column lines).
  */
 
 import type { GridBox } from "./types";
 
-export const GRID_COLUMNS = 12;
+export const GRID_COLUMNS = 96;
+export const DESIGN_COLUMNS = 12;
 export const ROW_UNIT_PX = 8;
+/** Content width the 12-column templates were drawn on (1440 minus 32px sides). */
+export const LEGACY_CONTENT_PX = 1376;
 export const MOBILE_STACK_GAP_ROWS = 3;
 
 export const DEFAULT_TEXT_ROWS = 6;
@@ -64,7 +68,27 @@ export function snapBox(box: GridBox): GridBox {
     span: snapSpan(box.span, col),
     row: snapRow(box.row),
     rows: snapRowSpan(box.rows),
+    ...(box.z === undefined ? {} : { z: box.z }),
   };
+}
+
+/**
+ * Map a 12-column box (24px gutter, 1376px content) onto the gutterless
+ * 96-unit grid. The same expression is in 0011_free_editor.sql.
+ */
+export function legacy12To96(box: { col: number; span: number }): {
+  col: number;
+  span: number;
+} {
+  const u = LEGACY_CONTENT_PX / GRID_COLUMNS;
+  const start = Math.round(((box.col - 1) * 116.6667) / u) + 1;
+  const end = Math.min(
+    97,
+    Math.round(
+      ((box.col - 1) * 116.6667 + box.span * 92.6667 + (box.span - 1) * 24) / u,
+    ) + 1,
+  );
+  return { col: start, span: end - start };
 }
 
 function nearestSnap(
@@ -248,8 +272,9 @@ export function defaultDesktopSpan(type: "text" | "image" | "nav" | "form"): {
   col: number;
   span: number;
 } {
-  if (type === "image") return { col: 7, span: 6 };
-  return { col: 1, span: 6 };
+  // The old 12-column defaults, converted so a new box keeps its pixel size.
+  if (type === "image") return legacy12To96({ col: 7, span: 6 });
+  return legacy12To96({ col: 1, span: 6 });
 }
 
 export function defaultDesktopRows(

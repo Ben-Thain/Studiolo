@@ -1,14 +1,17 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import { Toggle } from "@/components/ui/toggle";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Icon } from "@/components/ui/icons";
+import { GRID_COLUMNS, ROW_UNIT_PX } from "@/editor/grid";
+import { DESIGN_WIDTH, STAGE_PADDING_X } from "@/lib/editor/stage-coords";
 import { FONT_FAMILIES, SIZE_STEPS } from "@/editor/fonts";
 import { ensureFontFace } from "@/lib/editor/load-font";
 import type { EditorCommand } from "@/editor/command-types";
-import type { EditorDoc, EditorElement } from "@/editor/types";
+import type { EditorDoc, EditorElement, GridBox } from "@/editor/types";
 
 type LayoutName = "desktop" | "mobile";
 
@@ -259,7 +262,58 @@ export function EditorInspector({
                   </label>
                 ) : null}
                 <hr className="my-4 border-line" />
-                <div className="flex items-center justify-between">
+                {box ? (
+                  <PositionFields
+                    key={`${element.id}:${layout}:${box.col}:${box.row}:${box.span}:${box.rows}`}
+                    box={box}
+                    layout={layout}
+                    onCommit={(next) =>
+                      onRun({
+                        type: "resize",
+                        elementId: element.id,
+                        breakpoint: layout,
+                        ...next,
+                      })
+                    }
+                  />
+                ) : null}
+                <div className="mt-3 flex items-center gap-1">
+                  <span className="mr-1 text-xs text-ink-2">Arrange</span>
+                  {(
+                    [
+                      ["front", "Bring to front"],
+                      ["forward", "Bring forward"],
+                      ["backward", "Send backward"],
+                      ["back", "Send to back"],
+                    ] as const
+                  ).map(([to, label]) => (
+                    <Tooltip key={to} label={label}>
+                      <button
+                        type="button"
+                        aria-label={label}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-control border border-line text-ink-2 hover:bg-surface"
+                        onClick={() =>
+                          onRun({
+                            type: "arrange",
+                            elementId: element.id,
+                            breakpoint: layout,
+                            to,
+                          })
+                        }
+                      >
+                        <Icon
+                          name={
+                            to === "front" || to === "forward"
+                              ? "chevron-up"
+                              : "chevron-down"
+                          }
+                          size={14}
+                        />
+                      </button>
+                    </Tooltip>
+                  ))}
+                </div>
+                <div className="mt-4 flex items-center justify-between">
                   <span className="text-sm text-ink">Hide on {layout}</span>
                   <Toggle
                     label={`Hide on ${layout}`}
@@ -300,5 +354,74 @@ export function EditorInspector({
         </footer>
       ) : null}
     </aside>
+  );
+}
+
+const MOBILE_WIDTH = 393;
+
+function designUnit(layout: LayoutName): number {
+  const width = layout === "mobile" ? MOBILE_WIDTH : DESIGN_WIDTH;
+  return (width - STAGE_PADDING_X * 2) / GRID_COLUMNS;
+}
+
+function PositionFields({
+  box,
+  layout,
+  onCommit,
+}: {
+  box: GridBox;
+  layout: LayoutName;
+  onCommit: (next: {
+    col: number;
+    row: number;
+    span: number;
+    rows: number;
+  }) => void;
+}) {
+  const unit = designUnit(layout);
+  const shown = {
+    X: Math.round((box.col - 1) * unit),
+    Y: (box.row - 1) * ROW_UNIT_PX,
+    W: Math.round(box.span * unit),
+    H: box.rows * ROW_UNIT_PX,
+  };
+  const [draft, setDraft] = useState(shown);
+  const commit = () => {
+    const col = Math.min(
+      GRID_COLUMNS,
+      Math.max(1, Math.round(draft.X / unit) + 1),
+    );
+    const row = Math.max(1, Math.round(draft.Y / ROW_UNIT_PX) + 1);
+    const span = Math.min(
+      GRID_COLUMNS - col + 1,
+      Math.max(2, Math.round(draft.W / unit)),
+    );
+    const rows = Math.max(2, Math.round(draft.H / ROW_UNIT_PX));
+    onCommit({ col, row, span, rows });
+  };
+  return (
+    <div>
+      <p className="text-xs font-medium text-ink-2">Position</p>
+      <div className="mt-2 grid grid-cols-4 gap-2">
+        {(["X", "Y", "W", "H"] as const).map((field) => (
+          <label key={field} className="text-[11px] text-ink-3">
+            {field}
+            <input
+              aria-label={field}
+              inputMode="numeric"
+              className="mt-1 h-8 w-full rounded-control border border-line px-1.5 text-xs text-ink"
+              value={draft[field]}
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  [field]: Number(event.target.value),
+                }))
+              }
+              onBlur={commit}
+            />
+          </label>
+        ))}
+      </div>
+    </div>
   );
 }

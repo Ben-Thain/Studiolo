@@ -24,9 +24,9 @@ describe("autoStack", () => {
       item("c", 2, { col: 1, span: 6, row: 1, rows: 2 }),
     ]);
     expect([...out.entries()]).toEqual([
-      ["a", { col: 1, span: 12, row: 1, rows: 4 }],
-      ["c", { col: 1, span: 12, row: 8, rows: 2 }],
-      ["b", { col: 1, span: 12, row: 13, rows: 10 }],
+      ["a", { col: 1, span: 96, row: 1, rows: 4 }],
+      ["c", { col: 1, span: 96, row: 8, rows: 2 }],
+      ["b", { col: 1, span: 96, row: 13, rows: 10 }],
     ]);
   });
 

@@ -12,14 +12,14 @@ describe("move keeps span", () => {
       type: "move",
       elementId: image.id,
       breakpoint: "desktop",
-      col: before.col + 4,
+      col: 200,
       row: before.row,
     });
     const after = moved.doc.layouts.find(
       (l) => l.elementId === image.id && l.breakpoint === "desktop",
     )!;
     expect(after.span).toBe(before.span);
-    expect(after.col).toBeLessThanOrEqual(12 - before.span + 1);
-    expect(after.col).not.toBe(before.col + 4);
+    expect(after.col).toBeLessThanOrEqual(96 - before.span + 1);
+    expect(after.col).not.toBe(200);
   });
 });

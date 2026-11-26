@@ -32,7 +32,7 @@ describe("riverton fixture", () => {
 });
 
 describe("applyCommand", () => {
-  it("addElement defaults text to columns 1–6 and images to 7–12", () => {
+  it("addElement defaults text and images to the converted 96-column spans", () => {
     const { changes, homePageId } = instantiateTemplate(loadTemplate("blank"), {
       siteId: "80000000-0000-4000-8000-000000000099",
       siteName: "Add test",
@@ -89,7 +89,7 @@ describe("applyCommand", () => {
     const text = textAdd.doc.elements.find((e) => e.name === "Extra")!;
     expect(layoutFor(textAdd.doc, text.id, "desktop")).toMatchObject({
       col: 1,
-      span: 6,
+      span: 47,
     });
 
     const imageAdd = applyCommand(
@@ -105,8 +105,8 @@ describe("applyCommand", () => {
     );
     const image = imageAdd.doc.elements.find((e) => e.name === "Logo")!;
     const desktop = layoutFor(imageAdd.doc, image.id, "desktop")!;
-    expect(desktop.col).toBe(7);
-    expect(desktop.span).toBe(6);
+    expect(desktop.col).toBe(50);
+    expect(desktop.span).toBe(47);
     expect(desktop.row).toBeGreaterThan(1);
 
     const pageImage = applyCommand(
@@ -127,8 +127,8 @@ describe("applyCommand", () => {
         "desktop",
       ),
     ).toMatchObject({
-      col: 7,
-      span: 6,
+      col: 50,
+      span: 47,
     });
   });
 

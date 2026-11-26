@@ -9,7 +9,8 @@ import {
   lineHeightForSizeStep,
   trackingForSizeStep,
 } from "@/lib/editor/typography";
-import { gridPlacement, GRID_AUTO_ROWS } from "@/editor/renderGrid";
+import { gridPlacement, GRID_TEMPLATE } from "@/editor/renderGrid";
+import { ROW_UNIT_PX } from "@/editor/grid";
 import type { GridBox } from "@/editor/types";
 import type {
   CanvasElement,
@@ -176,10 +177,11 @@ function SectionGrid({
   return (
     <div
       data-section={section.name}
-      className="grid grid-cols-12 gap-x-6 py-4"
-      // Rows grow to fit text (the editor in prompt 06 measures them), so a
-      // heading that wraps never runs into the element below it.
-      style={{ gridAutoRows: GRID_AUTO_ROWS }}
+      className="grid px-8 py-4"
+      style={{
+        gridTemplateColumns: GRID_TEMPLATE,
+        gridAutoRows: `${ROW_UNIT_PX}px`,
+      }}
     >
       {placed.map((element) => (
         <div

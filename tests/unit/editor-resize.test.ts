@@ -31,7 +31,7 @@ describe("resizeFromCorner", () => {
     });
     expect(resizeFromCorner(start, 2, 10, "ne")).toEqual({
       col: 7,
-      span: 6,
+      span: 8,
       row: 11,
       rows: 30,
     });

@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 export type IconName =
   | "plus"
   | "chevron-down"
+  | "chevron-up"
   | "chevron-left"
   | "chevron-right"
   | "check"
@@ -51,6 +52,7 @@ function Stroke({ d }: { d: string }) {
 const glyphs: Record<IconName, ReactNode> = {
   plus: <Stroke d="M8 2.75v10.5M2.75 8h10.5" />,
   "chevron-down": <Stroke d="M3.25 6.25 8 11l4.75-4.75" />,
+  "chevron-up": <Stroke d="M3.25 9.75 8 5l4.75 4.75" />,
   "chevron-left": <Stroke d="M10 3.25 5.25 8 10 12.75" />,
   "chevron-right": <Stroke d="M6 3.25 10.75 8 6 12.75" />,
   check: <Stroke d="M3.25 8.25 6.5 11.5 12.75 4.5" />,

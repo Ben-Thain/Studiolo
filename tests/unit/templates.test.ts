@@ -10,6 +10,7 @@ import {
   pageFromRow,
   sectionFromRow,
 } from "@/editor/doc";
+import { legacy12To96 } from "@/editor/grid";
 import { draftChangesSchema, editorDocSchema } from "@/editor/schema";
 import { createHistory, pushHistory, undo } from "@/editor/history";
 import { instantiateTemplate } from "@/templates/instantiate";
@@ -90,14 +91,12 @@ describe("templates", () => {
               expect(
                 boxesOverlap(
                   {
-                    col: a.colStart,
-                    span: a.colSpan,
+                    ...legacy12To96({ col: a.colStart, span: a.colSpan }),
                     row: a.rowStart,
                     rows: a.rowSpan,
                   },
                   {
-                    col: b.colStart,
-                    span: b.colSpan,
+                    ...legacy12To96({ col: b.colStart, span: b.colSpan }),
                     row: b.rowStart,
                     rows: b.rowSpan,
                   },

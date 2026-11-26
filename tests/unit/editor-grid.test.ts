@@ -11,7 +11,7 @@ import { GRID_AUTO_ROWS, gridPlacement } from "@/editor/renderGrid";
 
 describe("grid", () => {
   it("uses 12 columns and an 8px row unit", () => {
-    expect(GRID_COLUMNS).toBe(12);
+    expect(GRID_COLUMNS).toBe(96);
     expect(ROW_UNIT_PX).toBe(8);
     expect(GRID_AUTO_ROWS).toBe("minmax(8px, auto)");
   });
@@ -26,8 +26,8 @@ describe("grid", () => {
   });
 
   it("defaults new text to columns 1–6 and images to 7–12", () => {
-    expect(defaultDesktopSpan("text")).toEqual({ col: 1, span: 6 });
-    expect(defaultDesktopSpan("image")).toEqual({ col: 7, span: 6 });
+    expect(defaultDesktopSpan("text")).toEqual({ col: 1, span: 47 });
+    expect(defaultDesktopSpan("image")).toEqual({ col: 50, span: 47 });
   });
 
   it("detects overlap", () => {
@@ -47,6 +47,7 @@ describe("renderGrid", () => {
     expect(gridPlacement({ col: 7, span: 6, row: 1, rows: 40 })).toEqual({
       gridColumn: "7 / span 6",
       gridRow: "1 / span 40",
+      zIndex: 1,
     });
   });
 });

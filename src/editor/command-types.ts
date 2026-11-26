@@ -87,4 +87,17 @@ export type EditorCommand =
   | { type: "setHome"; pageId: string }
   | { type: "setInNav"; pageId: string; inNav: boolean }
   | { type: "reorderPages"; pageId: string; sortOrder: number }
-  | { type: "deletePage"; pageId: string };
+  | { type: "deletePage"; pageId: string }
+  | {
+      type: "moveToSection";
+      elementId: string;
+      sectionId: string;
+      col: number;
+      row: number;
+    }
+  | {
+      type: "arrange";
+      elementId: string;
+      breakpoint: "desktop" | "mobile";
+      to: "front" | "back" | "forward" | "backward";
+    };

@@ -1001,6 +1001,7 @@ begin
       'element_layouts_row_start',
       'element_layouts_row_span',
       'element_layouts_columns_fit',
+      'element_layouts_z_index',
       'element_layouts_placement_source',
       'element_layouts_element_breakpoint_key',
       'submissions_name_length',
@@ -1356,8 +1357,8 @@ begin
     insert into public.element_layouts (
       element_id, breakpoint, col_start, col_span, row_start, row_span
     )
-    values (text_element, 'mobile', 11, 3, 1, 1);
-    raise exception 'layout past column 12 was accepted';
+    values (text_element, 'mobile', 90, 8, 1, 1);
+    raise exception 'layout past column 96 was accepted';
   exception
     when check_violation then
       null;
@@ -3360,15 +3361,15 @@ rollback;
 do $$
 begin
   insert into public.element_layouts (element_id, breakpoint, col_start, col_span, row_start, row_span)
-  values ('c2000000-0000-4000-8000-000000000051', 'mobile', 1, 13, 1, 1);
-  raise exception 'col_span 13 was accepted';
+  values ('c2000000-0000-4000-8000-000000000051', 'mobile', 1, 97, 1, 1);
+  raise exception 'col_span 97 was accepted';
 exception
   when check_violation then
     null;
 end
 $$;
 
-\echo ok: col_span 13 rejected
+\echo ok: col_span 97 rejected
 
 -- 04a: duplicate_site deep-copies a site in one transaction.
 begin;
@@ -3780,3 +3781,103 @@ where id in (
   '10000000-0000-4000-8000-000000000001',
   '10000000-0000-4000-8000-000000000002'
 );
+
+-- 06c: the SQL conversion matches legacy12To96 for every 12-column pair.
+do $$
+declare
+  rec record;
+  u numeric := 1376.0 / 96;
+  start96 integer;
+  end96 integer;
+  span96 integer;
+begin
+  for rec in
+    select * from (values
+(1, 1, 1, 6),
+      (1, 2, 1, 15),
+      (1, 3, 1, 23),
+      (1, 4, 1, 31),
+      (1, 5, 1, 39),
+      (1, 6, 1, 47),
+      (1, 7, 1, 55),
+      (1, 8, 1, 63),
+      (1, 9, 1, 72),
+      (1, 10, 1, 80),
+      (1, 11, 1, 88),
+      (1, 12, 1, 96),
+      (2, 1, 9, 7),
+      (2, 2, 9, 15),
+      (2, 3, 9, 23),
+      (2, 4, 9, 31),
+      (2, 5, 9, 39),
+      (2, 6, 9, 47),
+      (2, 7, 9, 55),
+      (2, 8, 9, 64),
+      (2, 9, 9, 72),
+      (2, 10, 9, 80),
+      (2, 11, 9, 88),
+      (3, 1, 17, 7),
+      (3, 2, 17, 15),
+      (3, 3, 17, 23),
+      (3, 4, 17, 31),
+      (3, 5, 17, 39),
+      (3, 6, 17, 47),
+      (3, 7, 17, 56),
+      (3, 8, 17, 64),
+      (3, 9, 17, 72),
+      (3, 10, 17, 80),
+      (4, 1, 25, 7),
+      (4, 2, 25, 15),
+      (4, 3, 25, 23),
+      (4, 4, 25, 31),
+      (4, 5, 25, 39),
+      (4, 6, 25, 48),
+      (4, 7, 25, 56),
+      (4, 8, 25, 64),
+      (4, 9, 25, 72),
+      (5, 1, 34, 6),
+      (5, 2, 34, 14),
+      (5, 3, 34, 22),
+      (5, 4, 34, 30),
+      (5, 5, 34, 39),
+      (5, 6, 34, 47),
+      (5, 7, 34, 55),
+      (5, 8, 34, 63),
+      (6, 1, 42, 6),
+      (6, 2, 42, 14),
+      (6, 3, 42, 22),
+      (6, 4, 42, 31),
+      (6, 5, 42, 39),
+      (6, 6, 42, 47),
+      (6, 7, 42, 55),
+      (7, 1, 50, 6),
+      (7, 2, 50, 14),
+      (7, 3, 50, 23),
+      (7, 4, 50, 31),
+      (7, 5, 50, 39),
+      (7, 6, 50, 47),
+      (8, 1, 58, 6),
+      (8, 2, 58, 15),
+      (8, 3, 58, 23),
+      (8, 4, 58, 31),
+      (8, 5, 58, 39),
+      (9, 1, 66, 7),
+      (9, 2, 66, 15),
+      (9, 3, 66, 23),
+      (9, 4, 66, 31),
+      (10, 1, 74, 7),
+      (10, 2, 74, 15),
+      (10, 3, 74, 23),
+      (11, 1, 82, 7),
+      (11, 2, 82, 15),
+      (12, 1, 91, 6)
+    ) as t(col, span, expect_col, expect_span)
+  loop
+    start96 := round(((rec.col - 1) * 116.6667) / u)::integer + 1;
+    end96 := least(97, round(((rec.col - 1) * 116.6667 + rec.span * 92.6667 + (rec.span - 1) * 24) / u)::integer + 1);
+    span96 := end96 - start96;
+    if start96 <> rec.expect_col or span96 <> rec.expect_span then
+      raise exception 'legacy12To96 mismatch for %/% got %/%', rec.col, rec.span, start96, span96;
+    end if;
+  end loop;
+end $$;

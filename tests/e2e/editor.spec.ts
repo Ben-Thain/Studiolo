@@ -1,7 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resizeFromCorner, type ResizeCorner } from "../../src/editor/resize";
+import { commitBox } from "../../src/editor/drag";
+import { resizeBoxPx, type ResizeCorner } from "../../src/editor/resize";
 
 const MOCK = "http://127.0.0.1:54399";
 const FIXTURES = path.join(
@@ -125,13 +126,11 @@ test.describe("desktop editor", () => {
       );
     expect(axis.length).toBeGreaterThan(0);
     expect(axis.length).toBeLessThanOrEqual(4);
-    const yLine = page.locator("[data-guide-axis='y']");
-    if ((await yLine.count()) > 0) {
+    const yLine = page.locator("[data-guide-axis='y']:visible");
+    const xLine = page.locator("[data-guide-axis='x']:visible");
+    if ((await yLine.count()) > 0 && (await xLine.count()) > 0) {
       const yBox = await yLine.first().boundingBox();
-      const xBox = await page
-        .locator("[data-guide-axis='x']")
-        .first()
-        .boundingBox();
+      const xBox = await xLine.first().boundingBox();
       expect(yBox!.height).toBeLessThan(xBox!.height);
     }
     await page.mouse.up();
@@ -159,21 +158,24 @@ test.describe("desktop editor", () => {
     if (!box) throw new Error("no element in the second section");
     await page.mouse.move(box.x + 16, box.y + 16);
     await page.mouse.down();
-    await page.mouse.move(box.x + 140, box.y + 16, { steps: 8 });
-    const lines = page.locator("[data-guide-axis='y']");
-    await expect(lines.first()).toBeVisible();
-    const sectionBox = await section.boundingBox();
-    if (!sectionBox) throw new Error("no section box");
-    const count = await lines.count();
-    expect(count).toBeGreaterThan(0);
-    for (let i = 0; i < count; i += 1) {
-      const line = await lines.nth(i).boundingBox();
-      expect(line).toBeTruthy();
-      expect(line!.y).toBeGreaterThanOrEqual(sectionBox.y - 1);
-      expect(line!.y + line!.height).toBeLessThanOrEqual(
-        sectionBox.y + sectionBox.height + 1,
-      );
+    let seen = 0;
+    for (let step = 1; step <= 24; step += 1) {
+      await page.mouse.move(box.x + 16, box.y + 16 + step * 6);
+      const sectionBox = await section.boundingBox();
+      if (!sectionBox) throw new Error("no section box");
+      const lines = page.locator("[data-guide-axis='y']:visible");
+      const count = await lines.count();
+      for (let i = 0; i < count; i += 1) {
+        const line = await lines.nth(i).boundingBox();
+        expect(line).toBeTruthy();
+        expect(line!.y).toBeGreaterThanOrEqual(sectionBox.y - 1);
+        expect(line!.y + line!.height).toBeLessThanOrEqual(
+          sectionBox.y + sectionBox.height + 1,
+        );
+        seen += 1;
+      }
     }
+    expect(seen).toBeGreaterThan(0);
     await page.mouse.up();
   });
 
@@ -181,7 +183,7 @@ test.describe("desktop editor", () => {
     await openOwnEditor(page);
     const item = page.locator("[data-element='Hero image']");
     await item.click();
-    const colWidth = (1440 - 64 - 11 * 24) / 12;
+    const unitX = (1440 - 64) / 96;
     const drag = async (corner: ResizeCorner, dx: number, dy: number) => {
       const handle = item.locator(`[data-corner='${corner}']`);
       const hit = await handle.boundingBox();
@@ -199,15 +201,36 @@ test.describe("desktop editor", () => {
           .locator("[data-editor-canvas]")
           .getAttribute("data-stage-scale"),
       );
-      const dCol = Math.round(dx / scale / colWidth);
-      const dRow = Math.round(dy / scale / 8);
-      const expected = resizeFromCorner(start, dCol, dRow, corner);
+      const px = resizeBoxPx(
+        {
+          x: (start.col - 1) * unitX,
+          y: (start.row - 1) * 8,
+          w: start.span * unitX,
+          h: start.rows * 8,
+        },
+        dx / scale,
+        dy / scale,
+        corner,
+        {
+          lockAspect: false,
+          minW: unitX * 2,
+          minH: 16,
+          maxRight: 1440 - 64,
+        },
+      );
+      const committed = commitBox(px, unitX, 8);
+      const expected = {
+        ...committed,
+        col: Math.min(96 - committed.span + 1, Math.max(1, committed.col)),
+      };
       const cx = hit!.x + hit!.width / 2;
       const cy = hit!.y + hit!.height / 2;
+      await page.keyboard.down("Shift");
       await page.mouse.move(cx, cy);
       await page.mouse.down();
       await page.mouse.move(cx + dx, cy + dy, { steps: 10 });
       await page.mouse.up();
+      await page.keyboard.up("Shift");
       await expect
         .poll(async () => item.getAttribute("data-col"))
         .toBe(String(expected.col));
@@ -286,10 +309,10 @@ test.describe("desktop editor", () => {
       let last = performance.now();
       let prev = "";
       const tick = (now: number) => {
-        const overlay = document.querySelector(
-          "[data-drag-overlay]",
+        const heading = document.querySelector(
+          "[data-element='Heading']",
         ) as HTMLElement | null;
-        const transform = overlay?.style.transform ?? "";
+        const transform = heading?.style.transform ?? "";
         if (transform && prev && transform !== prev) {
           target.__frameDeltas.push(now - last);
         }
@@ -305,7 +328,11 @@ test.describe("desktop editor", () => {
     await page.mouse.move(box!.x + 8, box!.y + 8);
     await page.mouse.down();
     await page.mouse.move(box!.x + 280, box!.y + 36, { steps: 50 });
-    await expect(page.locator("[data-drag-overlay]")).toBeVisible();
+    await expect
+      .poll(() =>
+        item.evaluate((node) => (node as HTMLElement).style.transform),
+      )
+      .not.toBe("");
     await page.mouse.up();
     const samples = await page.evaluate(
       () => (window as unknown as { __frameDeltas: number[] }).__frameDeltas,

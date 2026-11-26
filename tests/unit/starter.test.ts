@@ -86,18 +86,18 @@ describe("instantiateTemplate(blank)", () => {
     };
     expect(of("Heading", "desktop")).toMatchObject({
       col_start: 1,
-      col_span: 6,
+      col_span: 47,
       row_start: 1,
     });
     expect(of("Hero image", "desktop")).toMatchObject({
-      col_start: 7,
-      col_span: 6,
+      col_start: 50,
+      col_span: 47,
       row_start: 1,
     });
     for (const layout of layouts.filter((l) => l.breakpoint === "mobile")) {
       expect(layout).toMatchObject({
         col_start: 1,
-        col_span: 12,
+        col_span: 96,
         placement_source: "auto",
       });
     }
@@ -133,9 +133,9 @@ describe("autoStack", () => {
       },
     ]);
     expect([...out.entries()]).toEqual([
-      ["a", { col: 1, span: 12, row: 1, rows: 4 }],
-      ["c", { col: 1, span: 12, row: 8, rows: 2 }],
-      ["b", { col: 1, span: 12, row: 13, rows: 10 }],
+      ["a", { col: 1, span: 96, row: 1, rows: 4 }],
+      ["c", { col: 1, span: 96, row: 8, rows: 2 }],
+      ["b", { col: 1, span: 96, row: 13, rows: 10 }],
     ]);
   });
 });

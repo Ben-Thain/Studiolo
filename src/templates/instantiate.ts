@@ -1,4 +1,5 @@
 import type { DraftChanges } from "@/editor/schema";
+import { legacy12To96 } from "@/editor/grid";
 import type { TemplateFile } from "./schema";
 
 export type InstantiatedAsset = {
@@ -113,16 +114,21 @@ export function instantiateTemplate(
         if (!boxes) return [];
         return (["desktop", "mobile"] as const).map((breakpoint) => {
           const box = boxes[breakpoint];
+          const columns = legacy12To96({
+            col: box.colStart,
+            span: box.colSpan,
+          });
           return {
             id: newId(),
             element_id: elements.get(element.id)!,
             breakpoint,
-            col_start: box.colStart,
-            col_span: box.colSpan,
+            col_start: columns.col,
+            col_span: columns.span,
             row_start: box.rowStart,
             row_span: box.rowSpan,
             hidden: box.hidden,
             placement_source: box.placementSource,
+            z_index: 0,
           };
         });
       }),

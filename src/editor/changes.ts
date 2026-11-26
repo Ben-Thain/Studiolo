@@ -69,6 +69,7 @@ function layoutRow(layout: ElementLayout) {
     row_span: layout.rows,
     hidden: layout.hidden,
     placement_source: layout.placementSource,
+    z_index: layout.z ?? 0,
   };
 }
 
@@ -237,6 +238,7 @@ function layoutDiffers(a: ElementLayout, b: ElementLayout): boolean {
     a.rows !== b.rows ||
     a.hidden !== b.hidden ||
     a.placementSource !== b.placementSource ||
+    (a.z ?? 0) !== (b.z ?? 0) ||
     a.elementId !== b.elementId ||
     a.breakpoint !== b.breakpoint
   );

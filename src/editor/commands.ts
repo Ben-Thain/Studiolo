@@ -87,6 +87,12 @@ export function applyCommand(
         rows: command.rows,
       });
       break;
+    case "moveToSection":
+      moveToSection(next, command);
+      break;
+    case "arrange":
+      arrange(next, command);
+      break;
     case "setHidden":
       setHidden(next, command.elementId, command.breakpoint, command.hidden);
       break;
@@ -296,7 +302,13 @@ function addElement(
     }
   }
 
-  const desktop = snapBox({ col, span, row, rows });
+  const desktop = snapBox({
+    col,
+    span,
+    row,
+    rows,
+    z: topZ(doc, section.id, "desktop") + 1,
+  });
   doc.layouts.push({
     id: newId(),
     elementId: id,
@@ -318,7 +330,104 @@ function addElement(
     hidden: false,
     placementSource: "auto",
     ...mobileStack,
+    z: topZ(doc, section.id, "mobile") + 1,
   });
+}
+
+function topZ(
+  doc: EditorDoc,
+  sectionId: string,
+  breakpoint: Breakpoint,
+): number {
+  const ids = new Set(sectionElements(doc, sectionId).map((item) => item.id));
+  return doc.layouts.reduce((max, layout) => {
+    if (layout.breakpoint !== breakpoint || !ids.has(layout.elementId)) {
+      return max;
+    }
+    return Math.max(max, layout.z ?? 0);
+  }, 0);
+}
+
+function moveToSection(
+  doc: EditorDoc,
+  command: Extract<EditorCommand, { type: "moveToSection" }>,
+) {
+  const element = elementOf(doc, command.elementId);
+  const from = sectionOf(doc, element.sectionId);
+  const to = sectionOf(doc, command.sectionId);
+  if ((from.pageId === null) !== (to.pageId === null)) return;
+  if (from.pageId !== null && from.pageId !== to.pageId) return;
+  if (from.id === to.id) return;
+  element.sectionId = to.id;
+  if (element.pageId !== null) element.pageId = to.pageId;
+  const desktop = layoutOf(doc, element.id, "desktop");
+  const maxCol = GRID_COLUMNS - desktop.span + 1;
+  desktop.col = Math.min(maxCol, Math.max(1, Math.round(command.col)));
+  desktop.row = Math.max(1, Math.round(command.row));
+  desktop.placementSource = "manual";
+  desktop.z = topZ(doc, to.id, "desktop") + 1;
+  const mobile = layoutOf(doc, element.id, "mobile");
+  if (mobile.placementSource === "auto") {
+    restackSection(doc, from.id);
+    restackSection(doc, to.id);
+  } else {
+    const below = appendMobileStack(
+      stackItemsForSection(doc, to.id).filter((item) => item.id !== element.id),
+      { id: element.id, rows: mobile.rows },
+    );
+    mobile.col = below.col;
+    mobile.span = below.span;
+    mobile.row = below.row;
+    mobile.z = topZ(doc, to.id, "mobile") + 1;
+  }
+}
+
+function arrange(
+  doc: EditorDoc,
+  command: Extract<EditorCommand, { type: "arrange" }>,
+) {
+  const element = elementOf(doc, command.elementId);
+  const ids = new Set(
+    sectionElements(doc, element.sectionId).map((item) => item.id),
+  );
+  const siblings = doc.layouts.filter(
+    (layout) =>
+      layout.breakpoint === command.breakpoint && ids.has(layout.elementId),
+  );
+  const layout = layoutOf(doc, element.id, command.breakpoint);
+  const ordered = [...siblings].sort(
+    (a, b) => (a.z ?? 0) - (b.z ?? 0) || a.elementId.localeCompare(b.elementId),
+  );
+  const index = ordered.findIndex((item) => item.elementId === element.id);
+  if (command.to === "front") {
+    layout.z = Math.min(
+      9999,
+      Math.max(...siblings.map((item) => item.z ?? 0)) + 1,
+    );
+    return;
+  }
+  if (command.to === "back") {
+    for (const other of siblings) {
+      if (other.elementId !== element.id) {
+        other.z = Math.min(9999, (other.z ?? 0) + 1);
+      }
+    }
+    layout.z = 0;
+    return;
+  }
+  const neighbor =
+    command.to === "forward" ? ordered[index + 1] : ordered[index - 1];
+  if (!neighbor) return;
+  const current = layout.z ?? 0;
+  const other = neighbor.z ?? 0;
+  layout.z = other;
+  neighbor.z = current;
+  if (layout.z === neighbor.z) {
+    layout.z =
+      command.to === "forward"
+        ? Math.min(9999, other + 1)
+        : Math.max(0, other - 1);
+  }
 }
 
 function duplicateElement(

@@ -413,6 +413,7 @@ export type Database = {
           row_span: number;
           hidden: boolean;
           placement_source: string;
+          z_index: number;
         };
         Insert: {
           id?: string;
@@ -424,6 +425,7 @@ export type Database = {
           row_span: number;
           hidden?: boolean;
           placement_source?: string;
+          z_index?: number;
         };
         Update: {
           id?: string;
@@ -435,6 +437,7 @@ export type Database = {
           row_span?: number;
           hidden?: boolean;
           placement_source?: string;
+          z_index?: number;
         };
         Relationships: [
           {

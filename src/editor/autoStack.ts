@@ -5,7 +5,7 @@
  * come from existing mobile rows, not desktop.
  */
 
-import { MOBILE_STACK_GAP_ROWS, snapBox, rowBelow } from "./grid";
+import { GRID_COLUMNS, MOBILE_STACK_GAP_ROWS, snapBox, rowBelow } from "./grid";
 import type { GridBox, PlacementSource } from "./types";
 
 export type StackItem = {
@@ -44,7 +44,7 @@ export function autoStack(items: StackItem[]): Map<string, GridBox> {
       item.id,
       snapBox({
         col: 1,
-        span: 12,
+        span: GRID_COLUMNS,
         row,
         rows,
       }),
@@ -61,5 +61,10 @@ export function appendMobileStack(
 ): GridBox {
   const boxes = existing.map((i) => i.mobile);
   const start = rowBelow(boxes, existing.length ? MOBILE_STACK_GAP_ROWS : 0);
-  return snapBox({ col: 1, span: 12, row: start, rows: newItem.rows });
+  return snapBox({
+    col: 1,
+    span: GRID_COLUMNS,
+    row: start,
+    rows: newItem.rows,
+  });
 }

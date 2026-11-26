@@ -77,6 +77,8 @@ export type GridBox = {
   span: number;
   row: number;
   rows: number;
+  /** Paint order. Higher is in front. Omitted boxes are 0. */
+  z?: number;
 };
 
 export type ElementLayout = GridBox & {

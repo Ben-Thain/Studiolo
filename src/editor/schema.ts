@@ -48,13 +48,14 @@ const strictImageContentSchema = imageContentSchema.strict();
 
 export const gridBoxSchema = z
   .object({
-    col: z.number().int().min(1).max(12),
-    span: z.number().int().min(1).max(12),
+    col: z.number().int().min(1).max(96),
+    span: z.number().int().min(1).max(96),
     row: z.number().int().min(1),
     rows: z.number().int().min(1),
+    z: z.number().int().min(0).max(9999).optional(),
   })
-  .refine((b) => b.col + b.span - 1 <= 12, {
-    message: "columns must fit in the 12-column grid",
+  .refine((b) => b.col + b.span - 1 <= 96, {
+    message: "columns must fit in the 96-column grid",
   });
 
 export const elementLayoutSchema = gridBoxSchema.extend({
@@ -190,6 +191,7 @@ export const draftChangesSchema = z
         row_span: z.number().int(),
         hidden: z.boolean(),
         placement_source: placementSourceSchema,
+        z_index: z.number().int().min(0).max(9999).optional(),
       }),
     ).optional(),
   })

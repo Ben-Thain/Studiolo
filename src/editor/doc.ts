@@ -88,6 +88,7 @@ export function layoutFromRow(row: LayoutRow): ElementLayout {
     rows: row.row_span,
     hidden: row.hidden,
     placementSource: row.placement_source,
+    z: row.z_index ?? 0,
   };
 }
 
