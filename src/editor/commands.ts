@@ -653,13 +653,15 @@ function setLink(
   if (element.type !== "text" && element.type !== "image") {
     throw new Error("Links are only supported on text and image elements");
   }
-  if (link === null) {
-    element.content = setContentLink(element.content, null);
-    return;
+  const next =
+    link === null
+      ? setContentLink(element.content, null)
+      : setContentLink(element.content, validateLink(link, pageIds) ?? null);
+  if (link !== null && !validateLink(link, pageIds)) {
+    throw new Error("Invalid link");
   }
-  const valid = validateLink(link, pageIds);
-  if (!valid) throw new Error("Invalid link");
-  element.content = setContentLink(element.content, valid);
+  delete next.linkRemoved;
+  element.content = next;
 }
 
 function addPage(

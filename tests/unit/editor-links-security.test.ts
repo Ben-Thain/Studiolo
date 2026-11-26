@@ -69,6 +69,7 @@ describe("validateLink", () => {
     };
     const safe = sanitizeChangesLinks(changes, new Set([validPage]));
     expect(safe.elements?.upsert?.[0]?.content.link).toBeUndefined();
+    expect(safe.elements?.upsert?.[0]?.content.linkRemoved).toBe(true);
   });
 
   it("setLink and updateContent drop invalid links", () => {

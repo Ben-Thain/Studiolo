@@ -27,6 +27,7 @@ export type MenuItem = {
   kbd?: string;
   destructive?: boolean;
   disabled?: boolean;
+  hint?: string;
   onSelect?: () => void;
   forceState?: "hover" | "active" | "focus" | "disabled";
 };
@@ -288,7 +289,9 @@ export function Menu({
             }}
             className={cn(
               "flex w-full items-center gap-2 rounded-control-inner px-2 text-left",
-              "h-11 text-base leading-6 sm:h-9 sm:text-[13px] sm:leading-5",
+              entry.hint
+                ? "h-auto py-2 text-base leading-6 sm:text-[13px] sm:leading-5"
+                : "h-11 text-base leading-6 sm:h-9 sm:text-[13px] sm:leading-5",
               "active:bg-fill-selected",
               entry.disabled || entry.forceState === "disabled"
                 ? "text-ink-4"
@@ -305,7 +308,14 @@ export function Menu({
             ) : (
               <span className="size-5 sm:size-4" />
             )}
-            <span className="min-w-0 flex-1 truncate">{entry.label}</span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate">{entry.label}</span>
+              {entry.hint ? (
+                <span className="mt-0.5 block text-xs leading-4 font-normal text-ink-3">
+                  {entry.hint}
+                </span>
+              ) : null}
+            </span>
             {entry.kbd ? (
               <kbd
                 className={

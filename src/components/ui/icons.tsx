@@ -29,7 +29,8 @@ export type IconName =
   | "mail"
   | "sign-out"
   | "gear"
-  | "eye";
+  | "eye"
+  | "grip";
 
 type IconProps = {
   name: IconName;
@@ -276,6 +277,16 @@ const glyphs: Record<IconName, ReactNode> = {
     <>
       <circle cx="8" cy="8" r="2.25" stroke="currentColor" strokeWidth="1.5" />
       <Stroke d="M8 1.75v1.5M8 12.75v1.5M14.25 8h-1.5M3.25 8h-1.5M12.42 3.58l-1.06 1.06M4.64 11.36l-1.06 1.06M12.42 12.42l-1.06-1.06M4.64 4.64 3.58 3.58" />
+    </>
+  ),
+  grip: (
+    <>
+      <circle cx="6" cy="4.25" r="0.9" fill="currentColor" />
+      <circle cx="10" cy="4.25" r="0.9" fill="currentColor" />
+      <circle cx="6" cy="8" r="0.9" fill="currentColor" />
+      <circle cx="10" cy="8" r="0.9" fill="currentColor" />
+      <circle cx="6" cy="11.75" r="0.9" fill="currentColor" />
+      <circle cx="10" cy="11.75" r="0.9" fill="currentColor" />
     </>
   ),
   "sign-out": (

@@ -24,6 +24,7 @@ export const textContentSchema = z.object({
   align: z.enum(["left", "center", "right"]),
   link: elementLinkSchema.optional(),
   sample: z.literal(true).optional(),
+  linkRemoved: z.literal(true).optional(),
 });
 
 export const imageContentSchema = z.object({
@@ -32,6 +33,7 @@ export const imageContentSchema = z.object({
   aspectLocked: z.boolean(),
   link: elementLinkSchema.optional(),
   sample: z.literal(true).optional(),
+  linkRemoved: z.literal(true).optional(),
 });
 
 export const formContentSchema = z

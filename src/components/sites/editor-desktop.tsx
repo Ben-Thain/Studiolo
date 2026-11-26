@@ -679,6 +679,7 @@ export function EditorDesktop({
             trigger={
               <button
                 type="button"
+                data-page-picker=""
                 className="flex h-8 items-center gap-2 px-3 text-sm text-ink"
               >
                 {page?.title}

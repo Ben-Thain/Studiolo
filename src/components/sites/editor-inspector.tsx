@@ -249,6 +249,19 @@ export function EditorInspector({
                     }}
                   />
                 </label>
+                {element.content.linkRemoved === true ||
+                (typeof element.content.link === "object" &&
+                  element.content.link !== null &&
+                  (element.content.link as { kind?: string }).kind === "page" &&
+                  !doc.pages.some(
+                    (page) =>
+                      page.id ===
+                      (element.content.link as { value?: string }).value,
+                  )) ? (
+                  <p className="mt-1 text-xs leading-4 text-error">
+                    This page was deleted. This is no longer a link.
+                  </p>
+                ) : null}
                 {element.type === "image" ? (
                   <label className="mt-4 block text-xs text-ink-3">
                     Alt text

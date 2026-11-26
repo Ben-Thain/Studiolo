@@ -150,7 +150,19 @@ export function sanitizeContentLinks(
 ): Record<string, unknown> {
   if (!("link" in content) || content.link == null) return content;
   const valid = validateLink(content.link, pageIds);
-  if (!valid) return setContentLink(content, null);
+  if (!valid) {
+    const cleared = setContentLink(content, null);
+    const shaped = linkShape.safeParse(content.link);
+    if (
+      shaped.success &&
+      shaped.data.kind === "page" &&
+      pageIds &&
+      !pageIds.has(shaped.data.value)
+    ) {
+      return { ...cleared, linkRemoved: true };
+    }
+    return cleared;
+  }
   return setContentLink(content, valid);
 }
 

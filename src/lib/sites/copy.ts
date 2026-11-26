@@ -73,8 +73,8 @@ export const SITES_COPY = {
 /** Site-area placeholders until prompts 07, 08, 11, 12 and 13. */
 export const AREA_COPY = {
   pagesTitle: "Pages",
-  pagesLead: "The order here is the order of your site menu.",
-  pagesNote: "Adding, renaming and reordering pages comes next.",
+  pagesLead: "Drag to reorder. The order here is the order of your site menu.",
+  pagesNote: "Set a different home page, rename or delete from a page's menu.",
   page: "Page",
   pageAddress: "Address",
   inMenu: "In menu",
