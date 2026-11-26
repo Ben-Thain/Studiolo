@@ -42,6 +42,22 @@ describe("snap", () => {
     });
   });
 
+  it("tags row guides as y and keeps up to two per axis", () => {
+    const result = snapLayout(
+      { col: 1, span: 2, row: 5.1, rows: 4 },
+      [{ col: 4, span: 2, row: 5, rows: 4 }],
+      { threshold: 0.5 },
+    );
+    const y = result.guides.filter((guide) => guide.axis === "y");
+    const x = result.guides.filter((guide) => guide.axis === "x");
+    expect(y.length).toBeGreaterThan(0);
+    expect(y.length).toBeLessThanOrEqual(2);
+    expect(x.length).toBeLessThanOrEqual(2);
+    expect(
+      result.guides.every((guide) => guide.axis === "x" || guide.axis === "y"),
+    ).toBe(true);
+  });
+
   it("combines grid, element and section guides", () => {
     const peers = [{ col: 1, span: 6, row: 5, rows: 4 }];
     const section = { col: 1, span: 12, row: 1, rows: 40 };

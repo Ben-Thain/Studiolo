@@ -81,6 +81,8 @@ export function applyCommand(
       break;
     case "resize":
       setLayout(next, command.elementId, command.breakpoint, {
+        col: command.col,
+        row: command.row,
         span: command.span,
         rows: command.rows,
       });

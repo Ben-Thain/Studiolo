@@ -1,4 +1,7 @@
-import type { CSSProperties } from "react";
+"use client";
+
+import { useEffect, type CSSProperties } from "react";
+import { ensureFontFace } from "@/lib/editor/load-font";
 import { Icon } from "@/components/ui/icons";
 import { mobileFontSize } from "@/editor/fonts";
 import type { SizeStep } from "@/editor/types";
@@ -39,6 +42,11 @@ function Element({
   mobile: boolean;
 }) {
   const c = element.content;
+  useEffect(() => {
+    if (element.type === "text") {
+      ensureFontFace(String(c.fontFamily ?? "Inter"));
+    }
+  }, [element.type, c.fontFamily]);
   if (element.type === "text") {
     const desktopSize = Number(c.fontSize ?? 16);
     const size = mobile ? mobileFontSize(desktopSize) : desktopSize;

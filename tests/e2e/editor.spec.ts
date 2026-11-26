@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resizeFromCorner, type ResizeCorner } from "../../src/editor/resize";
 
 const MOCK = "http://127.0.0.1:54399";
 const FIXTURES = path.join(
@@ -117,6 +118,22 @@ test.describe("desktop editor", () => {
     await page.mouse.down();
     await page.mouse.move(box.x + 160, box.y + 8, { steps: 10 });
     await expect(page.locator("[data-drag-guides]")).toBeVisible();
+    const axis = await page
+      .locator("[data-guide-axis]")
+      .evaluateAll((nodes) =>
+        nodes.map((node) => (node as HTMLElement).dataset.guideAxis),
+      );
+    expect(axis.length).toBeGreaterThan(0);
+    expect(axis.length).toBeLessThanOrEqual(4);
+    const yLine = page.locator("[data-guide-axis='y']");
+    if ((await yLine.count()) > 0) {
+      const yBox = await yLine.first().boundingBox();
+      const xBox = await page
+        .locator("[data-guide-axis='x']")
+        .first()
+        .boundingBox();
+      expect(yBox!.height).toBeLessThan(xBox!.height);
+    }
     await page.mouse.up();
     await expect
       .poll(async () => Number(await item.getAttribute("data-col")))
@@ -132,6 +149,64 @@ test.describe("desktop editor", () => {
     const rowsAfter = Number(await item.getAttribute("data-rows"));
     expect(spanAfter !== spanBefore || rowsAfter > 0).toBe(true);
     expect(spanAfter).not.toBe(spanBefore);
+  });
+
+  test("each corner resizes from the opposite corner", async ({ page }) => {
+    await openOwnEditor(page);
+    const item = page.locator("[data-element='Hero image']");
+    await item.click();
+    const colWidth = (1440 - 64 - 11 * 24) / 12;
+    const drag = async (corner: ResizeCorner, dx: number, dy: number) => {
+      const handle = item.locator(`[data-corner='${corner}']`);
+      const hit = await handle.boundingBox();
+      expect(hit).toBeTruthy();
+      expect(hit!.width).toBeGreaterThanOrEqual(24);
+      expect(hit!.height).toBeGreaterThanOrEqual(24);
+      const start = {
+        col: Number(await item.getAttribute("data-col")),
+        span: Number(await item.getAttribute("data-span")),
+        row: Number(await item.getAttribute("data-row")),
+        rows: Number(await item.getAttribute("data-rows")),
+      };
+      const scale = Number(
+        await page
+          .locator("[data-editor-canvas]")
+          .getAttribute("data-stage-scale"),
+      );
+      const dCol = Math.round(dx / scale / colWidth);
+      const dRow = Math.round(dy / scale / 8);
+      const expected = resizeFromCorner(start, dCol, dRow, corner);
+      const cx = hit!.x + hit!.width / 2;
+      const cy = hit!.y + hit!.height / 2;
+      await page.mouse.move(cx, cy);
+      await page.mouse.down();
+      await page.mouse.move(cx + dx, cy + dy, { steps: 10 });
+      await page.mouse.up();
+      await expect
+        .poll(async () => item.getAttribute("data-col"))
+        .toBe(String(expected.col));
+      await expect
+        .poll(async () => item.getAttribute("data-span"))
+        .toBe(String(expected.span));
+      await expect
+        .poll(async () => item.getAttribute("data-row"))
+        .toBe(String(expected.row));
+      await expect
+        .poll(async () => item.getAttribute("data-rows"))
+        .toBe(String(expected.rows));
+      return start;
+    };
+    const before = await drag("se", -220, 48);
+    await page.keyboard.press("Control+z");
+    await expect
+      .poll(async () => item.getAttribute("data-span"))
+      .toBe(String(before.span));
+    await expect
+      .poll(async () => item.getAttribute("data-col"))
+      .toBe(String(before.col));
+    await drag("nw", -180, 64);
+    await drag("ne", 40, 64);
+    await drag("sw", -180, 40);
   });
 
   test("session expiry shows re-auth and saves after sign-in", async ({
@@ -180,24 +255,46 @@ test.describe("desktop editor", () => {
     const cdp = await page.context().newCDPSession(page);
     await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
     await page.evaluate(() => {
-      (window as unknown as { __dragWork: number[] }).__dragWork = [];
+      const target = window as unknown as { __frameDeltas: number[] };
+      target.__frameDeltas = [];
+      let last = performance.now();
+      let prev = "";
+      const tick = (now: number) => {
+        const overlay = document.querySelector(
+          "[data-drag-overlay]",
+        ) as HTMLElement | null;
+        const transform = overlay?.style.transform ?? "";
+        if (transform && prev && transform !== prev) {
+          target.__frameDeltas.push(now - last);
+        }
+        if (transform) prev = transform;
+        last = now;
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
     });
     const item = page.locator("[data-element='Heading']");
     const box = await item.boundingBox();
     expect(box).toBeTruthy();
     await page.mouse.move(box!.x + 8, box!.y + 8);
     await page.mouse.down();
-    await page.mouse.move(box!.x + 220, box!.y + 12, { steps: 40 });
+    await page.mouse.move(box!.x + 280, box!.y + 36, { steps: 50 });
     await expect(page.locator("[data-drag-overlay]")).toBeVisible();
     await page.mouse.up();
     const samples = await page.evaluate(
-      () => (window as unknown as { __dragWork: number[] }).__dragWork,
+      () => (window as unknown as { __frameDeltas: number[] }).__frameDeltas,
     );
     expect(samples.length).toBeGreaterThan(4);
     const sorted = [...samples].sort((a, b) => a - b);
-    const p95 = sorted[Math.floor(sorted.length * 0.95)] ?? 999;
-    console.log("drag p95 frame ms:", p95);
-    expect(p95).toBeLessThanOrEqual(16.7);
+    const p95 =
+      sorted[
+        Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1)
+      ] ?? 999;
+    const slow =
+      samples.filter((sample) => sample > 25).length / samples.length;
+    console.log("drag rAF p95 ms:", p95, "slow fraction:", slow);
+    expect(p95).toBeLessThanOrEqual(17);
+    expect(slow).toBeLessThan(0.05);
   });
 
   test("two text adds are separate undo steps after a layout switch", async ({
@@ -237,6 +334,19 @@ test.describe("desktop editor", () => {
     );
     expect(border).not.toBe("0px");
     await page.keyboard.press("Escape");
+    const headingRow = page.getByRole("button", { name: "Heading" });
+    await expect(headingRow.locator("[data-icon='text']")).toBeVisible();
+    const textIcon = await headingRow.locator("svg").first().boundingBox();
+    expect(textIcon!.width).toBeGreaterThanOrEqual(15);
+    expect(textIcon!.height).toBeGreaterThanOrEqual(15);
+    await expect(
+      page
+        .getByRole("button", { name: "Hero image" })
+        .locator("[data-icon='image']"),
+    ).toBeVisible();
+    const sectionIcon = page.locator("[data-icon='chevron-down']").first();
+    const sectionBox = await sectionIcon.boundingBox();
+    expect(textIcon!.x).toBeGreaterThan(sectionBox!.x);
     await page.locator("[data-element='Heading']").click();
     await page.keyboard.press("F2");
     const input = page.getByRole("textbox", { name: "Rename Heading" });
@@ -258,7 +368,7 @@ test.describe("desktop editor", () => {
     await page.getByRole("menuitem", { name: "Image" }).click();
     await page
       .locator("input[type=file]")
-      .setInputFiles(path.join(FIXTURES, "sample.jpg"));
+      .setInputFiles(path.join(FIXTURES, "wide.jpg"));
     await expect(
       page.locator("[data-preview='desktop'] img").last(),
     ).toBeVisible({
@@ -267,7 +377,10 @@ test.describe("desktop editor", () => {
     const jpg = await (
       await page.request.get(`${MOCK}/__assets?site=${siteId}`)
     ).json();
-    expect(jpg.some((row: { bytes: number }) => row.bytes > 0)).toBe(true);
+    const uploaded = jpg.find((row: { bytes: number }) => row.bytes > 0) as {
+      width: number;
+    };
+    expect(uploaded.width).toBe(80);
     await expect
       .poll(async () =>
         page
@@ -275,7 +388,7 @@ test.describe("desktop editor", () => {
           .last()
           .evaluate((el: HTMLImageElement) => el.naturalWidth),
       )
-      .toBeGreaterThan(1);
+      .toBe(uploaded.width);
 
     await page
       .locator("[data-editor-add]")
@@ -309,20 +422,71 @@ test.describe("desktop editor", () => {
     ).toBeVisible();
   });
 
-  test("picking Geist requests the face and applies it", async ({ page }) => {
+  test("picking each family loads a real woff2", async ({ page }) => {
     await openOwnEditor(page);
     await page.locator("[data-element='Heading']").click();
-    const request = page.waitForRequest((req) =>
-      req.url().includes("/fonts/Geist.css"),
+    const files = [
+      "geist-latin-400-normal.woff2",
+      "manrope-latin-400-normal.woff2",
+      "instrument-serif-latin-400-normal.woff2",
+    ];
+    const responses = Promise.all(
+      files.map((file) =>
+        page.waitForResponse(
+          (response) =>
+            response.url().includes(file) && response.status() === 200,
+        ),
+      ),
     );
-    await page.getByLabel("Font").selectOption("Geist");
-    await request;
-    await expect
-      .poll(async () =>
-        page
-          .locator("[data-element='Heading'] p")
-          .evaluate((el) => getComputedStyle(el).fontFamily),
-      )
-      .toContain("Geist");
+    const stylesheets = Promise.all(
+      ["Geist.css", "Manrope.css", "Instrument-Serif.css"].map((file) =>
+        page.waitForResponse(
+          (response) =>
+            response.url().includes(`/fonts/${file}`) &&
+            response.status() === 200,
+        ),
+      ),
+    );
+    await page.getByLabel("Font").focus();
+    await stylesheets;
+    await page.evaluate(async () => {
+      await Promise.all(
+        ["Geist", "Manrope", "Instrument Serif"].map((name) =>
+          document.fonts.load(`40px "${name}"`),
+        ),
+      );
+    });
+    await responses;
+    for (const family of ["Geist", "Manrope", "Instrument Serif"] as const) {
+      await page.getByLabel("Font").selectOption(family);
+      await page.evaluate(async (name) => {
+        await document.fonts.load(`40px "${name}"`);
+        const face = [...document.fonts].find((item) => item.family === name);
+        if (!face || face.status !== "loaded") {
+          throw new Error(`${name} status ${face?.status ?? "missing"}`);
+        }
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("no canvas");
+        const sample = "Hamburgefonstiv";
+        ctx.font = `40px "${name}"`;
+        const width = ctx.measureText(sample).width;
+        const fallback = name === "Instrument Serif" ? "serif" : "sans-serif";
+        ctx.font = `40px ${fallback}`;
+        const other = ctx.measureText(sample).width;
+        if (Math.abs(width - other) < 0.5) {
+          throw new Error(
+            `${name} width ${width} matches ${fallback} ${other}`,
+          );
+        }
+      }, family);
+      await expect
+        .poll(async () =>
+          page
+            .locator("[data-element='Heading'] p")
+            .evaluate((el) => getComputedStyle(el).fontFamily),
+        )
+        .toContain(family);
+    }
   });
 });

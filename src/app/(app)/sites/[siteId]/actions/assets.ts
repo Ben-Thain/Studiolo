@@ -1,7 +1,7 @@
 "use server";
 
 import { imageSize } from "@/lib/assets/image-bytes";
-import { planAssetCancel } from "@/lib/assets/cancel-policy";
+import { planAssetCancel, rejectAssetAction } from "@/lib/assets/cancel-policy";
 import { READ_URL_TTL_SECONDS } from "@/lib/assets/read-url-refresh";
 import { requireUser } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -48,6 +48,14 @@ async function ownedSite(siteId: string) {
 export async function createAssetUpload(
   siteId: string,
 ): Promise<AssetUploadTicket> {
+  // TODO(15): an object uploaded but never confirmed (tab closed mid-upload)
+  // stays in storage. Prompt 15 owns that cleanup; do not add a cron here.
+  const denied = rejectAssetAction(
+    siteId,
+    undefined,
+    "Could not start the upload.",
+  );
+  if (denied) return denied;
   const site = await ownedSite(siteId);
   if (!site) return { ok: false, error: "This site is not available." };
   const admin = createAdminClient();
@@ -72,6 +80,12 @@ export async function confirmAssetUpload(args: {
   assetId: string;
   bytes: number;
 }): Promise<AssetConfirmResult> {
+  const denied = rejectAssetAction(
+    args.siteId,
+    args.assetId,
+    "Could not save the photo.",
+  );
+  if (denied) return denied;
   const site = await ownedSite(args.siteId);
   if (!site) return { ok: false, error: "This site is not available." };
   const path = `${args.siteId}/draft/${args.assetId}.webp`;
@@ -176,6 +190,12 @@ export async function cancelAssetUpload(
   siteId: string,
   assetId: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  const denied = rejectAssetAction(
+    siteId,
+    assetId,
+    "Could not cancel the upload.",
+  );
+  if (denied) return denied;
   const site = await ownedSite(siteId);
   if (!site) return { ok: false, error: "This site is not available." };
   const admin = createAdminClient();
@@ -193,6 +213,7 @@ export async function cancelAssetUpload(
     .contains("content", { assetId })
     .limit(1);
   const plan = planAssetCancel({
+    assetId,
     confirmedRow: confirmed || Boolean(row),
     referenced: (used?.length ?? 0) > 0,
     pathOwnedBySite: path.startsWith(`${siteId}/`),

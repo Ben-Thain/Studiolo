@@ -194,12 +194,26 @@ async function proxyRest(req, res, path, search) {
 
 const pendingUploads = new Map();
 const objectBytes = new Map();
+const seededObjects = new Set();
 const FIXTURE_WEBP = readFileSync(
   path.join(
     path.dirname(fileURLToPath(import.meta.url)),
     "../fixtures/sample.webp",
   ),
 );
+
+function lookupObject(bucket, name) {
+  const key = `${bucket}/${name}`;
+  if (objectBytes.has(key)) return objectBytes.get(key);
+  const file = name.split("/").pop();
+  for (const [storedKey, value] of objectBytes) {
+    if (storedKey.endsWith(`/${file}`)) return value;
+  }
+  if (seededObjects.has(key)) {
+    return { bytes: FIXTURE_WEBP, mime: "image/webp" };
+  }
+  return null;
+}
 
 function serveImage(res, bytes, mime = "image/webp") {
   res.writeHead(200, {
@@ -243,7 +257,13 @@ async function storageApi(req, res, path, search, url) {
     for await (const chunk of req) chunks.push(chunk);
     const bytes = Buffer.concat(chunks);
     const name = decodeURIComponent(uploadSign[2].split("?")[0]);
-    objectBytes.set(`${uploadSign[1]}/${name}`, bytes);
+    const mime = String(
+      req.headers["content-type"] ?? "application/octet-stream",
+    )
+      .split(";")[0]
+      .trim();
+    objectBytes.set(`${uploadSign[1]}/${name}`, { bytes, mime });
+    seededObjects.delete(`${uploadSign[1]}/${name}`);
     try {
       await pool.query(
         `insert into storage.objects (bucket_id, name, metadata)
@@ -252,7 +272,7 @@ async function storageApi(req, res, path, search, url) {
         [
           uploadSign[1],
           name,
-          JSON.stringify({ mimetype: "image/webp", size: bytes.length }),
+          JSON.stringify({ mimetype: mime, size: bytes.length }),
         ],
       );
     } catch (error) {
@@ -282,8 +302,11 @@ async function storageApi(req, res, path, search, url) {
   }
   if (objectSign && req.method === "GET") {
     const name = decodeURIComponent(objectSign[2].split("?")[0]);
-    const stored = objectBytes.get(`${objectSign[1]}/${name}`) ?? FIXTURE_WEBP;
-    return serveImage(res, stored);
+    const stored = lookupObject(objectSign[1], name);
+    if (!stored) {
+      return send(res, 404, { statusCode: "404", error: "not_found" });
+    }
+    return serveImage(res, stored.bytes, stored.mime);
   }
 
   const objectPublic = path.match(
@@ -353,8 +376,11 @@ async function storageApi(req, res, path, search, url) {
     if (!rows[0]) {
       return send(res, 404, { statusCode: "404", error: "not_found" });
     }
-    const stored = objectBytes.get(`${objectGet[1]}/${name}`) ?? FIXTURE_WEBP;
-    return serveImage(res, stored);
+    const stored = lookupObject(objectGet[1], name);
+    if (!stored) {
+      return send(res, 404, { statusCode: "404", error: "not_found" });
+    }
+    return serveImage(res, stored.bytes, stored.mime);
   }
 
   if (claims?.role !== "service_role") {
@@ -381,6 +407,11 @@ async function storageApi(req, res, path, search, url) {
     if (failCopy.has(site)) {
       return send(res, 500, { statusCode: "500", error: "mock copy failure" });
     }
+    const srcKey = `${body.bucketId}/${body.sourceKey}`;
+    const destKey = `${body.bucketId}/${body.destinationKey}`;
+    if (objectBytes.has(srcKey))
+      objectBytes.set(destKey, objectBytes.get(srcKey));
+    else if (seededObjects.has(srcKey)) seededObjects.add(destKey);
     const result = await pool.query(
       `insert into storage.objects (bucket_id, name, metadata)
        select bucket_id, $3, metadata from storage.objects
@@ -396,6 +427,10 @@ async function storageApi(req, res, path, search, url) {
   }
   const remove = path.match(/^\/storage\/v1\/object\/([^/]+)$/);
   if (remove && req.method === "DELETE") {
+    for (const name of body.prefixes ?? []) {
+      objectBytes.delete(`${remove[1]}/${name}`);
+      seededObjects.delete(`${remove[1]}/${name}`);
+    }
     const { rows } = await pool.query(
       `delete from storage.objects where bucket_id = $1 and name = any($2)
        returning name`,
@@ -422,6 +457,7 @@ async function seedAsset(siteId, withObject = true) {
        values ('site-assets', $1, '{"mimetype":"image/webp"}')`,
       [name],
     );
+    seededObjects.add(`site-assets/${name}`);
   }
   await pool.query(
     `update public.elements set content = jsonb_set(content, '{assetId}', to_jsonb($2::text))
@@ -526,7 +562,7 @@ createServer(async (req, res) => {
   }
   if (path === "/__assets") {
     const { rows } = await pool.query(
-      "select id::text, bytes, path from public.assets where site_id = $1",
+      "select id::text, bytes, path, width, height from public.assets where site_id = $1",
       [url.searchParams.get("site")],
     );
     return send(res, 200, rows);

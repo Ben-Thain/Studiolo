@@ -168,9 +168,12 @@ export function snapLayout(
   let span = snapped.span;
   if (colEndSnap.guide && !colSnap.guide) {
     span = Math.max(1, Math.round(colEndSnap.value - col));
-    guides.push({ ...colEndSnap.guide, axis: "x" });
-  } else if (colSnap.guide) {
-    guides.push(colSnap.guide);
+  }
+  for (const guide of [colSnap.guide, colEndSnap.guide]) {
+    if (!guide || guides.filter((item) => item.axis === "x").length >= 2) {
+      continue;
+    }
+    guides.push({ ...guide, axis: "x" });
   }
 
   const rowSnap = nearestSnap(
@@ -188,9 +191,12 @@ export function snapLayout(
   let rows = snapped.rows;
   if (rowEndSnap.guide && !rowSnap.guide) {
     rows = Math.max(1, Math.round(rowEndSnap.value - row));
-    guides.push({ ...rowEndSnap.guide, axis: "y" });
-  } else if (rowSnap.guide) {
-    guides.push(rowSnap.guide);
+  }
+  for (const guide of [rowSnap.guide, rowEndSnap.guide]) {
+    if (!guide || guides.filter((item) => item.axis === "y").length >= 2) {
+      continue;
+    }
+    guides.push({ ...guide, axis: "y" });
   }
 
   const out = snapBox({ col, span, row, rows });

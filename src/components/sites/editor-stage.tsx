@@ -11,7 +11,8 @@ import {
 } from "react";
 import { mobileFontSize } from "@/editor/fonts";
 import { gridPlacement, GRID_AUTO_ROWS } from "@/editor/renderGrid";
-import { GRID_COLUMNS, ROW_UNIT_PX, snapLayout } from "@/editor/grid";
+import { ROW_UNIT_PX, snapLayout } from "@/editor/grid";
+import { resizeFromCorner, type ResizeCorner } from "@/editor/resize";
 import type { GridBox, SizeStep } from "@/editor/types";
 import {
   columnWidthPx,
@@ -51,6 +52,7 @@ type LayoutName = "desktop" | "mobile";
 
 type DragMode = {
   kind: "move" | "resize";
+  corner?: ResizeCorner;
   elementId: string;
   startBox: GridBox;
   startX: number;
@@ -87,7 +89,7 @@ export function EditorStage({
   onEdit: (id: string | null) => void;
   onCommitText: (elementId: string, text: string) => void;
   onMove: (elementId: string, col: number, row: number) => void;
-  onResize: (elementId: string, span: number, rows: number) => void;
+  onResize: (elementId: string, box: GridBox) => void;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
@@ -97,9 +99,9 @@ export function EditorStage({
   const liveRef = useRef<GridBox | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const chipRef = useRef<HTMLDivElement>(null);
-  const guideRef = useRef<HTMLDivElement>(null);
+  const guidesHostRef = useRef<HTMLDivElement>(null);
+  const guideRefs = useRef<Array<HTMLDivElement | null>>([]);
   const raf = useRef<number | null>(null);
-  const workSamples = useRef<number[]>([]);
   const designWidth = layout === "mobile" ? MOBILE_WIDTH : DESIGN_WIDTH;
 
   useLayoutEffect(() => {
@@ -129,7 +131,7 @@ export function EditorStage({
     setDrag(null);
     if (!mode || !box) return;
     if (mode.kind === "move") onMove(mode.elementId, box.col, box.row);
-    else onResize(mode.elementId, box.span, box.rows);
+    else onResize(mode.elementId, box);
   }, [onMove, onResize]);
 
   const scheduleSnap = useCallback(
@@ -161,22 +163,18 @@ export function EditorStage({
           row: mode.startBox.row + dRow,
         };
       } else {
-        const widthPx =
-          mode.startBox.span * colWidth +
-          (mode.startBox.span - 1) * GRID_GUTTER +
-          dx / scale;
-        const heightPx = mode.startBox.rows * ROW_UNIT_PX + dy / scale;
-        const span = Math.max(
-          1,
-          Math.min(
-            GRID_COLUMNS,
-            Math.round((widthPx + GRID_GUTTER) / (colWidth + GRID_GUTTER)),
-          ),
+        const { dCol, dRow } = pixelsToGridDelta(
+          dx / scale,
+          dy / scale,
+          colWidth,
+          ROW_UNIT_PX,
         );
-        const rows = Math.max(1, Math.round(heightPx / ROW_UNIT_PX));
-        box = { ...mode.startBox, span, rows };
+        box = resizeFromCorner(mode.startBox, dCol, dRow, mode.corner ?? "se");
       }
-      const snapped = snapLayout(box, others);
+      const snapped =
+        mode.kind === "resize"
+          ? { ...snapLayout(box, others), box }
+          : snapLayout(box, others);
       liveRef.current = snapped.box;
       if (raf.current) cancelAnimationFrame(raf.current);
       raf.current = requestAnimationFrame(() => {
@@ -201,15 +199,29 @@ export function EditorStage({
             mode.kind === "resize" ? snapped.box.span : snapped.readout.y,
           );
         }
-        if (guideRef.current) {
-          const guide = snapped.guides[0];
-          guideRef.current.hidden = !guide;
-          if (guide?.axis === "x") {
-            guideRef.current.style.left = `${STAGE_PADDING_X + (guide.position - 1) * (colWidth + GRID_GUTTER)}px`;
-            guideRef.current.style.top = "0";
-            guideRef.current.style.width = "1px";
-            guideRef.current.style.height = "100%";
-          }
+        const host = guidesHostRef.current;
+        if (host) {
+          const guides = snapped.guides.slice(0, 4);
+          host.hidden = guides.length === 0;
+          guideRefs.current.forEach((line, index) => {
+            if (!line) return;
+            const guide = guides[index];
+            line.hidden = !guide;
+            if (!guide) return;
+            line.dataset.guideAxis = guide.axis;
+            const thickness = `${1 / scale}px`;
+            if (guide.axis === "y") {
+              line.style.left = "0";
+              line.style.top = `${(guide.position - 1) * ROW_UNIT_PX}px`;
+              line.style.width = "100%";
+              line.style.height = thickness;
+            } else {
+              line.style.top = "0";
+              line.style.left = `${STAGE_PADDING_X + (guide.position - 1) * (colWidth + GRID_GUTTER)}px`;
+              line.style.width = thickness;
+              line.style.height = "100%";
+            }
+          });
         }
       });
     },
@@ -231,11 +243,7 @@ export function EditorStage({
       setDrag(full);
       const move = (ev: PointerEvent) => {
         if (ev.pointerId !== full.pointerId) return;
-        const started = performance.now();
         scheduleSnap(full, ev.clientX - full.startX, ev.clientY - full.startY);
-        workSamples.current.push(performance.now() - started);
-        const target = window as unknown as { __dragWork?: number[] };
-        target.__dragWork = workSamples.current;
       };
       const up = (ev: PointerEvent) => {
         if (ev.pointerId !== full.pointerId) return;
@@ -264,6 +272,7 @@ export function EditorStage({
           role="region"
           aria-label={label}
           data-preview={layout}
+          data-stage-scale={scale}
           data-editor-canvas=""
           tabIndex={-1}
           className={cn(
@@ -327,10 +336,11 @@ export function EditorStage({
                         event,
                       )
                     }
-                    onStartResize={(startBox, event) =>
+                    onStartResize={(startBox, event, corner) =>
                       beginDrag(
                         {
                           kind: "resize",
+                          corner,
                           elementId: element.id,
                           startBox,
                         },
@@ -346,11 +356,22 @@ export function EditorStage({
           {drag ? (
             <>
               <div
-                ref={guideRef}
+                ref={guidesHostRef}
                 data-drag-guides=""
                 hidden
-                className="pointer-events-none absolute z-10 bg-ink"
-              />
+                className="pointer-events-none absolute inset-0 z-10"
+              >
+                {[0, 1, 2, 3].map((index) => (
+                  <div
+                    key={index}
+                    ref={(node) => {
+                      guideRefs.current[index] = node;
+                    }}
+                    hidden
+                    className="absolute bg-ink"
+                  />
+                ))}
+              </div>
               <div
                 ref={overlayRef}
                 data-drag-overlay=""
@@ -366,6 +387,49 @@ export function EditorStage({
         </div>
       </div>
     </div>
+  );
+}
+
+function ResizeHandle({
+  corner,
+  scale,
+  onPointerDown,
+}: {
+  corner: ResizeCorner;
+  scale: number;
+  onPointerDown: (event: ReactPointerEvent) => void;
+}) {
+  const hit = 24 / scale;
+  const visible = 8 / scale;
+  const cursor =
+    corner === "nw" || corner === "se" ? "nwse-resize" : "nesw-resize";
+  const edge =
+    corner === "nw"
+      ? { left: -hit / 2, top: -hit / 2 }
+      : corner === "ne"
+        ? { right: -hit / 2, top: -hit / 2 }
+        : corner === "sw"
+          ? { left: -hit / 2, bottom: -hit / 2 }
+          : { right: -hit / 2, bottom: -hit / 2 };
+  return (
+    <span
+      data-resize-handle=""
+      data-corner={corner}
+      className="absolute z-30 flex items-center justify-center"
+      style={{ width: hit, height: hit, cursor, ...edge }}
+      onPointerDown={onPointerDown}
+    >
+      <span
+        className="border-ink bg-bg"
+        style={{
+          width: visible,
+          height: visible,
+          borderWidth: 1 / scale,
+          borderStyle: "solid",
+          boxSizing: "border-box",
+        }}
+      />
+    </span>
   );
 }
 
@@ -399,7 +463,11 @@ function CanvasItem({
   onEdit: () => void;
   onCommitText: (text: string) => void;
   onStartMove: (box: GridBox, event: ReactPointerEvent) => void;
-  onStartResize: (box: GridBox, event: ReactPointerEvent) => void;
+  onStartResize: (
+    box: GridBox,
+    event: ReactPointerEvent,
+    corner: ResizeCorner,
+  ) => void;
   box: GridBox;
 }) {
   const moveOrigin = useRef<{
@@ -445,6 +513,7 @@ function CanvasItem({
       data-element-id={element.id}
       data-col={box.col}
       data-span={box.span}
+      data-row={box.row}
       data-rows={box.rows}
       tabIndex={focused ? 0 : -1}
       className={cn(
@@ -464,68 +533,20 @@ function CanvasItem({
         }
       }}
     >
-      {selected ? (
-        <>
-          <span
-            data-resize-handle=""
-            className="absolute z-30 cursor-nwse-resize bg-ink"
-            style={{
-              width: 8 / scale,
-              height: 8 / scale,
-              left: -4 / scale,
-              top: -4 / scale,
-              padding: 8 / scale,
-              margin: -8 / scale,
-              backgroundClip: "content-box",
-            }}
-            onPointerDown={(event) => {
-              event.stopPropagation();
-              onStartResize(box, event);
-            }}
-          />
-          <span
-            className="absolute z-30 bg-ink"
-            style={{
-              width: 8 / scale,
-              height: 8 / scale,
-              right: -4 / scale,
-              top: -4 / scale,
-              padding: 8 / scale,
-              margin: -8 / scale,
-              backgroundClip: "content-box",
-            }}
-          />
-          <span
-            className="absolute z-30 bg-ink"
-            style={{
-              width: 8 / scale,
-              height: 8 / scale,
-              left: -4 / scale,
-              bottom: -4 / scale,
-              padding: 8 / scale,
-              margin: -8 / scale,
-              backgroundClip: "content-box",
-            }}
-          />
-          <span
-            data-resize-handle=""
-            className="absolute z-30 cursor-nwse-resize bg-ink"
-            style={{
-              width: 8 / scale,
-              height: 8 / scale,
-              right: -4 / scale,
-              bottom: -4 / scale,
-              padding: 8 / scale,
-              margin: -8 / scale,
-              backgroundClip: "content-box",
-            }}
-            onPointerDown={(event) => {
-              event.stopPropagation();
-              onStartResize(box, event);
-            }}
-          />
-        </>
-      ) : null}
+      {selected
+        ? (["nw", "ne", "sw", "se"] as const).map((corner) => (
+            <ResizeHandle
+              key={corner}
+              corner={corner}
+              scale={scale}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+                event.preventDefault();
+                onStartResize(box, event, corner);
+              }}
+            />
+          ))
+        : null}
       {element.type === "text" ? (
         editing ? (
           <textarea

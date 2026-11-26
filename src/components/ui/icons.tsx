@@ -13,6 +13,7 @@ export type IconName =
   | "globe"
   | "pencil"
   | "document"
+  | "text"
   | "inbox"
   | "chart"
   | "sliders"
@@ -140,6 +141,7 @@ const glyphs: Record<IconName, ReactNode> = {
       />
     </>
   ),
+  text: <Stroke d="M4 3.25h8M8 3.25v9.5" />,
   image: (
     <>
       <rect
@@ -283,6 +285,7 @@ export function Icon({ name, size = 16, className }: IconProps) {
       viewBox="0 0 16 16"
       fill="none"
       aria-hidden="true"
+      data-icon={name}
       className={className}
     >
       {glyphs[name]}

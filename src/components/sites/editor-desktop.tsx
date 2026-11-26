@@ -520,7 +520,7 @@ export function EditorDesktop({
                 );
               }}
             >
-              <Icon name="chevron-down" size={12} className="mr-1 text-ink-2" />
+              <Icon name="chevron-down" size={16} className="mr-1 text-ink-2" />
               {section.name}
             </div>
             <ul>
@@ -529,14 +529,14 @@ export function EditorDesktop({
                   <button
                     type="button"
                     className={cn(
-                      "flex h-8 w-full items-center gap-2 rounded-control px-2 text-left text-sm text-ink",
+                      "flex h-8 w-full items-center gap-2 rounded-control py-0 pr-2 pl-6 text-left text-sm text-ink",
                       element.id === selectedId && "bg-fill-selected",
                     )}
                     onClick={() => setSelectedId(element.id)}
                     onDoubleClick={() => setRenameId(element.id)}
                   >
                     <Icon
-                      name={element.type === "image" ? "image" : "document"}
+                      name={element.type === "image" ? "image" : "text"}
                       size={16}
                       className="text-ink-2"
                     />
@@ -561,7 +561,7 @@ export function EditorDesktop({
                         onBlur={() => setRenameId(null)}
                       />
                     ) : (
-                      <span className="truncate pl-4">{element.name}</span>
+                      <span className="truncate">{element.name}</span>
                     )}
                   </button>
                 </li>
@@ -650,8 +650,16 @@ export function EditorDesktop({
           onMove={(elementId, col, row) =>
             run({ type: "move", elementId, breakpoint: layout, col, row })
           }
-          onResize={(elementId, span, rows) =>
-            run({ type: "resize", elementId, breakpoint: layout, span, rows })
+          onResize={(elementId, box) =>
+            run({
+              type: "resize",
+              elementId,
+              breakpoint: layout,
+              col: box.col,
+              row: box.row,
+              span: box.span,
+              rows: box.rows,
+            })
           }
         />
         {uploadError ? (

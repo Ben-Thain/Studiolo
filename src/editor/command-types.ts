@@ -42,6 +42,8 @@ export type EditorCommand =
       type: "resize";
       elementId: string;
       breakpoint: "desktop" | "mobile";
+      col: number;
+      row: number;
       span: number;
       rows: number;
     }
