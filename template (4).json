@@ -1,0 +1,1022 @@
+{
+ "id": "gouache",
+ "version": 1,
+ "name": "Gouache",
+ "audience": "Illustrator",
+ "description": "For illustrators: big, warm headings, work shown large and loose, and an about page with how to commission.",
+ "sampleSiteName": "Tilly Okafor",
+ "pages": [
+  {
+   "id": "p_01",
+   "title": "Work",
+   "slug": "work",
+   "sortOrder": 0,
+   "inNav": true,
+   "isHome": true
+  },
+  {
+   "id": "p_02",
+   "title": "About",
+   "slug": "about",
+   "sortOrder": 1,
+   "inNav": true,
+   "isHome": false
+  },
+  {
+   "id": "p_03",
+   "title": "Contact",
+   "slug": "contact",
+   "sortOrder": 2,
+   "inNav": true,
+   "isHome": false
+  }
+ ],
+ "sections": [
+  {
+   "id": "s_04",
+   "pageId": null,
+   "name": "Header",
+   "sortOrder": 0
+  },
+  {
+   "id": "s_07",
+   "pageId": "p_01",
+   "name": "Intro",
+   "sortOrder": 0
+  },
+  {
+   "id": "s_10",
+   "pageId": "p_01",
+   "name": "Work",
+   "sortOrder": 1
+  },
+  {
+   "id": "s_22",
+   "pageId": "p_02",
+   "name": "Studio",
+   "sortOrder": 0
+  },
+  {
+   "id": "s_26",
+   "pageId": "p_02",
+   "name": "Commissions",
+   "sortOrder": 1
+  },
+  {
+   "id": "s_31",
+   "pageId": "p_03",
+   "name": "Contact",
+   "sortOrder": 0
+  }
+ ],
+ "elements": [
+  {
+   "id": "e_05",
+   "pageId": null,
+   "sectionId": "s_04",
+   "type": "text",
+   "name": "Site name",
+   "content": {
+    "text": "{{site.name}}",
+    "fontFamily": "Inter",
+    "fontSize": 16,
+    "fontWeight": 500,
+    "align": "left"
+   },
+   "sortOrder": 0
+  },
+  {
+   "id": "e_06",
+   "pageId": null,
+   "sectionId": "s_04",
+   "type": "nav",
+   "name": "Navigation",
+   "content": {},
+   "sortOrder": 1
+  },
+  {
+   "id": "e_08",
+   "pageId": "p_01",
+   "sectionId": "s_07",
+   "type": "text",
+   "name": "Statement",
+   "content": {
+    "text": "Painted illustration for books, food packaging and magazines.",
+    "fontFamily": "Inter",
+    "fontSize": 48,
+    "fontWeight": 500,
+    "align": "left",
+    "sample": true
+   },
+   "sortOrder": 0
+  },
+  {
+   "id": "e_09",
+   "pageId": "p_01",
+   "sectionId": "s_07",
+   "type": "text",
+   "name": "Intro",
+   "content": {
+    "text": "I paint in watercolour and gouache from a studio in Manchester. Commissions are open for spring 2027.",
+    "fontFamily": "Inter",
+    "fontSize": 16,
+    "fontWeight": 400,
+    "align": "left",
+    "sample": true
+   },
+   "sortOrder": 1
+  },
+  {
+   "id": "e_11",
+   "pageId": "p_01",
+   "sectionId": "s_10",
+   "type": "image",
+   "name": "Koi",
+   "content": {
+    "assetKey": "koi",
+    "alt": "Watercolour of two koi on blue, with a paint palette",
+    "aspectLocked": true,
+    "sample": true
+   },
+   "sortOrder": 0
+  },
+  {
+   "id": "e_12",
+   "pageId": "p_01",
+   "sectionId": "s_10",
+   "type": "image",
+   "name": "Peaches",
+   "content": {
+    "assetKey": "peaches",
+    "alt": "Gouache painting of three peaches beside paint tubes",
+    "aspectLocked": true,
+    "sample": true
+   },
+   "sortOrder": 1
+  },
+  {
+   "id": "e_13",
+   "pageId": "p_01",
+   "sectionId": "s_10",
+   "type": "text",
+   "name": "Caption: koi",
+   "content": {
+    "text": "Koi, for a children’s atlas",
+    "fontFamily": "Inter",
+    "fontSize": 14,
+    "fontWeight": 400,
+    "align": "left",
+    "sample": true
+   },
+   "sortOrder": 2
+  },
+  {
+   "id": "e_14",
+   "pageId": "p_01",
+   "sectionId": "s_10",
+   "type": "text",
+   "name": "Caption: peaches",
+   "content": {
+    "text": "Peaches, jam label",
+    "fontFamily": "Inter",
+    "fontSize": 14,
+    "fontWeight": 400,
+    "align": "left",
+    "sample": true
+   },
+   "sortOrder": 3
+  },
+  {
+   "id": "e_15",
+   "pageId": "p_01",
+   "sectionId": "s_10",
+   "type": "image",
+   "name": "Rooster",
+   "content": {
+    "assetKey": "rooster",
+    "alt": "Watercolour rooster on a sketchbook page next to a paint box",
+    "aspectLocked": true,
+    "sample": true
+   },
+   "sortOrder": 4
+  },
+  {
+   "id": "e_16",
+   "pageId": "p_01",
+   "sectionId": "s_10",
+   "type": "image",
+   "name": "Peonies",
+   "content": {
+    "assetKey": "peonies",
+    "alt": "Pink peonies painted in watercolour",
+    "aspectLocked": true,
+    "sample": true
+   },
+   "sortOrder": 5
+  },
+  {
+   "id": "e_17",
+   "pageId": "p_01",
+   "sectionId": "s_10",
+   "type": "text",
+   "name": "Caption: rooster",
+   "content": {
+    "text": "Rooster, egg box",
+    "fontFamily": "Inter",
+    "fontSize": 14,
+    "fontWeight": 400,
+    "align": "left",
+    "sample": true
+   },
+   "sortOrder": 6
+  },
+  {
+   "id": "e_18",
+   "pageId": "p_01",
+   "sectionId": "s_10",
+   "type": "text",
+   "name": "Caption: peonies",
+   "content": {
+    "text": "Peonies, magazine cover",
+    "fontFamily": "Inter",
+    "fontSize": 14,
+    "fontWeight": 400,
+    "align": "left",
+    "sample": true
+   },
+   "sortOrder": 7
+  },
+  {
+   "id": "e_19",
+   "pageId": "p_01",
+   "sectionId": "s_10",
+   "type": "image",
+   "name": "Bird book",
+   "content": {
+    "assetKey": "bird-book",
+    "alt": "An open picture book full of painted birds",
+    "aspectLocked": true,
+    "sample": true
+   },
+   "sortOrder": 8
+  },
+  {
+   "id": "e_20",
+   "pageId": "p_01",
+   "sectionId": "s_10",
+   "type": "text",
+   "name": "Caption: birds",
+   "content": {
+    "text": "Birds of the Hedgerow, picture book",
+    "fontFamily": "Inter",
+    "fontSize": 14,
+    "fontWeight": 400,
+    "align": "left",
+    "sample": true
+   },
+   "sortOrder": 9
+  },
+  {
+   "id": "e_21",
+   "pageId": "p_01",
+   "sectionId": "s_10",
+   "type": "text",
+   "name": "Clients",
+   "content": {
+    "text": "Recent work for independent publishers, food brands, a botanical garden and two weekly magazines.",
+    "fontFamily": "Inter",
+    "fontSize": 24,
+    "fontWeight": 400,
+    "align": "left",
+    "sample": true
+   },
+   "sortOrder": 10
+  },
+  {
+   "id": "e_23",
+   "pageId": "p_02",
+   "sectionId": "s_22",
+   "type": "image",
+   "name": "Studio wall",
+   "content": {
+    "assetKey": "studio-wall",
+    "alt": "Small paintings pinned to a white studio wall",
+    "aspectLocked": true,
+    "sample": true
+   },
+   "sortOrder": 0
+  },
+  {
+   "id": "e_24",
+   "pageId": "p_02",
+   "sectionId": "s_22",
+   "type": "text",
+   "name": "Title",
+   "content": {
+    "text": "Hello, I’m Tilly.",
+    "fontFamily": "Inter",
+    "fontSize": 48,
+    "fontWeight": 500,
+    "align": "left",
+    "sample": true
+   },
+   "sortOrder": 1
+  },
+  {
+   "id": "e_25",
+   "pageId": "p_02",
+   "sectionId": "s_22",
+   "type": "text",
+   "name": "Bio",
+   "content": {
+    "text": "I studied illustration in Falmouth and have painted for a living since 2017. Most of my work starts as small studies from life — fruit from the market, birds in the park, flowers from the allotment — which I then paint again, larger, for the page.\n\nI work with art directors, editors and small brands, usually on a few projects at a time.",
+    "fontFamily": "Inter",
+    "fontSize": 18,
+    "fontWeight": 400,
+    "align": "left",
+    "sample": true
+   },
+   "sortOrder": 2
+  },
+  {
+   "id": "e_27",
+   "pageId": "p_02",
+   "sectionId": "s_26",
+   "type": "image",
+   "name": "At work",
+   "content": {
+    "assetKey": "painting",
+    "alt": "Hands painting a small botanical study",
+    "aspectLocked": true,
+    "sample": true
+   },
+   "sortOrder": 0
+  },
+  {
+   "id": "e_28",
+   "pageId": "p_02",
+   "sectionId": "s_26",
+   "type": "text",
+   "name": "Label",
+   "content": {
+    "text": "What I paint",
+    "fontFamily": "Inter",
+    "fontSize": 14,
+    "fontWeight": 400,
+    "align": "left",
+    "sample": true
+   },
+   "sortOrder": 1
+  },
+  {
+   "id": "e_29",
+   "pageId": "p_02",
+   "sectionId": "s_26",
+   "type": "text",
+   "name": "Services",
+   "content": {
+    "text": "Picture books and covers\nPackaging and labels\nEditorial illustration\nMaps and botanical plates",
+    "fontFamily": "Inter",
+    "fontSize": 24,
+    "fontWeight": 400,
+    "align": "left",
+    "sample": true
+   },
+   "sortOrder": 2
+  },
+  {
+   "id": "e_30",
+   "pageId": "p_02",
+   "sectionId": "s_26",
+   "type": "text",
+   "name": "Email",
+   "content": {
+    "text": "Original paintings are sometimes for sale. Ask by email.",
+    "fontFamily": "Inter",
+    "fontSize": 16,
+    "fontWeight": 400,
+    "align": "left",
+    "sample": true,
+    "link": {
+     "kind": "email",
+     "value": "studio@example.com"
+    }
+   },
+   "sortOrder": 3
+  },
+  {
+   "id": "e_32",
+   "pageId": "p_03",
+   "sectionId": "s_31",
+   "type": "text",
+   "name": "Title",
+   "content": {
+    "text": "Say hello",
+    "fontFamily": "Inter",
+    "fontSize": 48,
+    "fontWeight": 500,
+    "align": "left",
+    "sample": true
+   },
+   "sortOrder": 0
+  },
+  {
+   "id": "e_33",
+   "pageId": "p_03",
+   "sectionId": "s_31",
+   "type": "text",
+   "name": "Lead",
+   "content": {
+    "text": "Tell me what you’re making, who it’s for and when you need it.",
+    "fontFamily": "Inter",
+    "fontSize": 18,
+    "fontWeight": 400,
+    "align": "left",
+    "sample": true
+   },
+   "sortOrder": 1
+  },
+  {
+   "id": "e_34",
+   "pageId": "p_03",
+   "sectionId": "s_31",
+   "type": "form",
+   "name": "Contact form",
+   "content": {
+    "fields": [
+     "name",
+     "email",
+     "message"
+    ],
+    "buttonLabel": "Send"
+   },
+   "sortOrder": 2
+  }
+ ],
+ "layouts": {
+  "e_05": {
+   "desktop": {
+    "colStart": 1,
+    "colSpan": 6,
+    "rowStart": 5,
+    "rowSpan": 3,
+    "hidden": false,
+    "placementSource": "manual"
+   },
+   "mobile": {
+    "colStart": 1,
+    "colSpan": 12,
+    "rowStart": 4,
+    "rowSpan": 3,
+    "hidden": false,
+    "placementSource": "manual"
+   }
+  },
+  "e_06": {
+   "desktop": {
+    "colStart": 7,
+    "colSpan": 6,
+    "rowStart": 5,
+    "rowSpan": 3,
+    "hidden": false,
+    "placementSource": "manual"
+   },
+   "mobile": {
+    "colStart": 1,
+    "colSpan": 12,
+    "rowStart": 8,
+    "rowSpan": 3,
+    "hidden": false,
+    "placementSource": "manual"
+   }
+  },
+  "e_08": {
+   "desktop": {
+    "colStart": 1,
+    "colSpan": 8,
+    "rowStart": 17,
+    "rowSpan": 14,
+    "hidden": false,
+    "placementSource": "manual"
+   },
+   "mobile": {
+    "colStart": 1,
+    "colSpan": 12,
+    "rowStart": 7,
+    "rowSpan": 15,
+    "hidden": false,
+    "placementSource": "manual"
+   }
+  },
+  "e_09": {
+   "desktop": {
+    "colStart": 1,
+    "colSpan": 5,
+    "rowStart": 34,
+    "rowSpan": 7,
+    "hidden": false,
+    "placementSource": "manual"
+   },
+   "mobile": {
+    "colStart": 1,
+    "colSpan": 12,
+    "rowStart": 24,
+    "rowSpan": 10,
+    "hidden": false,
+    "placementSource": "manual"
+   }
+  },
+  "e_11": {
+   "desktop": {
+    "colStart": 1,
+    "colSpan": 7,
+    "rowStart": 1,
+    "rowSpan": 90,
+    "hidden": false,
+    "placementSource": "manual"
+   },
+   "mobile": {
+    "colStart": 1,
+    "colSpan": 12,
+    "rowStart": 1,
+    "rowSpan": 44,
+    "hidden": false,
+    "placementSource": "manual"
+   }
+  },
+  "e_12": {
+   "desktop": {
+    "colStart": 9,
+    "colSpan": 4,
+    "rowStart": 15,
+    "rowSpan": 66,
+    "hidden": false,
+    "placementSource": "manual"
+   },
+   "mobile": {
+    "colStart": 1,
+    "colSpan": 7,
+    "rowStart": 54,
+    "rowSpan": 34,
+    "hidden": false,
+    "placementSource": "manual"
+   }
+  },
+  "e_13": {
+   "desktop": {
+    "colStart": 1,
+    "colSpan": 7,
+    "rowStart": 93,
+    "rowSpan": 3,
+    "hidden": false,
+    "placementSource": "manual"
+   },
+   "mobile": {
+    "colStart": 1,
+    "colSpan": 12,
+    "rowStart": 46,
+    "rowSpan": 3,
+    "hidden": false,
+    "placementSource": "manual"
+   }
+  },
+  "e_14": {
+   "desktop": {
+    "colStart": 9,
+    "colSpan": 4,
+    "rowStart": 93,
+    "rowSpan": 3,
+    "hidden": false,
+    "placementSource": "manual"
+   },
+   "mobile": {
+    "colStart": 1,
+    "colSpan": 7,
+    "rowStart": 89,
+    "rowSpan": 3,
+    "hidden": false,
+    "placementSource": "manual"
+   }
+  },
+  "e_15": {
+   "desktop": {
+    "colStart": 1,
+    "colSpan": 5,
+    "rowStart": 128,
+    "rowSpan": 42,
+    "hidden": false,
+    "placementSource": "manual"
+   },
+   "mobile": {
+    "colStart": 8,
+    "colSpan": 5,
+    "rowStart": 70,
+    "rowSpan": 18,
+    "hidden": false,
+    "placementSource": "manual"
+   }
+  },
+  "e_16": {
+   "desktop": {
+    "colStart": 6,
+    "colSpan": 7,
+    "rowStart": 110,
+    "rowSpan": 60,
+    "hidden": false,
+    "placementSource": "manual"
+   },
+   "mobile": {
+    "colStart": 1,
+    "colSpan": 12,
+    "rowStart": 97,
+    "rowSpan": 29,
+    "hidden": false,
+    "placementSource": "manual"
+   }
+  },
+  "e_17": {
+   "desktop": {
+    "colStart": 1,
+    "colSpan": 5,
+    "rowStart": 172,
+    "rowSpan": 3,
+    "hidden": false,
+    "placementSource": "manual"
+   },
+   "mobile": {
+    "colStart": 1,
+    "colSpan": 5,
+    "rowStart": 172,
+    "rowSpan": 3,
+    "hidden": true,
+    "placementSource": "manual"
+   }
+  },
+  "e_18": {
+   "desktop": {
+    "colStart": 6,
+    "colSpan": 7,
+    "rowStart": 172,
+    "rowSpan": 3,
+    "hidden": false,
+    "placementSource": "manual"
+   },
+   "mobile": {
+    "colStart": 1,
+    "colSpan": 12,
+    "rowStart": 127,
+    "rowSpan": 3,
+    "hidden": false,
+    "placementSource": "manual"
+   }
+  },
+  "e_19": {
+   "desktop": {
+    "colStart": 4,
+    "colSpan": 6,
+    "rowStart": 189,
+    "rowSpan": 96,
+    "hidden": false,
+    "placementSource": "manual"
+   },
+   "mobile": {
+    "colStart": 3,
+    "colSpan": 10,
+    "rowStart": 135,
+    "rowSpan": 44,
+    "hidden": false,
+    "placementSource": "manual"
+   }
+  },
+  "e_20": {
+   "desktop": {
+    "colStart": 4,
+    "colSpan": 6,
+    "rowStart": 287,
+    "rowSpan": 3,
+    "hidden": false,
+    "placementSource": "manual"
+   },
+   "mobile": {
+    "colStart": 3,
+    "colSpan": 10,
+    "rowStart": 180,
+    "rowSpan": 3,
+    "hidden": false,
+    "placementSource": "manual"
+   }
+  },
+  "e_21": {
+   "desktop": {
+    "colStart": 1,
+    "colSpan": 8,
+    "rowStart": 306,
+    "rowSpan": 8,
+    "hidden": false,
+    "placementSource": "manual"
+   },
+   "mobile": {
+    "colStart": 1,
+    "colSpan": 12,
+    "rowStart": 190,
+    "rowSpan": 16,
+    "hidden": false,
+    "placementSource": "manual"
+   }
+  },
+  "e_23": {
+   "desktop": {
+    "colStart": 1,
+    "colSpan": 12,
+    "rowStart": 17,
+    "rowSpan": 84,
+    "hidden": false,
+    "placementSource": "manual"
+   },
+   "mobile": {
+    "colStart": 1,
+    "colSpan": 12,
+    "rowStart": 7,
+    "rowSpan": 29,
+    "hidden": false,
+    "placementSource": "manual"
+   }
+  },
+  "e_24": {
+   "desktop": {
+    "colStart": 1,
+    "colSpan": 6,
+    "rowStart": 115,
+    "rowSpan": 7,
+    "hidden": false,
+    "placementSource": "manual"
+   },
+   "mobile": {
+    "colStart": 1,
+    "colSpan": 12,
+    "rowStart": 41,
+    "rowSpan": 5,
+    "hidden": false,
+    "placementSource": "manual"
+   }
+  },
+  "e_25": {
+   "desktop": {
+    "colStart": 7,
+    "colSpan": 6,
+    "rowStart": 116,
+    "rowSpan": 25,
+    "hidden": false,
+    "placementSource": "manual"
+   },
+   "mobile": {
+    "colStart": 1,
+    "colSpan": 12,
+    "rowStart": 48,
+    "rowSpan": 39,
+    "hidden": false,
+    "placementSource": "manual"
+   }
+  },
+  "e_27": {
+   "desktop": {
+    "colStart": 1,
+    "colSpan": 6,
+    "rowStart": 1,
+    "rowSpan": 52,
+    "hidden": false,
+    "placementSource": "manual"
+   },
+   "mobile": {
+    "colStart": 1,
+    "colSpan": 12,
+    "rowStart": 1,
+    "rowSpan": 29,
+    "hidden": false,
+    "placementSource": "manual"
+   }
+  },
+  "e_28": {
+   "desktop": {
+    "colStart": 7,
+    "colSpan": 6,
+    "rowStart": 2,
+    "rowSpan": 3,
+    "hidden": false,
+    "placementSource": "manual"
+   },
+   "mobile": {
+    "colStart": 1,
+    "colSpan": 12,
+    "rowStart": 35,
+    "rowSpan": 3,
+    "hidden": false,
+    "placementSource": "manual"
+   }
+  },
+  "e_29": {
+   "desktop": {
+    "colStart": 7,
+    "colSpan": 6,
+    "rowStart": 6,
+    "rowSpan": 16,
+    "hidden": false,
+    "placementSource": "manual"
+   },
+   "mobile": {
+    "colStart": 1,
+    "colSpan": 12,
+    "rowStart": 39,
+    "rowSpan": 16,
+    "hidden": false,
+    "placementSource": "manual"
+   }
+  },
+  "e_30": {
+   "desktop": {
+    "colStart": 7,
+    "colSpan": 6,
+    "rowStart": 26,
+    "rowSpan": 3,
+    "hidden": false,
+    "placementSource": "manual"
+   },
+   "mobile": {
+    "colStart": 1,
+    "colSpan": 12,
+    "rowStart": 58,
+    "rowSpan": 7,
+    "hidden": false,
+    "placementSource": "manual"
+   }
+  },
+  "e_32": {
+   "desktop": {
+    "colStart": 1,
+    "colSpan": 6,
+    "rowStart": 17,
+    "rowSpan": 7,
+    "hidden": false,
+    "placementSource": "manual"
+   },
+   "mobile": {
+    "colStart": 1,
+    "colSpan": 12,
+    "rowStart": 7,
+    "rowSpan": 5,
+    "hidden": false,
+    "placementSource": "manual"
+   }
+  },
+  "e_33": {
+   "desktop": {
+    "colStart": 7,
+    "colSpan": 6,
+    "rowStart": 18,
+    "rowSpan": 4,
+    "hidden": false,
+    "placementSource": "manual"
+   },
+   "mobile": {
+    "colStart": 1,
+    "colSpan": 12,
+    "rowStart": 14,
+    "rowSpan": 7,
+    "hidden": false,
+    "placementSource": "manual"
+   }
+  },
+  "e_34": {
+   "desktop": {
+    "colStart": 7,
+    "colSpan": 6,
+    "rowStart": 30,
+    "rowSpan": 50,
+    "hidden": false,
+    "placementSource": "manual"
+   },
+   "mobile": {
+    "colStart": 1,
+    "colSpan": 12,
+    "rowStart": 25,
+    "rowSpan": 50,
+    "hidden": false,
+    "placementSource": "manual"
+   }
+  }
+ },
+ "assets": [
+  {
+   "key": "koi",
+   "file": "koi.webp",
+   "mime": "image/webp",
+   "width": 2000,
+   "height": 2000,
+   "bytes": 386636,
+   "blurDataUrl": "data:image/webp;base64,UklGRlwAAABXRUJQVlA4IFAAAADQAQCdASoQABAAA4BaJYgCxC8AEP/gwAD+yGKOVhOaUSDZOLPZp0JZ+DIVeZY6KZo2EUEVJxlnfdW4gR+AWGBSQfuopjYDNWk4EzVhqHP8AA==",
+   "source": {
+    "site": "Pexels",
+    "page": "https://www.pexels.com/photo/4006631/",
+    "download": "https://images.pexels.com/photos/4006631/pexels-photo-4006631.jpeg?auto=compress&cs=tinysrgb&w=2000",
+    "photographer": null,
+    "licence": "Pexels License"
+   }
+  },
+  {
+   "key": "peaches",
+   "file": "peaches.webp",
+   "mime": "image/webp",
+   "width": 2000,
+   "height": 2667,
+   "bytes": 787640,
+   "blurDataUrl": "data:image/webp;base64,UklGRmoAAABXRUJQVlA4IF4AAADwAQCdASoMABAAA4BaJZQAD5UNKzf+zgAA/ppvPw/Od9XsxlqdWOLg5dEuZFlEWF4G+OOy9rNbVnqFbb6aQhIrQ79jssZHe9kWjCaC5SliqFtBKjNsSoHiCBa4CAAA",
+   "source": {
+    "site": "Pexels",
+    "page": "https://www.pexels.com/photo/5152828/",
+    "download": "https://images.pexels.com/photos/5152828/pexels-photo-5152828.jpeg?auto=compress&cs=tinysrgb&w=2000",
+    "photographer": "Saundarya Srinivasan",
+    "licence": "Pexels License"
+   }
+  },
+  {
+   "key": "rooster",
+   "file": "rooster.webp",
+   "mime": "image/webp",
+   "width": 2000,
+   "height": 1333,
+   "bytes": 187108,
+   "blurDataUrl": "data:image/webp;base64,UklGRlYAAABXRUJQVlA4IEoAAADQAQCdASoQAAsAA4BaJZQAAjAFu8HQAAD+7WDpU0daaqOyxe4rGpYhyu56sItNDJk29yJnO8uK2eQqTDGLBoQuOhUYQRsdzIAAAA==",
+   "source": {
+    "site": "Pexels",
+    "page": "https://www.pexels.com/photo/6157712/",
+    "download": "https://images.pexels.com/photos/6157712/pexels-photo-6157712.jpeg?auto=compress&cs=tinysrgb&w=2000",
+    "photographer": null,
+    "licence": "Pexels License"
+   }
+  },
+  {
+   "key": "peonies",
+   "file": "peonies.webp",
+   "mime": "image/webp",
+   "width": 2000,
+   "height": 1335,
+   "bytes": 201182,
+   "blurDataUrl": "data:image/webp;base64,UklGRlYAAABXRUJQVlA4IEoAAAAQAgCdASoQAAsAA4BaJQBdgCHwzyoi4iC4AP7v9o0eopwWMo0ESP1j+jB/NtHwbk4d2pqrJJ/8fLw2SzlqwsFnsTntlh+LoOVAAA==",
+   "source": {
+    "site": "Pexels",
+    "page": "https://www.pexels.com/photo/6925155/",
+    "download": "https://images.pexels.com/photos/6925155/pexels-photo-6925155.jpeg?auto=compress&cs=tinysrgb&w=2000",
+    "photographer": null,
+    "licence": "Pexels License"
+   }
+  },
+  {
+   "key": "bird-book",
+   "file": "bird-book.webp",
+   "mime": "image/webp",
+   "width": 2000,
+   "height": 3000,
+   "bytes": 387040,
+   "blurDataUrl": "data:image/webp;base64,UklGRmoAAABXRUJQVlA4IF4AAACQAQCdASoLABAAA4BaJbACdADVwYAA/oH+UhONJemKs273ksk/3YDHVHpZ/sGieFBcbexPIhJ58uaYWTgABl5ywc6OJr4+nGjCZYmP3IQUnByq/Lc3G2NwPobmAAAA",
+   "source": {
+    "site": "Pexels",
+    "page": "https://www.pexels.com/photo/5895028/",
+    "download": "https://images.pexels.com/photos/5895028/pexels-photo-5895028.jpeg?auto=compress&cs=tinysrgb&w=2000",
+    "photographer": null,
+    "licence": "Pexels License"
+   }
+  },
+  {
+   "key": "studio-wall",
+   "file": "studio-wall.webp",
+   "mime": "image/webp",
+   "width": 2000,
+   "height": 1335,
+   "bytes": 103186,
+   "blurDataUrl": "data:image/webp;base64,UklGRkwAAABXRUJQVlA4IEAAAACwAQCdASoQAAsAA4BaJZwAApuWRi8AAPz2KpH0AtuZ56RX9wTvbeZ63jAm7fEWaCUNOdfBKPAPUQ8lOs8h2PAA",
+   "source": {
+    "site": "Pexels",
+    "page": "https://www.pexels.com/photo/6925107/",
+    "download": "https://images.pexels.com/photos/6925107/pexels-photo-6925107.jpeg?auto=compress&cs=tinysrgb&w=2000",
+    "photographer": null,
+    "licence": "Pexels License"
+   }
+  },
+  {
+   "key": "painting",
+   "file": "painting.webp",
+   "mime": "image/webp",
+   "width": 2000,
+   "height": 1335,
+   "bytes": 181020,
+   "blurDataUrl": "data:image/webp;base64,UklGRmoAAABXRUJQVlA4IF4AAABwAgCdASoQAAsAA4BaJZQCw7Yt9q3Q3IpyQN0AAPlp7I8nhQx69IjDvKnXRs9X7W7pVPSQm15CXDixnV9IRJbTmtmcDWJJu8Bu8nXkHjPqajqEoVOcLKLIv39oAAAA",
+   "source": {
+    "site": "Pexels",
+    "page": "https://www.pexels.com/photo/6925327/",
+    "download": "https://images.pexels.com/photos/6925327/pexels-photo-6925327.jpeg?auto=compress&cs=tinysrgb&w=2000",
+    "photographer": null,
+    "licence": "Pexels License"
+   }
+  }
+ ]
+}
