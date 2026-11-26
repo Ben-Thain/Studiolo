@@ -5,3 +5,6 @@ test-results
 coverage
 package-lock.json
 next-env.d.ts
+templates-pack/
+src/templates/**/template.json
+src/templates/CREDITS.md
