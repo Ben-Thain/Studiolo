@@ -7,11 +7,7 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   test: {
     environment: "node",
-    include: [
-      "tests/unit/**/*.test.ts",
-      "tests/unit/**/*.test.tsx",
-      "tests/integration/**/*.test.ts",
-    ],
+    include: ["tests/unit/**/*.test.ts", "tests/unit/**/*.test.tsx"],
     setupFiles: ["tests/setup/vitest-indexeddb.ts"],
   },
   resolve: {

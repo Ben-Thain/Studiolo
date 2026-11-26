@@ -1,11 +1,42 @@
 import { describe, expect, it } from "vitest";
 import { applyCommand } from "@/editor/commands";
+import { createHistory, pushHistory, undo } from "@/editor/history";
 import { rivertonHomeDoc, RIVERTON_HOME } from "../fixtures/riverton-home";
 
 let n = 0;
 const ids = () => `c0000000-0000-4000-8000-${String(++n).padStart(12, "0")}`;
 
 describe("extended commands", () => {
+  it("section reorder swaps with the neighbour and one undo restores both", () => {
+    const doc = structuredClone(rivertonHomeDoc);
+    const intro = doc.sections.find((section) => section.name === "Intro")!;
+    const projects = doc.sections.find(
+      (section) => section.name === "Projects",
+    )!;
+    const introOrder = intro.sortOrder;
+    const projectsOrder = projects.sortOrder;
+    const moved = applyCommand(doc, {
+      type: "reorderSection",
+      sectionId: intro.id,
+      sortOrder: projectsOrder,
+    });
+    expect(
+      moved.doc.sections.find((section) => section.id === intro.id)?.sortOrder,
+    ).toBe(projectsOrder);
+    expect(
+      moved.doc.sections.find((section) => section.id === projects.id)
+        ?.sortOrder,
+    ).toBe(introOrder);
+    const back = undo(moved.doc, pushHistory(createHistory(), moved.inverse));
+    expect(
+      back?.doc.sections.find((section) => section.id === intro.id)?.sortOrder,
+    ).toBe(introOrder);
+    expect(
+      back?.doc.sections.find((section) => section.id === projects.id)
+        ?.sortOrder,
+    ).toBe(projectsOrder);
+  });
+
   it("duplicates, reorders, and toggles pages", () => {
     const heading = rivertonHomeDoc.elements.find((e) => e.name === "Heading")!;
     const dup = applyCommand(

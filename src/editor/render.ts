@@ -23,8 +23,9 @@ export function escapeHtml(raw: string): string {
 export function resolveAssetUrl(
   siteId: string,
   rawPath: string,
-  base: string = siteAssetsPublicBase(),
+  base: string | null = siteAssetsPublicBase(),
 ): string | null {
+  if (!base) return null;
   const normalized = validateSiteAssetPath(siteId, rawPath);
   if (!normalized) return null;
   try {

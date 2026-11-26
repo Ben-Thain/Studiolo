@@ -31,7 +31,11 @@ describe("render", () => {
       },
       sortOrder: 0,
     });
+    const previous = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "http://127.0.0.1:54321";
     const html = renderElement(doc, doc.elements[0]);
+    if (previous === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    else process.env.NEXT_PUBLIC_SUPABASE_URL = previous;
     expect(html).toContain(`${SITE}/draft/hero.png`);
     expect(html).not.toContain("javascript:");
     expect(html).not.toContain("<img onerror");

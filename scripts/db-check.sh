@@ -128,6 +128,6 @@ SQL
 echo "ok: seeded account deletion"
 
 echo "== integration: editor same-save page links"
-npm run test -- tests/integration/editor-same-save-link.test.ts
+npm run test:integration
 
 echo "db:check passed"

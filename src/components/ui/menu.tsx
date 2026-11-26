@@ -43,6 +43,8 @@ type MenuProps = {
   align?: "start" | "end";
   defaultOpen?: boolean;
   inline?: boolean;
+  panelClassName?: string;
+  boxedKbd?: boolean;
 };
 
 function isItem(entry: MenuEntry): entry is MenuItem {
@@ -63,6 +65,8 @@ export function Menu({
   align = "end",
   defaultOpen = false,
   inline = false,
+  panelClassName,
+  boxedKbd = false,
 }: MenuProps) {
   const [open, setOpen] = useState(defaultOpen);
   const mounted = useClient();
@@ -263,6 +267,7 @@ export function Menu({
       className={cn(
         "z-40 min-w-[180px] rounded-pop border border-line bg-bg p-1 shadow-pop",
         inline && "w-max",
+        panelClassName,
       )}
     >
       {items.map((entry) =>
@@ -302,7 +307,15 @@ export function Menu({
             )}
             <span className="min-w-0 flex-1 truncate">{entry.label}</span>
             {entry.kbd ? (
-              <span className="text-xs text-ink-3">{entry.kbd}</span>
+              <kbd
+                className={
+                  boxedKbd
+                    ? "rounded border border-line px-1.5 py-px text-[11px] leading-4 text-ink-2"
+                    : "text-xs text-ink-3"
+                }
+              >
+                {entry.kbd}
+              </kbd>
             ) : null}
           </button>
         ),

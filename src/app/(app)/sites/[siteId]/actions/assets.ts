@@ -1,10 +1,14 @@
 "use server";
 
+import { imageSize } from "@/lib/assets/image-bytes";
+import { planAssetCancel } from "@/lib/assets/cancel-policy";
+import { READ_URL_TTL_SECONDS } from "@/lib/assets/read-url-refresh";
 import { requireUser } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 const BUCKET = "site-assets";
+const MAX_BYTES = 8 * 1024 * 1024;
 
 export type AssetUploadTicket =
   | {
@@ -17,7 +21,16 @@ export type AssetUploadTicket =
   | { ok: false; error: string };
 
 export type AssetConfirmResult =
-  { ok: true; path: string; readUrl: string } | { ok: false; error: string };
+  | {
+      ok: true;
+      path: string;
+      readUrl: string;
+      readUrlExpiresAt: number;
+      width: number;
+      height: number;
+      bytes: number;
+    }
+  | { ok: false; error: string };
 
 async function ownedSite(siteId: string) {
   await requireUser();
@@ -31,7 +44,7 @@ async function ownedSite(siteId: string) {
   return data;
 }
 
-/** Create the assets row and a signed upload URL for the draft WebP. */
+/** Signed upload URL only. The assets row is inserted on confirm. */
 export async function createAssetUpload(
   siteId: string,
 ): Promise<AssetUploadTicket> {
@@ -40,14 +53,6 @@ export async function createAssetUpload(
   const admin = createAdminClient();
   const assetId = crypto.randomUUID();
   const path = `${siteId}/draft/${assetId}.webp`;
-  const { error: insertError } = await admin.from("assets").insert({
-    id: assetId,
-    site_id: siteId,
-    path,
-    mime: "image/webp",
-    bytes: 0,
-  });
-  if (insertError) return { ok: false, error: "Could not start the upload." };
   const signed = await admin.storage.from(BUCKET).createSignedUploadUrl(path);
   if (signed.error || !signed.data) {
     return { ok: false, error: "Could not start the upload." };
@@ -61,67 +66,112 @@ export async function createAssetUpload(
   };
 }
 
-/** Confirm size and MIME, then store width, height and bytes from storage. */
+/** Insert the assets row from the stored object, not the client's dimensions. */
 export async function confirmAssetUpload(args: {
   siteId: string;
   assetId: string;
-  width: number;
-  height: number;
   bytes: number;
 }): Promise<AssetConfirmResult> {
   const site = await ownedSite(args.siteId);
   if (!site) return { ok: false, error: "This site is not available." };
+  const path = `${args.siteId}/draft/${args.assetId}.webp`;
   const admin = createAdminClient();
-  const { data: row } = await admin
-    .from("assets")
-    .select("id, path, site_id")
-    .eq("id", args.assetId)
-    .maybeSingle();
-  if (!row || row.site_id !== args.siteId) {
-    return { ok: false, error: "Could not save the photo." };
-  }
-  const info = await admin.storage.from(BUCKET).info(row.path);
+  const info = await admin.storage.from(BUCKET).info(path);
   if (info.error || !info.data) {
     return { ok: false, error: "Could not save the photo." };
   }
   const mime = info.data.contentType ?? info.data.metadata?.mimetype;
-  if (!mime) {
-    return { ok: false, error: "Could not save the photo." };
-  }
   if (mime !== "image/webp" && mime !== "image/jpeg") {
     return { ok: false, error: "Could not save the photo." };
   }
   const rawSize = info.data.size ?? info.data.metadata?.size;
-  const bytes =
+  const storedBytes =
     typeof rawSize === "number"
       ? rawSize
       : typeof rawSize === "string"
         ? Number.parseInt(rawSize, 10)
         : NaN;
-  if (!Number.isFinite(bytes) || bytes <= 0) {
+  if (
+    !Number.isFinite(storedBytes) ||
+    storedBytes <= 0 ||
+    storedBytes > MAX_BYTES
+  ) {
     return { ok: false, error: "Could not save the photo." };
   }
-  const { error } = await admin
-    .from("assets")
-    .update({
-      width: args.width,
-      height: args.height,
-      bytes,
-      mime: mime === "image/jpeg" ? "image/jpeg" : "image/webp",
-    })
-    .eq("id", args.assetId);
+  if (storedBytes !== args.bytes) {
+    return { ok: false, error: "Could not save the photo." };
+  }
+  const downloaded = await admin.storage.from(BUCKET).download(path);
+  if (downloaded.error || !downloaded.data) {
+    return { ok: false, error: "Could not save the photo." };
+  }
+  const buffer = new Uint8Array(await downloaded.data.arrayBuffer());
+  if (buffer.byteLength !== storedBytes) {
+    return { ok: false, error: "Could not save the photo." };
+  }
+  const size = imageSize(buffer);
+  if (!size || size.width < 1 || size.height < 1) {
+    return { ok: false, error: "Could not save the photo." };
+  }
+  const { error } = await admin.from("assets").insert({
+    id: args.assetId,
+    site_id: args.siteId,
+    path,
+    width: size.width,
+    height: size.height,
+    bytes: storedBytes,
+    mime: mime === "image/jpeg" ? "image/jpeg" : "image/webp",
+  });
   if (error) return { ok: false, error: "Could not save the photo." };
   const read = await admin.storage
     .from(BUCKET)
-    .createSignedUrl(row.path, 60 * 60);
+    .createSignedUrl(path, READ_URL_TTL_SECONDS);
   return {
     ok: true,
-    path: row.path,
+    path,
     readUrl: read.data?.signedUrl ?? "",
+    readUrlExpiresAt: Math.floor(Date.now() / 1000) + READ_URL_TTL_SECONDS,
+    width: size.width,
+    height: size.height,
+    bytes: storedBytes,
   };
 }
 
-/** Drop a pending asset row (and storage object) after a failed client upload. */
+/** Re-sign every photo on the site in one batch, before the 3600s URLs expire. */
+export async function refreshAssetReadUrls(siteId: string): Promise<
+  | {
+      ok: true;
+      assets: Record<string, { readUrl: string; readUrlExpiresAt: number }>;
+    }
+  | { ok: false; error: string }
+> {
+  const site = await ownedSite(siteId);
+  if (!site) return { ok: false, error: "This site is not available." };
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("assets")
+    .select("id, path")
+    .eq("site_id", siteId);
+  const rows = data ?? [];
+  if (!rows.length) return { ok: true, assets: {} };
+  const signed = await admin.storage.from(BUCKET).createSignedUrls(
+    rows.map((row) => row.path),
+    READ_URL_TTL_SECONDS,
+  );
+  const byPath = new Map(
+    (signed.data ?? []).map((item) => [item.path, item.signedUrl]),
+  );
+  const expiresAt = Math.floor(Date.now() / 1000) + READ_URL_TTL_SECONDS;
+  const assets: Record<string, { readUrl: string; readUrlExpiresAt: number }> =
+    {};
+  for (const row of rows) {
+    const readUrl = byPath.get(row.path);
+    if (readUrl) assets[row.id] = { readUrl, readUrlExpiresAt: expiresAt };
+  }
+  return { ok: true, assets };
+}
+
+/** Remove a pending object. Confirmed or referenced photos are left in place. */
 export async function cancelAssetUpload(
   siteId: string,
   assetId: string,
@@ -129,15 +179,27 @@ export async function cancelAssetUpload(
   const site = await ownedSite(siteId);
   if (!site) return { ok: false, error: "This site is not available." };
   const admin = createAdminClient();
+  const path = `${siteId}/draft/${assetId}.webp`;
   const { data: row } = await admin
     .from("assets")
-    .select("id, path, site_id, bytes")
+    .select("id, path, site_id")
     .eq("id", assetId)
     .maybeSingle();
-  if (!row || row.site_id !== siteId) {
-    return { ok: false, error: "Could not cancel the upload." };
+  const confirmed = Boolean(row && row.site_id === siteId);
+  const { data: used } = await admin
+    .from("elements")
+    .select("id")
+    .eq("site_id", siteId)
+    .contains("content", { assetId })
+    .limit(1);
+  const plan = planAssetCancel({
+    confirmedRow: confirmed || Boolean(row),
+    referenced: (used?.length ?? 0) > 0,
+    pathOwnedBySite: path.startsWith(`${siteId}/`),
+  });
+  if (!plan.ok) return plan;
+  if (plan.deleteStorage) {
+    await admin.storage.from(BUCKET).remove([path]);
   }
-  await admin.storage.from(BUCKET).remove([row.path]);
-  await admin.from("assets").delete().eq("id", assetId);
   return { ok: true };
 }

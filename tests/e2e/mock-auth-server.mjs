@@ -28,7 +28,10 @@
 //   trial-1.*      trial started 6 days ago (1 day left)
 //   trial-ended.*  trial started 8 days ago (ended)
 import { createHash, createHmac } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { createServer, request as httpRequest } from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import pg from "pg";
 
 const PORT = Number(process.env.MOCK_AUTH_PORT ?? 54399);
@@ -190,12 +193,21 @@ async function proxyRest(req, res, path, search) {
 }
 
 const pendingUploads = new Map();
+const objectBytes = new Map();
+const FIXTURE_WEBP = readFileSync(
+  path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../fixtures/sample.webp",
+  ),
+);
 
-function storageObjectName(bucketId, objectPath) {
-  const prefix = `${bucketId}/`;
-  return objectPath.startsWith(prefix)
-    ? objectPath.slice(prefix.length)
-    : objectPath;
+function serveImage(res, bytes, mime = "image/webp") {
+  res.writeHead(200, {
+    "content-type": mime,
+    "content-length": bytes.length,
+    "access-control-allow-origin": "*",
+  });
+  res.end(bytes);
 }
 
 // Storage API stand-in (service role only), on the local storage.objects.
@@ -207,66 +219,71 @@ async function storageApi(req, res, path, search, url) {
       : await readJson(req);
 
   const uploadSign = path.match(
-    /^\/storage\/v1\/object\/upload\/sign\/([^/]+)$/,
+    /^\/storage\/v1\/object\/upload\/sign\/([^/]+)\/(.+)$/,
   );
   if (uploadSign && req.method === "POST") {
     if (claims?.role !== "service_role") {
       return send(res, 403, { statusCode: "403", error: "Unauthorized" });
     }
-    const objectPath = String(body.path ?? body.name ?? "");
+    const objectPath = decodeURIComponent(uploadSign[2]);
     const token = b64(`upload.${objectPath}.${Date.now()}`);
-    const signedUrl = `http://127.0.0.1:${PORT}/storage/v1/object/upload/${uploadSign[1]}/${encodeURIComponent(objectPath)}?token=${token}`;
-    pendingUploads.set(token, {
-      bucket: uploadSign[1],
-      path: objectPath,
+    pendingUploads.set(token, { bucket: uploadSign[1], path: objectPath });
+    return send(res, 200, {
+      url: `/object/upload/sign/${uploadSign[1]}/${encodeURIComponent(objectPath)}?token=${token}`,
     });
-    return send(res, 200, { signedUrl, token, path: objectPath });
   }
 
-  const uploadPut = path.match(
-    /^\/storage\/v1\/object\/upload\/([^/]+)\/(.+)$/,
-  );
-  if (uploadPut && req.method === "PUT") {
+  if (uploadSign && req.method === "PUT") {
     const token = url.searchParams.get("token");
     const pending = pendingUploads.get(token);
-    if (!pending || pending.bucket !== uploadPut[1]) {
+    if (!pending || pending.bucket !== uploadSign[1]) {
       return send(res, 403, { statusCode: "403", error: "invalid_token" });
     }
-    let raw = "";
-    for await (const chunk of req) raw += chunk;
-    const name = decodeURIComponent(uploadPut[2]);
-    const size = Buffer.byteLength(raw);
-    await pool.query(
-      `insert into storage.objects (bucket_id, name, metadata)
-       values ($1, $2, $3::jsonb)
-       on conflict (bucket_id, name) do update set metadata = $3::jsonb`,
-      [uploadPut[1], name, JSON.stringify({ mimetype: "image/webp", size })],
-    );
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const bytes = Buffer.concat(chunks);
+    const name = decodeURIComponent(uploadSign[2].split("?")[0]);
+    objectBytes.set(`${uploadSign[1]}/${name}`, bytes);
+    try {
+      await pool.query(
+        `insert into storage.objects (bucket_id, name, metadata)
+         values ($1, $2, $3::jsonb)
+         on conflict (bucket_id, name) do update set metadata = $3::jsonb`,
+        [
+          uploadSign[1],
+          name,
+          JSON.stringify({ mimetype: "image/webp", size: bytes.length }),
+        ],
+      );
+    } catch (error) {
+      return send(res, 500, {
+        message: error instanceof Error ? error.message : "insert failed",
+      });
+    }
     pendingUploads.delete(token);
-    return send(res, 200, { Key: `${uploadPut[1]}/${name}` });
+    return send(res, 200, { Key: `${uploadSign[1]}/${name}` });
   }
 
   const objectSignBatch = path.match(/^\/storage\/v1\/object\/sign\/([^/]+)$/);
   if (objectSignBatch && req.method === "POST" && Array.isArray(body.paths)) {
-    const paths = body.paths;
-    const expiresIn = Number(body.expiresIn ?? 3600);
-    const data = paths.map((objectPath) => ({
+    const data = body.paths.map((objectPath) => ({
+      error: null,
       path: objectPath,
-      signedUrl: `http://127.0.0.1:${PORT}/storage/v1/object/${objectSignBatch[1]}/${encodeURIComponent(objectPath)}?expires=${expiresIn}`,
+      signedURL: `/object/sign/${objectSignBatch[1]}/${objectPath}?token=read`,
     }));
     return send(res, 200, data);
   }
 
-  const objectSign = path.match(/^\/storage\/v1\/object\/sign\/(.+)$/);
+  const objectSign = path.match(/^\/storage\/v1\/object\/sign\/([^/]+)\/(.+)$/);
   if (objectSign && req.method === "POST") {
-    const full = objectSign[1];
-    const slash = full.indexOf("/");
-    const bucket = slash === -1 ? full : full.slice(0, slash);
-    const objectPath = slash === -1 ? "" : full.slice(slash + 1);
-    const expiresIn = Number(body.expiresIn ?? 3600);
     return send(res, 200, {
-      signedURL: `/storage/v1/object/${bucket}/${encodeURIComponent(objectPath)}?expires=${expiresIn}`,
+      signedURL: `/object/sign/${objectSign[1]}/${objectSign[2]}?token=read`,
     });
+  }
+  if (objectSign && req.method === "GET") {
+    const name = decodeURIComponent(objectSign[2].split("?")[0]);
+    const stored = objectBytes.get(`${objectSign[1]}/${name}`) ?? FIXTURE_WEBP;
+    return serveImage(res, stored);
   }
 
   const objectPublic = path.match(
@@ -293,17 +310,12 @@ async function storageApi(req, res, path, search, url) {
     return;
   }
 
-  const objectInfo = path.match(/^\/storage\/v1\/object\/info\/([^/]+)$/);
+  const objectInfo = path.match(/^\/storage\/v1\/object\/info\/([^/]+)\/(.+)$/);
   if (objectInfo && req.method === "GET") {
     if (claims?.role !== "service_role") {
       return send(res, 403, { statusCode: "403", error: "Unauthorized" });
     }
-    const name = storageObjectName(
-      objectInfo[1],
-      String(
-        url.searchParams.get("prefix") ?? url.searchParams.get("path") ?? "",
-      ),
-    );
+    const name = decodeURIComponent(objectInfo[2]);
     const { rows } = await pool.query(
       `select name, metadata from storage.objects
        where bucket_id = $1 and name = $2`,
@@ -341,17 +353,8 @@ async function storageApi(req, res, path, search, url) {
     if (!rows[0]) {
       return send(res, 404, { statusCode: "404", error: "not_found" });
     }
-    const webp = Buffer.from(
-      "UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAQAcJaQAA3AA/vuUAAA=",
-      "base64",
-    );
-    res.writeHead(200, {
-      "content-type": "image/webp",
-      "content-length": webp.length,
-      "access-control-allow-origin": "*",
-    });
-    res.end(webp);
-    return;
+    const stored = objectBytes.get(`${objectGet[1]}/${name}`) ?? FIXTURE_WEBP;
+    return serveImage(res, stored);
   }
 
   if (claims?.role !== "service_role") {
@@ -437,6 +440,7 @@ function send(res, status, body, headers = {}) {
     "content-type": "application/json",
     "access-control-allow-origin": "*",
     "access-control-allow-headers": "*",
+    "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
     ...headers,
   });
   res.end(body === undefined ? "" : JSON.stringify(body));
@@ -519,6 +523,13 @@ createServer(async (req, res) => {
   if (path === "/__fail-copy" && req.method === "POST") {
     failCopy.add(url.searchParams.get("site"));
     return send(res, 200, { ok: true });
+  }
+  if (path === "/__assets") {
+    const { rows } = await pool.query(
+      "select id::text, bytes, path from public.assets where site_id = $1",
+      [url.searchParams.get("site")],
+    );
+    return send(res, 200, rows);
   }
   if (path === "/__objects") {
     const { rows } = await pool.query(

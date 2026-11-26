@@ -7,7 +7,9 @@ import {
   cancelAssetUpload,
   confirmAssetUpload,
   createAssetUpload,
+  refreshAssetReadUrls,
 } from "@/app/(app)/sites/[siteId]/actions/assets";
+import { readUrlRefreshDelayMs } from "@/lib/assets/read-url-refresh";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icons";
@@ -24,10 +26,12 @@ import {
   undo as undoHistory,
   type HistoryState,
 } from "@/editor/history";
-import { createEditorPersist } from "@/lib/editor/persist-client";
+import {
+  createEditorPersist,
+  restoreCrashDraft,
+} from "@/lib/editor/persist-client";
 import { useEditorShellSlots } from "./editor-shell-slots";
 import { prepareImage } from "@/lib/images/prepare";
-import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { EditorCommand } from "@/editor/command-types";
 import type {
@@ -38,6 +42,29 @@ import type {
 } from "@/editor/types";
 
 type LayoutName = "desktop" | "mobile";
+
+function uploadWithProgress(
+  url: string,
+  blob: Blob,
+  onProgress: (pct: number) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url);
+    xhr.setRequestHeader("content-type", blob.type || "image/webp");
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error("Could not upload the photo."));
+    };
+    xhr.onerror = () => reject(new Error("Could not upload the photo."));
+    xhr.send(blob);
+  });
+}
 
 function statusCopy(status: SaveStatus): string {
   if (status === "saving") return "Saving…";
@@ -71,7 +98,7 @@ export function EditorDesktop({
 }) {
   const router = useRouter();
   const [doc, setDoc] = useState(initialDoc);
-  const [history, setHistory] = useState<HistoryState>(createHistory);
+  const historyRef = useRef<HistoryState>(createHistory());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [layout, setLayout] = useState<LayoutName>(initialLayout);
@@ -83,7 +110,9 @@ export function EditorDesktop({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadPreview, setUploadPreview] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const addTriggerRef = useRef<HTMLDivElement>(null);
   const replaceRef = useRef(false);
   const persistRef = useRef<ReturnType<typeof createEditorPersist> | null>(
     null,
@@ -105,11 +134,13 @@ export function EditorDesktop({
     const unsub = handle.status.subscribe(() => {
       setStatus(handle.persister.getState().status);
     });
-    void hydrateDraft(handle.persister, initialDoc).then((next) => {
-      if (!active) return;
-      docRef.current = next;
-      setDoc(next);
-    });
+    void restoreCrashDraft(siteId)
+      .then(() => hydrateDraft(handle.persister, initialDoc))
+      .then((next) => {
+        if (!active) return;
+        docRef.current = next;
+        setDoc(next);
+      });
     return () => {
       active = false;
       unsub();
@@ -130,32 +161,35 @@ export function EditorDesktop({
     const result = applyCommand(docRef.current, command);
     docRef.current = result.doc;
     setDoc(result.doc);
-    setHistory((current) => ({
+    const current = historyRef.current;
+    historyRef.current = {
       past: [...current.past, { inverse: result.inverse }].slice(-50),
       future: [],
-    }));
+    };
     persistRef.current?.queue(result.changes);
   }, []);
 
   const undo = useCallback(() => {
-    const inverse = history.past.at(-1)?.inverse;
-    const result = undoHistory(docRef.current, history);
+    const current = historyRef.current;
+    const inverse = current.past.at(-1)?.inverse;
+    const result = undoHistory(docRef.current, current);
     if (!result) return;
+    historyRef.current = result.history;
     docRef.current = result.doc;
     setDoc(result.doc);
-    setHistory(result.history);
     if (inverse) persistRef.current?.queue(inverse);
-  }, [history]);
+  }, []);
 
   const redo = useCallback(() => {
-    const forward = history.future[0];
-    const result = redoHistory(docRef.current, history);
+    const current = historyRef.current;
+    const forward = current.future[0];
+    const result = redoHistory(docRef.current, current);
     if (!result || !forward) return;
+    historyRef.current = result.history;
     docRef.current = result.doc;
     setDoc(result.doc);
-    setHistory(result.history);
     persistRef.current?.queue(forward);
-  }, [history]);
+  }, []);
 
   const targetSection = useCallback(() => {
     const sections = sectionsForPage(docRef.current, pageId);
@@ -194,23 +228,34 @@ export function EditorDesktop({
       let pendingAssetId: string | undefined;
       try {
         const prepared = await prepareImage(file);
+        setUploadPreview(URL.createObjectURL(prepared.blob));
         const ticket = await createAssetUpload(siteId);
         if (!ticket.ok) throw new Error(ticket.error);
         pendingAssetId = ticket.assetId;
-        const supabase = createClient();
-        const uploaded = await supabase.storage
-          .from("site-assets")
-          .uploadToSignedUrl(ticket.path, ticket.token, prepared.blob);
-        if (uploaded.error) throw new Error("Could not upload the photo.");
+        await uploadWithProgress(ticket.signedUrl, prepared.blob, (pct) =>
+          setUploadProgress(pct),
+        );
         const confirmed = await confirmAssetUpload({
           siteId,
           assetId: ticket.assetId,
-          width: prepared.width,
-          height: prepared.height,
           bytes: prepared.bytes,
         });
         if (!confirmed.ok) throw new Error(confirmed.error);
         pendingAssetId = undefined;
+        const withAsset = {
+          ...docRef.current,
+          assets: {
+            ...(docRef.current.assets ?? {}),
+            [ticket.assetId]: {
+              path: confirmed.path,
+              mime: "image/webp" as const,
+              readUrl: confirmed.readUrl,
+              readUrlExpiresAt: confirmed.readUrlExpiresAt,
+            },
+          },
+        };
+        docRef.current = withAsset;
+        setDoc(withAsset);
         if (replaceRef.current && selectedId) {
           run({
             type: "updateContent",
@@ -246,11 +291,42 @@ export function EditorDesktop({
         );
       } finally {
         setUploading(false);
+        setUploadPreview((current) => {
+          if (current) URL.revokeObjectURL(current);
+          return null;
+        });
         if (fileRef.current) fileRef.current.value = "";
       }
     },
     [pageId, run, selectedId, siteId, targetSection],
   );
+
+  useEffect(() => {
+    const expiries = Object.values(doc.assets ?? {})
+      .map((asset) => asset.readUrlExpiresAt)
+      .filter((value): value is number => typeof value === "number");
+    if (!expiries.length) return;
+    const delay = readUrlRefreshDelayMs(Math.min(...expiries), Date.now());
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void refreshAssetReadUrls(siteId).then((next) => {
+        if (cancelled || !next.ok) return;
+        const assets = { ...docRef.current.assets };
+        for (const [id, signed] of Object.entries(next.assets)) {
+          const current = assets[id];
+          if (!current) continue;
+          assets[id] = { ...current, ...signed };
+        }
+        const withUrls = { ...docRef.current, assets };
+        docRef.current = withUrls;
+        setDoc(withUrls);
+      });
+    }, delay);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [doc.assets, siteId]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -360,6 +436,8 @@ export function EditorDesktop({
   const addMenu = (
     <Menu
       align="start"
+      panelClassName="w-[248px]"
+      boxedKbd
       trigger={
         <Button
           variant="secondary"
@@ -403,7 +481,9 @@ export function EditorDesktop({
           type="button"
           aria-label="Add"
           className="grid size-6 place-items-center rounded-control text-ink-2 hover:bg-fill-hover"
-          onClick={addText}
+          onClick={() =>
+            addTriggerRef.current?.querySelector("button")?.click()
+          }
         >
           <Icon name="plus" size={14} />
         </button>
@@ -411,7 +491,35 @@ export function EditorDesktop({
       <ul aria-label="Layers" className="pb-2">
         {sectionsForPage(doc, pageId).map((section) => (
           <li key={section.id}>
-            <div className="flex h-8 items-center px-2 text-sm font-medium text-ink">
+            <div
+              className="flex h-8 cursor-grab items-center px-2 text-sm font-medium text-ink"
+              onPointerDown={(event) => {
+                const startY = event.clientY;
+                const startOrder = section.sortOrder;
+                const move = (ev: PointerEvent) => {
+                  if (Math.abs(ev.clientY - startY) < 12) return;
+                  const sections = sectionsForPage(docRef.current, pageId);
+                  const index = sections.findIndex(
+                    (item) => item.id === section.id,
+                  );
+                  const next = ev.clientY > startY ? index + 1 : index - 1;
+                  const swap = sections[next];
+                  if (!swap || swap.sortOrder === startOrder) return;
+                  run({
+                    type: "reorderSection",
+                    sectionId: section.id,
+                    sortOrder: swap.sortOrder,
+                  });
+                  window.removeEventListener("pointermove", move);
+                };
+                window.addEventListener("pointermove", move);
+                window.addEventListener(
+                  "pointerup",
+                  () => window.removeEventListener("pointermove", move),
+                  { once: true },
+                );
+              }}
+            >
               <Icon name="chevron-down" size={12} className="mr-1 text-ink-2" />
               {section.name}
             </div>
@@ -425,23 +533,36 @@ export function EditorDesktop({
                       element.id === selectedId && "bg-fill-selected",
                     )}
                     onClick={() => setSelectedId(element.id)}
-                    onDoubleClick={() => {
-                      const name = window.prompt("Rename", element.name);
-                      if (name) {
-                        run({
-                          type: "renameLayer",
-                          elementId: element.id,
-                          name,
-                        });
-                      }
-                    }}
+                    onDoubleClick={() => setRenameId(element.id)}
                   >
                     <Icon
                       name={element.type === "image" ? "image" : "document"}
                       size={16}
                       className="text-ink-2"
                     />
-                    <span className="truncate">{element.name}</span>
+                    {renameId === element.id ? (
+                      <input
+                        autoFocus
+                        aria-label={`Rename ${element.name}`}
+                        defaultValue={element.name}
+                        className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                        onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            run({
+                              type: "renameLayer",
+                              elementId: element.id,
+                              name: event.currentTarget.value,
+                            });
+                            setRenameId(null);
+                          }
+                          if (event.key === "Escape") setRenameId(null);
+                        }}
+                        onBlur={() => setRenameId(null)}
+                      />
+                    ) : (
+                      <span className="truncate pl-4">{element.name}</span>
+                    )}
                   </button>
                 </li>
               ))}
@@ -463,7 +584,7 @@ export function EditorDesktop({
         onChange={(event) => void onFile(event.target.files?.[0])}
       />
       <div className="min-w-0 flex-1 px-6 pt-4 pb-6">
-        <div className="mb-4 flex h-8 w-fit items-center rounded-control border border-line bg-bg">
+        <div className="mb-4 flex h-8 w-fit items-center rounded-control border border-line bg-bg mx-auto">
           <Menu
             align="start"
             trigger={
@@ -519,9 +640,13 @@ export function EditorDesktop({
           onSelect={setSelectedId}
           onFocus={setFocusedId}
           onEdit={setEditingId}
-          onCommitText={(elementId, text) =>
-            run({ type: "updateContent", elementId, content: { text } })
-          }
+          onCommitText={(elementId, text) => {
+            const current = docRef.current.elements.find(
+              (item) => item.id === elementId,
+            );
+            if (String(current?.content.text ?? "") === text) return;
+            run({ type: "updateContent", elementId, content: { text } });
+          }}
           onMove={(elementId, col, row) =>
             run({ type: "move", elementId, breakpoint: layout, col, row })
           }
@@ -542,17 +667,28 @@ export function EditorDesktop({
           </p>
         ) : null}
         {uploading ? (
-          <div className="mt-3 w-48">
-            <p className="text-xs text-ink-3">Uploading…</p>
-            <div
-              className="mt-1 h-1 overflow-hidden rounded bg-surface-2"
-              role="progressbar"
-              aria-valuenow={uploadProgress}
-            >
-              <div
-                className="h-full bg-ink transition-[width]"
-                style={{ width: `${uploadProgress}%` }}
+          <div className="mt-3 flex w-48 items-center gap-2">
+            {uploadPreview ? (
+              // Local preview of the file being uploaded; not a content image.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={uploadPreview}
+                alt=""
+                className="h-10 w-10 rounded-control object-cover"
               />
+            ) : null}
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-ink-3">Uploading…</p>
+              <div
+                className="mt-1 h-1 overflow-hidden rounded bg-surface-2"
+                role="progressbar"
+                aria-valuenow={uploadProgress}
+              >
+                <div
+                  className="h-full bg-ink transition-[width]"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
             </div>
           </div>
         ) : null}
@@ -567,7 +703,9 @@ export function EditorDesktop({
         onReplace={() => startImage(true)}
         onDelete={() => setConfirmDelete(true)}
       />
-      {addHost ? createPortal(addMenu, addHost) : null}
+      {addHost
+        ? createPortal(<div ref={addTriggerRef}>{addMenu}</div>, addHost)
+        : null}
       {statusHost
         ? createPortal(
             <>

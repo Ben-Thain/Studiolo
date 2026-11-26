@@ -10,7 +10,10 @@ import {
   SAVE_ERROR_BACKOFF_SECONDS,
   StaleRevisionError,
   createPersister,
+  draftKey,
   saveErrorRetryDelayMs,
+  writeDraftRow,
+  type DraftRow,
   type Persister,
   type PersistState,
 } from "@/editor/persist";
@@ -78,6 +81,30 @@ function browserOffline(): boolean {
   return typeof navigator !== "undefined" && navigator.onLine === false;
 }
 
+function crashDraftKey(siteId: string): string {
+  return `studiolo:crash-draft:${siteId}`;
+}
+
+/** Synchronous copy of the pending draft. IndexedDB can lose a write if the tab closes first. */
+function writeCrashDraft(siteId: string, row: DraftRow): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(crashDraftKey(siteId), JSON.stringify(row));
+}
+
+function clearCrashDraft(siteId: string): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(crashDraftKey(siteId));
+}
+
+/** Copy a crash draft into IndexedDB so hydrateDraft can replay it. */
+export async function restoreCrashDraft(siteId: string): Promise<void> {
+  if (typeof window === "undefined") return;
+  const raw = window.localStorage.getItem(crashDraftKey(siteId));
+  if (!raw) return;
+  const row = JSON.parse(raw) as DraftRow;
+  await writeDraftRow({ ...row, key: draftKey(siteId), siteId });
+}
+
 /** Client wrapper: debounced save, stale rebase, and persister-owned backoff. */
 export function createEditorPersist(args: {
   siteId: string;
@@ -114,7 +141,12 @@ export function createEditorPersist(args: {
     doc,
     debounceMs: 800,
     maxWaitMs: 5000,
-    onStatus: (state) => store.set(state),
+    onStatus: (state) => {
+      store.set(state);
+      if (state.status === "saved" && !Object.keys(state.pending).length) {
+        clearCrashDraft(args.siteId);
+      }
+    },
     save: async ({ siteId, expectedRevision, changes }) => {
       let revision = expectedRevision;
       let staleRetries = 0;
@@ -186,6 +218,14 @@ export function createEditorPersist(args: {
     status: store,
     queue: (changes) => {
       persister.queue(changes);
+      const state = persister.getState();
+      writeCrashDraft(args.siteId, {
+        key: draftKey(args.siteId),
+        siteId: args.siteId,
+        baseRevision: state.revision,
+        doc: persister.getDoc(),
+        pending: state.pending,
+      });
     },
     flush: () => persister.flush(),
     resumeAfterAuth: () => {

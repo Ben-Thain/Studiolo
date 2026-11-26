@@ -1,6 +1,8 @@
 import type { CSSProperties } from "react";
 import { Icon } from "@/components/ui/icons";
 import { mobileFontSize } from "@/editor/fonts";
+import type { SizeStep } from "@/editor/types";
+import { lineHeightForSizeStep } from "@/lib/editor/typography";
 import { gridPlacement, GRID_AUTO_ROWS } from "@/editor/renderGrid";
 import type { GridBox } from "@/editor/types";
 import type {
@@ -45,7 +47,8 @@ function Element({
         className="whitespace-pre-line text-ink"
         style={{
           fontSize: size,
-          lineHeight: size >= 28 ? 1.15 : 1.5,
+          fontFamily: String(c.fontFamily ?? "Inter"),
+          lineHeight: lineHeightForSizeStep(desktopSize as SizeStep),
           fontWeight: Number(c.fontWeight ?? 400) === 500 ? 500 : 400,
           textAlign: (c.align as CSSProperties["textAlign"]) ?? "left",
           letterSpacing: size >= 28 ? "-0.02em" : undefined,

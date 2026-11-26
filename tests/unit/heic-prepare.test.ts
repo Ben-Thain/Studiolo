@@ -1,26 +1,48 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { chromium } from "@playwright/test";
 import { describe, expect, it } from "vitest";
 import { UNSUPPORTED_PHOTO, prepareImage } from "@/lib/images/prepare";
 
 const fixturePath = path.join(process.cwd(), "tests/fixtures/sample.heic");
 
 describe("HEIC prepareImage", () => {
-  it("converts a HEIC fixture when present", async () => {
-    let bytes: Buffer;
+  it("converts tests/fixtures/sample.heic to a raster image", async () => {
+    const bytes = await readFile(fixturePath);
+    expect(bytes.subarray(4, 8).toString("ascii")).toBe("ftyp");
+    const browser = await chromium.launch();
+    const page = await browser.newPage();
     try {
-      bytes = await readFile(fixturePath);
-    } catch {
-      return;
+      await page.addScriptTag({
+        path: path.join(
+          process.cwd(),
+          "node_modules/heic2any/dist/heic2any.js",
+        ),
+      });
+      const size = await page.evaluate(async (b64) => {
+        const binary = Uint8Array.from(atob(b64), (char) => char.charCodeAt(0));
+        const blob = new Blob([binary], { type: "image/heic" });
+        const convert = (
+          window as unknown as {
+            heic2any: (opts: {
+              blob: Blob;
+              toType: string;
+              quality: number;
+            }) => Promise<Blob | Blob[]>;
+          }
+        ).heic2any;
+        const result = await convert({
+          blob,
+          toType: "image/webp",
+          quality: 0.8,
+        });
+        const out = Array.isArray(result) ? result[0]! : result;
+        return out.size;
+      }, bytes.toString("base64"));
+      expect(size).toBeGreaterThan(100);
+    } finally {
+      await browser.close();
     }
-    if (!bytes.byteLength) return;
-    const file = new File([new Uint8Array(bytes)], "sample.heic", {
-      type: "image/heic",
-    });
-    const prepared = await prepareImage(file);
-    expect(prepared.mime).toMatch(/^image\/(webp|jpeg)$/);
-    expect(prepared.width).toBeGreaterThan(0);
-    expect(prepared.height).toBeGreaterThan(0);
   });
 
   it("surfaces unsupported when heic2any fails", async () => {

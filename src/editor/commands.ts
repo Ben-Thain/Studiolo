@@ -12,6 +12,7 @@ import {
   upsertChanges,
 } from "./changes";
 import {
+  GRID_COLUMNS,
   defaultDesktopRows,
   defaultDesktopSpan,
   rowBelow,
@@ -70,10 +71,13 @@ export function applyCommand(
       setLayout(next, command.elementId, command.breakpoint, command.layout);
       break;
     case "move":
-      setLayout(next, command.elementId, command.breakpoint, {
-        col: command.col,
-        row: command.row,
-      });
+      moveLayout(
+        next,
+        command.elementId,
+        command.breakpoint,
+        command.col,
+        command.row,
+      );
       break;
     case "resize":
       setLayout(next, command.elementId, command.breakpoint, {
@@ -394,6 +398,20 @@ function setLayout(
   layout.placementSource = "manual";
 }
 
+function moveLayout(
+  doc: EditorDoc,
+  elementId: string,
+  breakpoint: Breakpoint,
+  col: number,
+  row: number,
+) {
+  const layout = layoutOf(doc, elementId, breakpoint);
+  const maxCol = GRID_COLUMNS - layout.span + 1;
+  layout.col = Math.min(maxCol, Math.max(1, Math.round(col)));
+  layout.row = Math.max(1, Math.round(row));
+  layout.placementSource = "manual";
+}
+
 function setHidden(
   doc: EditorDoc,
   elementId: string,
@@ -445,7 +463,16 @@ function renameSection(doc: EditorDoc, sectionId: string, name: string) {
 }
 
 function reorderSection(doc: EditorDoc, sectionId: string, sortOrder: number) {
-  sectionOf(doc, sectionId).sortOrder = sortOrder;
+  const section = sectionOf(doc, sectionId);
+  const other = doc.sections.find(
+    (item) =>
+      item.id !== section.id &&
+      item.pageId === section.pageId &&
+      item.sortOrder === sortOrder,
+  );
+  const previous = section.sortOrder;
+  section.sortOrder = sortOrder;
+  if (other) other.sortOrder = previous;
 }
 
 function restackSection(doc: EditorDoc, sectionId: string) {

@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import { Toggle } from "@/components/ui/toggle";
 import { Icon } from "@/components/ui/icons";
 import { FONT_FAMILIES, SIZE_STEPS } from "@/editor/fonts";
+import { ensureFontFace } from "@/lib/editor/load-font";
 import type { EditorCommand } from "@/editor/command-types";
 import type { EditorDoc, EditorElement } from "@/editor/types";
 
@@ -136,13 +137,17 @@ export function EditorInspector({
                   <select
                     className="mt-1 h-8 w-full rounded-control border border-line px-2 text-sm"
                     value={String(element.content.fontFamily ?? "Inter")}
-                    onChange={(event) =>
+                    onFocus={() =>
+                      FONT_FAMILIES.forEach((family) => ensureFontFace(family))
+                    }
+                    onChange={(event) => {
+                      ensureFontFace(event.target.value);
                       onRun({
                         type: "updateContent",
                         elementId: element.id,
                         content: { fontFamily: event.target.value },
-                      })
-                    }
+                      });
+                    }}
                   >
                     {FONT_FAMILIES.map((family) => (
                       <option key={family}>{family}</option>
@@ -269,7 +274,9 @@ export function EditorInspector({
                   />
                 </div>
                 <p className="mt-2 text-xs text-ink-3">
-                  Position and size are per layout. The image is shared.
+                  {element.type === "image"
+                    ? "Position and size are per layout. The image is shared."
+                    : "Position and size are per layout."}
                 </p>
               </>
             ) : null}
