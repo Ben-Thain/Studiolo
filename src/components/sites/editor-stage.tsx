@@ -211,8 +211,14 @@ export function EditorStage({
             line.dataset.guideAxis = guide.axis;
             const thickness = `${1 / scale}px`;
             if (guide.axis === "y") {
+              const section = node?.closest("[data-section]");
+              const pad = section
+                ? Number.parseFloat(getComputedStyle(section).paddingTop) || 0
+                : 0;
+              const sectionTop =
+                section instanceof HTMLElement ? section.offsetTop + pad : 0;
               line.style.left = "0";
-              line.style.top = `${(guide.position - 1) * ROW_UNIT_PX}px`;
+              line.style.top = `${sectionTop + (guide.position - 1) * ROW_UNIT_PX}px`;
               line.style.width = "100%";
               line.style.height = thickness;
             } else {

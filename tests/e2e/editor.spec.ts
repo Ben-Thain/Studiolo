@@ -151,6 +151,32 @@ test.describe("desktop editor", () => {
     expect(spanAfter).not.toBe(spanBefore);
   });
 
+  test("y guides stay inside the dragged section", async ({ page }) => {
+    await openOwnEditor(page);
+    const section = page.locator("[data-section]").nth(1);
+    const item = section.locator("[data-element]").first();
+    const box = await item.boundingBox();
+    if (!box) throw new Error("no element in the second section");
+    await page.mouse.move(box.x + 16, box.y + 16);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 140, box.y + 16, { steps: 8 });
+    const lines = page.locator("[data-guide-axis='y']");
+    await expect(lines.first()).toBeVisible();
+    const sectionBox = await section.boundingBox();
+    if (!sectionBox) throw new Error("no section box");
+    const count = await lines.count();
+    expect(count).toBeGreaterThan(0);
+    for (let i = 0; i < count; i += 1) {
+      const line = await lines.nth(i).boundingBox();
+      expect(line).toBeTruthy();
+      expect(line!.y).toBeGreaterThanOrEqual(sectionBox.y - 1);
+      expect(line!.y + line!.height).toBeLessThanOrEqual(
+        sectionBox.y + sectionBox.height + 1,
+      );
+    }
+    await page.mouse.up();
+  });
+
   test("each corner resizes from the opposite corner", async ({ page }) => {
     await openOwnEditor(page);
     const item = page.locator("[data-element='Hero image']");
